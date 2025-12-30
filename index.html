@@ -30,6 +30,7 @@
       if (message.includes('invariant=31') || message.includes('Objects are not valid')) {
         console.group('%c🚨 REACT ERROR #31', 'background: #7f1d1d; color: #fff; padding: 10px; font-weight: bold;');
         console.error('Mensaje:', message);
+        console.error('Posible causa: Conflicto de versiones de React o importación incorrecta.');
         console.groupEnd();
       }
       return false;
@@ -42,8 +43,8 @@
     "react": "https://esm.sh/react@18.2.0",
     "react-dom": "https://esm.sh/react-dom@18.2.0",
     "react-dom/client": "https://esm.sh/react-dom@18.2.0/client",
-    "recharts": "https://esm.sh/recharts@2.12.7?external=react",
-    "lucide-react": "https://esm.sh/lucide-react@0.408.0?external=react",
+    "recharts": "https://esm.sh/recharts@2.12.7?external=react,react-dom",
+    "lucide-react": "https://esm.sh/lucide-react@0.292.0?external=react",
     "react-dom/": "https://esm.sh/react-dom@^19.2.3/",
     "react/": "https://esm.sh/react@^19.2.3/"
   }
