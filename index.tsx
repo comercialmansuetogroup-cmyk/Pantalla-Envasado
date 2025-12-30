@@ -1,9 +1,8 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import ReactDOM from 'react-dom/client';
 import { 
-  Factory, Moon, Sun, BarChart2, LayoutDashboard, Settings, 
-  ArrowLeft, Calendar, TrendingUp, X, Server, 
-  Key, Globe, Clipboard, Radio, Clock, Database, Trash2
+  Factory, Moon, Sun, Settings, 
+  X, Server, Key, Globe, Clipboard, Radio, Clock, Database, Trash2
 } from 'lucide-react';
 
 const CLIENT_MAPPING: Record<string, string> = {
@@ -16,11 +15,8 @@ const CLIENT_MAPPING: Record<string, string> = {
   '5': 'GRAN CANARIA',
 };
 
-// Lógica de procesamiento mejorada para AGREGACIÓN TOTAL
 const processIncomingData = (data: any) => {
   if (!data || !data.zonas || !Array.isArray(data.zonas)) return [];
-  
-  // Usamos un mapa para agrupar por cliente
   const clientMap = new Map<string, any>();
 
   data.zonas.forEach((zona: any) => {
@@ -30,42 +26,33 @@ const processIncomingData = (data: any) => {
     if (!clientMap.has(clientName)) {
       clientMap.set(clientName, {
         clientName: clientName,
-        productTotals: new Map<string, number>(), // Mapa interno para sumar cantidades por producto
+        productTotals: new Map<string, number>(),
         grandTotal: 0
       });
     }
 
     const clientGroup = clientMap.get(clientName);
-    
-    // Sumamos la cantidad de esta línea específica
     let lineQty = 0;
     if (Array.isArray(zona.productos)) {
       lineQty = zona.productos.reduce((acc: number, p: any) => acc + (Number(p.cantidad) || 0), 0);
     } else if (zona.cantidad) {
-      // Soporte para formato plano si Make envía cantidad directamente
       lineQty = Number(zona.cantidad) || 0;
     }
 
     const productName = String(zona.nombre || 'PRODUCTO SIN NOMBRE').trim().toUpperCase();
-    
-    // Agregamos al producto específico
     const currentProductQty = clientGroup.productTotals.get(productName) || 0;
     clientGroup.productTotals.set(productName, currentProductQty + lineQty);
-    
-    // Agregamos al gran total del cliente
     clientGroup.grandTotal += lineQty;
   });
 
-  // Convertimos los mapas a arreglos para el renderizado
   return Array.from(clientMap.values())
     .map(client => ({
       ...client,
       products: Array.from(client.productTotals.entries())
         .map(([name, totalQuantity]) => ({ name, totalQuantity }))
-        .sort((a, b) => b.totalQuantity - a.totalQuantity) // Ordenar productos por cantidad
+        .sort((a, b) => b.totalQuantity - a.totalQuantity)
     }))
     .sort((a: any, b: any) => {
-      // REGLA DE ORO: GRAN CANARIA SIEMPRE PRIMERO
       if (a.clientName === 'GRAN CANARIA') return -1;
       if (b.clientName === 'GRAN CANARIA') return 1;
       return a.clientName.localeCompare(b.clientName);
@@ -78,8 +65,8 @@ const SettingsModal: React.FC<{ isOpen: boolean; onClose: () => void; onReset: (
   const authToken = 'DASHBOARD_V3_KEY_2025';
 
   return (
-    <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/90 backdrop-blur-md animate-fade-in">
-      <div className="bg-white dark:bg-slate-900 rounded-[3rem] shadow-2xl w-full max-w-2xl border border-gray-200 dark:border-slate-800 overflow-hidden flex flex-col">
+    <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/95 backdrop-blur-sm animate-fade-in">
+      <div className="bg-white dark:bg-slate-900 rounded-[2rem] w-full max-w-2xl border border-gray-200 dark:border-slate-800 overflow-hidden flex flex-col">
         <div className="px-10 py-8 border-b border-gray-100 dark:border-slate-800 flex justify-between items-center bg-red-600 text-white">
           <div className="flex items-center gap-4">
             <Server size={32} />
@@ -103,13 +90,13 @@ const SettingsModal: React.FC<{ isOpen: boolean; onClose: () => void; onReset: (
             </div>
           </div>
           <div className="pt-4">
-            <button onClick={onReset} className="flex items-center gap-3 text-red-600 font-black uppercase text-xs tracking-widest hover:bg-red-50 p-4 rounded-2xl transition-all border border-red-100">
-              <Trash2 size={18} /> Borrar todos los datos de hoy
+            <button onClick={onReset} className="flex items-center gap-3 text-red-600 font-black uppercase text-xs tracking-widest hover:bg-red-50 p-4 rounded-xl transition-all border border-red-100">
+              <Trash2 size={18} /> Borrar producción actual
             </button>
           </div>
         </div>
         <div className="p-8 bg-gray-50 dark:bg-slate-800/50">
-          <button onClick={onClose} className="w-full py-4 bg-gray-900 dark:bg-white text-white dark:text-gray-900 rounded-2xl font-black uppercase text-sm shadow-xl">Cerrar</button>
+          <button onClick={onClose} className="w-full py-4 bg-gray-900 dark:bg-white text-white dark:text-gray-900 rounded-xl font-black uppercase text-sm">Cerrar</button>
         </div>
       </div>
     </div>
@@ -117,15 +104,15 @@ const SettingsModal: React.FC<{ isOpen: boolean; onClose: () => void; onReset: (
 };
 
 const ClientColumn: React.FC<{ data: any; darkMode: boolean }> = ({ data, darkMode }) => (
-  <div className={`flex flex-col h-full rounded-[2.5rem] overflow-hidden shadow-2xl border transition-all duration-500 hover:translate-y-[-4px] ${darkMode ? 'bg-slate-900/60 border-white/5' : 'bg-white border-gray-100'}`}>
+  <div className={`flex flex-col h-auto rounded-[2rem] overflow-hidden border transition-all duration-300 ${darkMode ? 'bg-slate-900/40 border-white/10' : 'bg-white border-gray-200'}`}>
     <div className={`px-8 py-6 border-b flex justify-between items-center ${darkMode ? 'bg-white/5 border-white/5' : 'bg-gray-50 border-gray-100'}`}>
-      <h3 className={`text-xl font-black uppercase tracking-tight truncate ${darkMode ? 'text-white' : 'text-gray-800'}`}>{data.clientName}</h3>
+      <h3 className={`text-2xl font-black uppercase tracking-tight truncate ${darkMode ? 'text-white' : 'text-gray-900'}`}>{data.clientName}</h3>
       <span className="text-[10px] font-black px-3 py-1 bg-red-600 text-white rounded-full">LIVE</span>
     </div>
-    <div className="flex-1 p-8 space-y-4 overflow-y-auto max-h-[500px]">
+    <div className="flex-1 p-8 space-y-4">
       <table className="w-full text-left">
         <thead>
-          <tr className="text-[10px] font-black uppercase tracking-widest text-gray-500 border-b dark:border-white/5">
+          <tr className="text-xs font-black uppercase tracking-widest text-gray-500 border-b dark:border-white/5">
             <th className="pb-3">Producto</th>
             <th className="pb-3 text-right">Cant.</th>
           </tr>
@@ -133,17 +120,17 @@ const ClientColumn: React.FC<{ data: any; darkMode: boolean }> = ({ data, darkMo
         <tbody className="divide-y dark:divide-white/5">
           {data.products.map((p: any, i: number) => (
             <tr key={i} className="group">
-              <td className="py-4 pr-4 font-bold text-[11px] leading-tight text-gray-400 group-hover:text-red-500 transition-colors uppercase">{p.name}</td>
-              <td className="py-4 text-right font-black text-2xl tabular-nums">{p.totalQuantity}</td>
+              <td className="py-5 pr-4 font-bold text-sm lg:text-base leading-snug text-gray-400 group-hover:text-red-500 transition-colors uppercase">{p.name}</td>
+              <td className="py-5 text-right font-black text-3xl tabular-nums">{p.totalQuantity}</td>
             </tr>
           ))}
         </tbody>
       </table>
     </div>
-    <div className={`px-10 py-8 mt-auto border-t ${darkMode ? 'bg-red-600/5 border-white/5' : 'bg-red-50 border-red-100'}`}>
+    <div className={`px-10 py-10 mt-auto border-t ${darkMode ? 'bg-red-600/5 border-white/5' : 'bg-red-50 border-red-100'}`}>
       <div className="flex justify-between items-center">
-        <span className="text-xs font-black uppercase text-red-600/60 tracking-[0.2em]">Total Unidades</span>
-        <span className="text-5xl font-black text-red-600">{data.grandTotal}</span>
+        <span className="text-sm font-black uppercase text-red-600/60 tracking-[0.2em]">Total Cliente</span>
+        <span className="text-6xl font-black text-red-600">{data.grandTotal}</span>
       </div>
     </div>
   </div>
@@ -190,49 +177,46 @@ function App() {
 
   return (
     <div className={`min-h-screen ${darkMode ? 'bg-slate-950 text-slate-100' : 'bg-gray-50 text-gray-900'}`}>
-      <header className={`sticky top-0 z-50 w-full px-10 py-6 backdrop-blur-xl border-b ${darkMode ? 'bg-slate-950/80 border-white/5' : 'bg-white/80 border-gray-100'}`}>
-        <div className="max-w-[2200px] mx-auto flex justify-between items-center">
-          <div className="flex items-center gap-5">
-            <div className="bg-red-600 p-4 rounded-[1.5rem] shadow-2xl shadow-red-600/30"><Factory size={32} className="text-white" /></div>
+      <header className={`sticky top-0 z-50 w-full px-10 py-6 backdrop-blur-xl border-b ${darkMode ? 'bg-slate-950/80 border-white/10' : 'bg-white/80 border-gray-200'}`}>
+        <div className="max-w-[2400px] mx-auto flex justify-between items-center">
+          <div className="flex items-center gap-6">
+            <div className="bg-red-600 p-4 rounded-2xl"><Factory size={32} className="text-white" /></div>
             <div>
               <h1 className="text-3xl font-black tracking-tighter uppercase">Factory<span className="text-red-600">Flow</span></h1>
-              <p className="text-xs font-black text-gray-500 uppercase tracking-[0.2em]">SISTEMA DE PRODUCCIÓN CENTRALIZADO</p>
+              <p className="text-xs font-black text-gray-500 uppercase tracking-[0.2em]">CONTROL DE PLANTA REAL-TIME</p>
             </div>
           </div>
-          <div className="flex items-center gap-4">
-            <div className="hidden lg:flex flex-col items-end mr-6 px-6 py-2 border-r border-white/10">
-               <span className="text-[10px] font-black text-gray-500 uppercase tracking-widest">Producción Total</span>
-               <span className="text-2xl font-black text-red-600 tabular-nums">{totalGlobalProduccion}</span>
+          <div className="flex items-center gap-8">
+            <div className="flex flex-col items-end mr-6 px-8 border-r border-white/10">
+               <span className="text-xs font-black text-gray-500 uppercase tracking-widest">Producción Total</span>
+               <span className="text-4xl font-black text-red-600 tabular-nums">{totalGlobalProduccion}</span>
             </div>
-            <button onClick={() => setDarkMode(!darkMode)} className={`p-5 rounded-2xl border transition-all ${darkMode ? 'bg-white/5 border-white/10' : 'bg-gray-100 border-gray-200'}`}>
+            <button onClick={() => setDarkMode(!darkMode)} className={`p-4 rounded-xl border transition-all ${darkMode ? 'bg-white/5 border-white/10' : 'bg-gray-100 border-gray-200'}`}>
               {darkMode ? <Sun size={24} className="text-yellow-400" /> : <Moon size={24} />}
             </button>
-            <button onClick={() => setIsSettingsOpen(true)} className={`p-5 rounded-2xl border transition-all ${darkMode ? 'bg-white/5 border-white/10' : 'bg-gray-100 border-gray-200'}`}>
+            <button onClick={() => setIsSettingsOpen(true)} className={`p-4 rounded-xl border transition-all ${darkMode ? 'bg-white/5 border-white/10' : 'bg-gray-100 border-gray-200'}`}>
               <Settings size={24} />
             </button>
           </div>
         </div>
       </header>
 
-      <main className="p-10 max-w-[2200px] mx-auto">
-        <div className="mb-10 flex items-center justify-between px-10 py-5 bg-white/5 rounded-[2.5rem] border border-white/5 shadow-2xl">
-          <div className="flex items-center gap-5">
-            <div className={`w-3 h-3 rounded-full ${clientGroups.length > 0 ? 'bg-green-500 animate-pulse' : 'bg-amber-500'}`} />
-            <span className="text-xs font-black uppercase tracking-widest">{clientGroups.length > 0 ? `${clientGroups.length} Clientes en Producción` : 'Esperando primer envío...'}</span>
+      <main className="p-10 max-w-[2400px] mx-auto">
+        <div className="mb-10 flex items-center justify-between px-10 py-6 bg-white/5 rounded-[2rem] border border-white/10">
+          <div className="flex items-center gap-6">
+            <div className={`w-4 h-4 rounded-full ${clientGroups.length > 0 ? 'bg-green-500 animate-pulse' : 'bg-amber-500'}`} />
+            <span className="text-sm font-black uppercase tracking-[0.3em]">{clientGroups.length > 0 ? `${clientGroups.length} Clientes Activos` : 'Esperando primer envío...'}</span>
           </div>
-          {lastUpdated && <span className="text-xs font-bold opacity-40 uppercase tabular-nums">Sync: {lastUpdated.toLocaleTimeString()}</span>}
+          {lastUpdated && <span className="text-sm font-bold opacity-50 uppercase tabular-nums">Última Actualización: {lastUpdated.toLocaleTimeString()}</span>}
         </div>
 
         {clientGroups.length === 0 ? (
           <div className="mt-40 flex flex-col items-center gap-10 text-center animate-fade-in">
-            <div className="w-32 h-32 bg-red-600/10 rounded-[3rem] flex items-center justify-center text-red-600 border border-red-600/20 shadow-2xl animate-pulse"><Radio size={64} /></div>
-            <div>
-              <h2 className="text-4xl font-black uppercase tracking-tight">Escuchando Producción...</h2>
-              <p className="text-sm font-bold text-gray-500 uppercase tracking-widest mt-4">El dashboard mostrará automáticamente los datos al recibirlos de Make</p>
-            </div>
+            <div className="w-32 h-32 bg-red-600/10 rounded-[3rem] flex items-center justify-center text-red-600 border border-red-600/20"><Radio size={64} className="animate-pulse" /></div>
+            <h2 className="text-4xl font-black uppercase tracking-tight">Consola de Producción en Espera</h2>
           </div>
         ) : (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5 gap-10 animate-fade-in">
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-2 xl:grid-cols-3 gap-12 animate-fade-in items-start">
             {clientGroups.map((g) => <ClientColumn key={g.clientName} data={g} darkMode={darkMode} />)}
           </div>
         )}
