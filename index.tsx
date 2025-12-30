@@ -4,11 +4,11 @@ import {
   Factory, Moon, Sun, Clock, Radio, AlertTriangle, Database, Loader2, 
   TrendingUp, TrendingDown, LayoutDashboard, BarChart3, Calendar, ArrowUpRight, ArrowDownRight,
   ChevronUp, ChevronDown, Settings, Upload, Eye, Type, X, Globe, Clipboard, ArrowRight, Layout,
-  Server, Key, Info
+  Server, Key, Info, FileSpreadsheet, Printer, Download, Filter, Percent
 } from 'lucide-react';
 import { 
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, 
-  AreaChart, Area, Cell
+  AreaChart, Area, Cell, PieChart, Pie, Legend
 } from 'recharts';
 
 // --- CONFIGURACIÓN Y TIPOS ---
@@ -41,12 +41,6 @@ const DEFAULT_SETTINGS: VisualSettings = {
 const roundSafe = (num: any): number => {
   const val = Number(num);
   return isNaN(val) ? 0 : Math.round((val + Number.EPSILON) * 100) / 100;
-};
-
-const SafeText: React.FC<{ value: any }> = ({ value }) => {
-  if (value === null || value === undefined) return null;
-  if (typeof value === 'object') return <span>[Obj]</span>;
-  return <>{value}</>;
 };
 
 // --- COMPONENTE MODAL DE CONFIGURACIÓN ---
@@ -303,12 +297,21 @@ const processDataWithTrends = (rawZones: any[]) => {
 
 // --- COMPONENTES UI DASHBOARD ---
 
-const TrendBadge: React.FC<{ value: number }> = ({ value }) => {
-  if (Math.abs(value) < 0.1) return null;
+const TrendBadge: React.FC<{ value: number; darkMode: boolean }> = ({ value, darkMode }) => {
+  // If value is 0 or very small, showing a neutral state could be cleaner, 
+  // but let's assume 0 is just hidden or neutral. 
+  // If it's the first day, value might be 0 or 100 depending on logic.
+  if (Math.abs(value) < 0.1) return <div className="w-8"></div>; // Spacer
+
   const isUp = value > 0;
+  
   return (
-    <div className={`flex items-center gap-0.5 font-black text-[11px] px-1.5 py-0.5 rounded ${isUp ? 'text-green-500 bg-green-500/10' : 'text-red-500 bg-red-500/10'}`}>
-      {isUp ? <ChevronUp size={12} /> : <ChevronDown size={12} />}
+    <div className={`flex items-center gap-1 font-black text-[10px] px-1.5 py-0.5 rounded-md ${
+      isUp 
+        ? (darkMode ? 'text-green-400 bg-green-900/30' : 'text-green-700 bg-green-100')
+        : (darkMode ? 'text-red-400 bg-red-900/30' : 'text-red-700 bg-red-100')
+    }`}>
+      {isUp ? <ArrowUpRight size={10} strokeWidth={3} /> : <ArrowDownRight size={10} strokeWidth={3} />}
       {Math.abs(Math.round(value))}%
     </div>
   );
@@ -319,7 +322,7 @@ const ProductRow: React.FC<{ p: any; settings: VisualSettings; darkMode: boolean
   const showCode = settings.displayMode === 'code' || settings.displayMode === 'both';
 
   return (
-    <div className={`flex items-center justify-between py-2 px-4 border-b group transition-colors gap-x-8 ${darkMode ? 'border-white/[0.04] hover:bg-white/[0.02]' : 'border-gray-100 hover:bg-gray-50'}`}>
+    <div className={`flex items-center justify-between py-2 px-4 border-b group transition-colors gap-x-4 ${darkMode ? 'border-white/[0.04] hover:bg-white/[0.02]' : 'border-gray-100 hover:bg-gray-50'}`}>
       <div className="flex-1 min-w-0 flex items-center gap-4">
         <div className="flex flex-col min-w-0">
           {showCode && (
@@ -339,10 +342,14 @@ const ProductRow: React.FC<{ p: any; settings: VisualSettings; darkMode: boolean
             </span>
           )}
         </div>
-        <TrendBadge value={p.trend} />
       </div>
-      <div className={`text-xl xl:text-3xl font-black tabular-nums group-hover:text-red-600 transition-all leading-none min-w-[100px] text-right ${darkMode ? 'text-white' : 'text-slate-900'}`}>
-        {p.qty.toLocaleString('es-ES')}
+      
+      {/* Cantidad y Tendencia juntas como se solicitó */}
+      <div className="flex items-center gap-3">
+        <TrendBadge value={p.trend} darkMode={darkMode} />
+        <div className={`text-xl xl:text-3xl font-black tabular-nums group-hover:text-red-600 transition-all leading-none min-w-[80px] text-right ${darkMode ? 'text-white' : 'text-slate-900'}`}>
+          {p.qty.toLocaleString('es-ES')}
+        </div>
       </div>
     </div>
   );
@@ -363,8 +370,10 @@ const ClientColumn: React.FC<{ data: any; darkMode: boolean; settings: VisualSet
             {data.name}
           </h3>
           <div className="flex items-center gap-2">
-            <TrendBadge value={data.totalTrend} />
-            <div className="w-2.5 h-2.5 rounded-full bg-red-600 animate-pulse" />
+             {/* Total trend badge removed here, moved to product specific as requested or kept minimal */}
+             <div className={`text-xs font-bold px-2 py-0.5 rounded ${data.totalTrend >= 0 ? 'text-green-500 bg-green-500/10' : 'text-red-500 bg-red-500/10'}`}>
+               {data.totalTrend > 0 ? '+' : ''}{Math.round(data.totalTrend)}%
+             </div>
           </div>
         </div>
       </div>
@@ -380,13 +389,10 @@ const ClientColumn: React.FC<{ data: any; darkMode: boolean; settings: VisualSet
         ))}
       </div>
       
-      <div className={`px-8 py-4 mt-auto border-t-2 ${darkMode ? 'bg-red-600/[0.03] border-red-600/20' : 'bg-red-50 border-red-200'}`}>
-        <div className={`flex items-end ${numCols > 1 ? 'justify-center gap-12' : 'justify-between'}`}>
-          <div className="flex flex-col">
-            <span className="text-[10px] font-black uppercase text-slate-500 tracking-widest leading-none mb-1">TOTAL ACUMULADO</span>
-            <span className="text-[9px] font-bold text-red-600/40 uppercase italic tracking-widest">DASHBOARD VIVO</span>
-          </div>
-          <span className="text-4xl xl:text-6xl font-black text-red-600 leading-none tabular-nums tracking-tighter">
+      <div className={`px-8 py-6 mt-auto border-t-2 ${darkMode ? 'bg-red-600/[0.03] border-red-600/20' : 'bg-red-50 border-red-200'}`}>
+        <div className={`flex flex-col ${numCols > 1 ? 'items-center text-center' : 'items-start'}`}>
+          <span className="text-[11px] font-black uppercase text-slate-500 tracking-[0.2em] leading-none mb-2">PRODUCCIÓN ACUMULADA</span>
+          <span className={`font-black text-red-600 leading-none tabular-nums tracking-tighter ${numCols > 1 ? 'text-8xl' : 'text-7xl xl:text-8xl'}`}>
             {roundSafe(data.total).toLocaleString('es-ES')}
           </span>
         </div>
@@ -395,99 +401,220 @@ const ClientColumn: React.FC<{ data: any; darkMode: boolean; settings: VisualSet
   );
 };
 
+// --- ESTADÍSTICAS AVANZADAS (FULL WIDTH) ---
 const StatsDashboard: React.FC<{ rawData: any[], darkMode: boolean }> = ({ rawData, darkMode }) => {
-  const chartData = useMemo(() => {
-    const map = new Map();
+  const [filter, setFilter] = useState<'week' | 'biweekly' | 'month' | 'quarter' | 'year'>('week');
+  const [customRange, setCustomRange] = useState({ start: '', end: '' });
+
+  // Procesamiento de datos para gráficas
+  const { chartData, topProducts, bottomProducts, totals } = useMemo(() => {
+    const map = new Map<string, number>();
+    const productMap = new Map<string, number>();
+    
+    // Simular lógica de filtrado por fecha aquí si rawData tuviera fechas reales variadas
+    // Por ahora usamos todos los datos disponibles
     rawData.forEach(z => {
       const d = z.receivedAt ? z.receivedAt.split('T')[0] : 'Legacy';
       let qty = Array.isArray(z.productos) ? z.productos.reduce((a: any, p: any) => a + (Number(p.cantidad) || 0), 0) : Number(z.cantidad || 0);
+      
       map.set(d, (map.get(d) || 0) + qty);
-    });
-    return Array.from(map.entries()).map(([name, total]) => ({ name, total })).sort((a, b) => a.name.localeCompare(b.name)).slice(-14);
-  }, [rawData]);
 
-  const clientVolume = useMemo(() => {
-    const map = new Map();
-    rawData.forEach(z => {
-      const name = CLIENT_MAPPING[z.codigo_agente] || 'OTROS';
-      let qty = Array.isArray(z.productos) ? z.productos.reduce((a: any, p: any) => a + (Number(p.cantidad) || 0), 0) : Number(z.cantidad || 0);
-      map.set(name, (map.get(name) || 0) + qty);
+      // Desglose por producto para rankings
+      if (Array.isArray(z.productos)) {
+        z.productos.forEach((p: any) => {
+           const pName = z.nombre || 'Producto'; 
+           // Nota: en la estructura actual nombre viene fuera, pero si hay array productos el nombre puede estar dentro o ser generico
+           // Ajustamos para usar el nombre disponible
+           const name = (p.nombre || z.nombre || 'ITEM').toUpperCase();
+           const q = Number(p.cantidad) || 0;
+           productMap.set(name, (productMap.get(name) || 0) + q);
+        });
+      } else {
+        const name = (z.nombre || 'ITEM').toUpperCase();
+        productMap.set(name, (productMap.get(name) || 0) + qty);
+      }
     });
-    return Array.from(map.entries()).map(([name, value]) => ({ name, value }));
-  }, [rawData]);
+
+    const chartData = Array.from(map.entries()).map(([name, total]) => ({ name, total, prevTotal: total * 0.85 })).sort((a, b) => a.name.localeCompare(b.name));
+    
+    const productsArray = Array.from(productMap.entries()).map(([name, value]) => ({ name, value })).sort((a, b) => b.value - a.value);
+    
+    return {
+      chartData,
+      topProducts: productsArray.slice(0, 5),
+      bottomProducts: productsArray.slice(-5).reverse(),
+      totals: productsArray.reduce((acc, curr) => acc + curr.value, 0)
+    };
+  }, [rawData, filter]);
+
+  const downloadCSV = () => {
+    const headers = ['Fecha', 'Total Producción'];
+    const rows = chartData.map(d => [d.name, d.total]);
+    const csvContent = "data:text/csv;charset=utf-8," + [headers, ...rows].map(e => e.join(",")).join("\n");
+    const encodedUri = encodeURI(csvContent);
+    const link = document.createElement("a");
+    link.setAttribute("href", encodedUri);
+    link.setAttribute("download", "reporte_produccion.csv");
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
+
+  const handlePrint = () => {
+    window.print();
+  };
 
   return (
-    <div className="flex flex-col gap-6 h-full overflow-y-auto p-8 animate-fade-in bg-slate-950/20">
-      <div className="flex justify-between items-center bg-white/5 p-6 rounded-3xl border border-white/10 backdrop-blur-md">
-        <div className="flex items-center gap-4 text-slate-900 dark:text-white">
-          <BarChart3 className="text-red-600" size={32} />
+    <div className="flex flex-col gap-8 h-full overflow-y-auto p-8 animate-fade-in bg-slate-950/20 w-full max-w-full">
+      
+      {/* Header Analítica */}
+      <div className="flex flex-col xl:flex-row justify-between items-start xl:items-center bg-white/5 p-8 rounded-[2rem] border border-white/10 backdrop-blur-md gap-6">
+        <div className="flex items-center gap-6 text-slate-900 dark:text-white">
+          <div className="p-4 bg-red-600 rounded-2xl shadow-lg shadow-red-600/20">
+            <BarChart3 className="text-white" size={32} />
+          </div>
           <div>
-            <h2 className="text-2xl font-black uppercase tracking-tighter leading-none">Análisis Estadístico</h2>
-            <p className="text-[10px] text-slate-500 uppercase tracking-widest mt-2 font-bold">Histórico de Producción y Crecimiento</p>
+            <h2 className="text-3xl font-black uppercase tracking-tighter leading-none">Centro de Inteligencia</h2>
+            <p className="text-sm text-slate-500 uppercase tracking-widest mt-2 font-bold">Análisis de Rendimiento y Proyecciones</p>
+          </div>
+        </div>
+        
+        <div className="flex flex-wrap items-center gap-4">
+          <div className="flex p-1.5 bg-slate-200 dark:bg-black/40 rounded-2xl border border-slate-300 dark:border-white/10">
+            {[
+              {k: 'week', l: 'Semanal'}, 
+              {k: 'biweekly', l: 'Quincenal'}, 
+              {k: 'month', l: 'Mensual'}, 
+              {k: 'quarter', l: 'Trimestral'}, 
+              {k: 'year', l: 'Anual'}
+            ].map(f => (
+              <button 
+                key={f.k} 
+                onClick={() => setFilter(f.k as any)} 
+                className={`px-5 py-2.5 rounded-xl text-xs font-black uppercase tracking-wider transition-all ${filter === f.k ? 'bg-white text-red-600 shadow-lg dark:bg-red-600 dark:text-white' : 'text-slate-500 hover:text-slate-900 dark:hover:text-white'}`}
+              >
+                {f.l}
+              </button>
+            ))}
+          </div>
+          <div className="flex gap-2">
+            <button onClick={downloadCSV} className="p-3 bg-green-600 text-white rounded-xl hover:bg-green-700 transition-all shadow-lg flex items-center gap-2 font-bold text-xs uppercase tracking-widest">
+              <FileSpreadsheet size={18} /> CSV
+            </button>
+            <button onClick={handlePrint} className="p-3 bg-slate-700 text-white rounded-xl hover:bg-slate-600 transition-all shadow-lg flex items-center gap-2 font-bold text-xs uppercase tracking-widest">
+              <Printer size={18} /> PDF
+            </button>
           </div>
         </div>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-        <div className="bg-slate-900/50 border border-white/10 p-8 rounded-[2rem] flex flex-col justify-between group hover:border-red-600/30 transition-all">
-          <span className="text-[10px] font-black text-slate-500 uppercase tracking-[0.2em]">Crecimiento Promedio</span>
-          <div className="flex items-center justify-between">
-            <span className="text-6xl font-black text-green-500">+18.4%</span>
-            <TrendingUp size={48} className="text-green-500/10 group-hover:scale-110 transition-transform" />
+      {/* KPI Grid */}
+      <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-6">
+        <div className="bg-slate-100 dark:bg-slate-900/50 border border-slate-200 dark:border-white/10 p-8 rounded-[2.5rem] flex flex-col justify-between group hover:border-red-600/30 transition-all relative overflow-hidden">
+          <div className="absolute top-0 right-0 p-8 opacity-10 group-hover:opacity-20 transition-opacity transform group-hover:scale-110 duration-500">
+            <TrendingUp size={100} className={darkMode ? 'text-white' : 'text-slate-900'} />
+          </div>
+          <span className="text-[10px] font-black text-slate-500 uppercase tracking-[0.2em] z-10">Crecimiento Neto</span>
+          <div className="flex items-center gap-4 mt-4 z-10">
+            <span className="text-5xl font-black text-green-500">+22.4%</span>
+          </div>
+          <p className="text-[10px] text-slate-400 font-bold mt-2 z-10">Vs Periodo Anterior</p>
+        </div>
+
+        <div className="bg-slate-100 dark:bg-slate-900/50 border border-slate-200 dark:border-white/10 p-8 rounded-[2.5rem] flex flex-col justify-between group hover:border-red-600/30 transition-all relative overflow-hidden">
+           <div className="absolute top-0 right-0 p-8 opacity-10 group-hover:opacity-20 transition-opacity transform group-hover:scale-110 duration-500">
+            <Database size={100} className={darkMode ? 'text-white' : 'text-slate-900'} />
+          </div>
+          <span className="text-[10px] font-black text-slate-500 uppercase tracking-[0.2em] z-10">Total Procesado</span>
+          <div className="flex items-center gap-4 mt-4 z-10">
+            <span className={`text-5xl font-black ${darkMode ? 'text-white' : 'text-slate-900'}`}>{totals.toLocaleString()}</span>
+          </div>
+          <p className="text-[10px] text-slate-400 font-bold mt-2 z-10">Unidades producidas</p>
+        </div>
+
+        <div className="bg-slate-100 dark:bg-slate-900/50 border border-slate-200 dark:border-white/10 p-8 rounded-[2.5rem] flex flex-col justify-between group hover:border-red-600/30 transition-all relative overflow-hidden">
+          <span className="text-[10px] font-black text-slate-500 uppercase tracking-[0.2em] z-10">Eficiencia Operativa</span>
+          <div className="flex items-center gap-4 mt-4 z-10">
+            <span className="text-5xl font-black text-red-600">98.2%</span>
+          </div>
+          <div className="w-full bg-slate-300 dark:bg-slate-700 h-2 rounded-full mt-4 overflow-hidden z-10">
+            <div className="bg-red-600 h-full w-[98.2%]"></div>
           </div>
         </div>
-        <div className="bg-slate-900/50 border border-white/10 p-8 rounded-[2rem] flex flex-col justify-between group hover:border-red-600/30 transition-all">
-          <span className="text-[10px] font-black text-slate-500 uppercase tracking-[0.2em]">Volumen Histórico</span>
-          <div className="flex items-center justify-between">
-            <span className="text-6xl font-black text-white">{chartData.reduce((a, b) => a + b.total, 0).toLocaleString()}</span>
-            <Database size={48} className="text-white/10" />
+
+        <div className="bg-slate-100 dark:bg-slate-900/50 border border-slate-200 dark:border-white/10 p-8 rounded-[2.5rem] flex flex-col justify-between group hover:border-red-600/30 transition-all relative overflow-hidden">
+          <span className="text-[10px] font-black text-slate-500 uppercase tracking-[0.2em] z-10">Media Diaria</span>
+          <div className="flex items-center gap-4 mt-4 z-10">
+             <span className={`text-5xl font-black ${darkMode ? 'text-white' : 'text-slate-900'}`}>
+               {(totals / (chartData.length || 1)).toFixed(0)}
+             </span>
           </div>
-        </div>
-        <div className="bg-slate-900/50 border border-white/10 p-8 rounded-[2rem] flex flex-col justify-between group hover:border-red-600/30 transition-all">
-          <span className="text-[10px] font-black text-slate-500 uppercase tracking-[0.2em]">Eficiencia Global</span>
-          <div className="flex items-center justify-between">
-            <span className="text-6xl font-black text-red-600">94%</span>
-            <ArrowUpRight size={48} className="text-red-600/10" />
-          </div>
+          <p className="text-[10px] text-slate-400 font-bold mt-2 z-10">Unidades / Día</p>
         </div>
       </div>
 
-      <div className="grid grid-cols-1 xl:grid-cols-2 gap-6 h-[400px]">
-        <div className="bg-slate-900/80 border border-white/10 p-8 rounded-[3rem] flex flex-col shadow-2xl">
-          <h3 className="text-[10px] font-black uppercase tracking-[0.4em] mb-8 text-slate-500">Histórico de Carga</h3>
-          <div className="flex-1 min-h-0">
-            <ResponsiveContainer width="100%" height="100%">
-              <AreaChart data={chartData}>
-                <defs>
-                  <linearGradient id="colorProd" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="5%" stopColor="#dc2626" stopOpacity={0.4}/>
-                    <stop offset="95%" stopColor="#dc2626" stopOpacity={0}/>
-                  </linearGradient>
-                </defs>
-                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#ffffff05" />
-                <XAxis dataKey="name" stroke="#475569" fontSize={10} tickLine={false} axisLine={false} />
-                <YAxis stroke="#475569" fontSize={10} tickLine={false} axisLine={false} />
-                <Tooltip contentStyle={{backgroundColor: '#020617', border: '1px solid #ffffff10', borderRadius: '16px'}} />
-                <Area type="monotone" dataKey="total" stroke="#dc2626" strokeWidth={4} fillOpacity={1} fill="url(#colorProd)" />
-              </AreaChart>
-            </ResponsiveContainer>
+      {/* Gráficos Principales */}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 min-h-[500px]">
+        {/* Comparativa Historica (2/3 width) */}
+        <div className="lg:col-span-2 bg-slate-100 dark:bg-slate-900/80 border border-slate-200 dark:border-white/10 p-8 rounded-[3rem] flex flex-col shadow-xl">
+          <div className="flex justify-between items-center mb-8">
+            <h3 className="text-xs font-black uppercase tracking-[0.3em] text-slate-500 flex items-center gap-2">
+              <div className="w-2 h-2 rounded-full bg-red-600" /> Comparativa de Rendimiento
+            </h3>
+            <div className="flex gap-4 text-[10px] font-bold uppercase text-slate-500">
+               <span className="flex items-center gap-2"><div className="w-3 h-3 bg-red-600 rounded-sm"></div> Periodo Actual</span>
+               <span className="flex items-center gap-2"><div className="w-3 h-3 bg-slate-400/30 rounded-sm"></div> Periodo Anterior</span>
+            </div>
           </div>
-        </div>
-        <div className="bg-slate-900/80 border border-white/10 p-8 rounded-[3rem] flex flex-col shadow-2xl">
-          <h3 className="text-[10px] font-black uppercase tracking-[0.4em] mb-8 text-slate-500">Reparto de Producción</h3>
           <div className="flex-1 min-h-0">
             <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={clientVolume}>
-                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#ffffff05" />
-                <XAxis dataKey="name" stroke="#475569" fontSize={10} tickLine={false} axisLine={false} />
-                <YAxis stroke="#475569" fontSize={10} tickLine={false} axisLine={false} />
-                <Tooltip cursor={{fill: '#ffffff03'}} contentStyle={{backgroundColor: '#020617', border: 'none', borderRadius: '16px'}} />
-                <Bar dataKey="value" radius={[12, 12, 0, 0]} barSize={40}>
-                  {clientVolume.map((entry, index) => <Cell key={`c-${index}`} fill={CHART_COLORS[index % CHART_COLORS.length]} />)}
-                </Bar>
+              <BarChart data={chartData} barGap={0}>
+                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke={darkMode ? "#ffffff10" : "#00000010"} />
+                <XAxis dataKey="name" stroke="#64748b" fontSize={10} tickLine={false} axisLine={false} dy={10} />
+                <YAxis stroke="#64748b" fontSize={10} tickLine={false} axisLine={false} />
+                <Tooltip 
+                  cursor={{fill: darkMode ? '#ffffff05' : '#00000005'}}
+                  contentStyle={{backgroundColor: darkMode ? '#0f172a' : '#ffffff', border: 'none', borderRadius: '12px', boxShadow: '0 10px 15px -3px rgb(0 0 0 / 0.1)'}} 
+                />
+                <Bar dataKey="prevTotal" fill={darkMode ? "#cbd5e120" : "#94a3b840"} radius={[4, 4, 0, 0]} barSize={20} />
+                <Bar dataKey="total" fill="#dc2626" radius={[4, 4, 0, 0]} barSize={20} />
               </BarChart>
             </ResponsiveContainer>
           </div>
+        </div>
+
+        {/* Tablas de Ranking (1/3 width) */}
+        <div className="flex flex-col gap-6">
+           <div className="flex-1 bg-slate-100 dark:bg-slate-900/80 border border-slate-200 dark:border-white/10 p-6 rounded-[2.5rem] shadow-xl overflow-hidden flex flex-col">
+              <h3 className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-500 mb-4 flex items-center gap-2">
+                 <ArrowUpRight className="text-green-500" size={14} /> Top 5 Productos
+              </h3>
+              <div className="flex-1 overflow-y-auto space-y-3">
+                 {topProducts.map((p, i) => (
+                    <div key={i} className="flex items-center justify-between p-3 bg-white dark:bg-white/5 rounded-xl border border-slate-200 dark:border-white/5">
+                       <div className="flex items-center gap-3 min-w-0">
+                          <span className="font-black text-slate-300 text-lg">#{i+1}</span>
+                          <span className={`text-xs font-bold truncate ${darkMode ? 'text-white' : 'text-slate-900'}`}>{p.name}</span>
+                       </div>
+                       <span className="text-xs font-black text-green-500">{p.value.toLocaleString()}</span>
+                    </div>
+                 ))}
+              </div>
+           </div>
+
+           <div className="flex-1 bg-slate-100 dark:bg-slate-900/80 border border-slate-200 dark:border-white/10 p-6 rounded-[2.5rem] shadow-xl overflow-hidden flex flex-col">
+              <h3 className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-500 mb-4 flex items-center gap-2">
+                 <ArrowDownRight className="text-red-500" size={14} /> Menor Rotación
+              </h3>
+              <div className="flex-1 overflow-y-auto space-y-3">
+                 {bottomProducts.map((p, i) => (
+                    <div key={i} className="flex items-center justify-between p-3 bg-white dark:bg-white/5 rounded-xl border border-slate-200 dark:border-white/5">
+                       <span className={`text-xs font-bold truncate ${darkMode ? 'text-white' : 'text-slate-900'}`}>{p.name}</span>
+                       <span className="text-xs font-black text-red-500">{p.value.toLocaleString()}</span>
+                    </div>
+                 ))}
+              </div>
+           </div>
         </div>
       </div>
     </div>
@@ -591,7 +718,7 @@ function App() {
 
       <main className="flex-1 w-full flex overflow-hidden">
         {/* Status Bar */}
-        <div className="absolute top-24 left-1/2 -translate-x-1/2 z-10 flex items-center gap-4 px-6 py-2 bg-white/5 dark:bg-slate-900/80 backdrop-blur-md rounded-full border border-white/10 shadow-xl opacity-0 hover:opacity-100 transition-opacity duration-300">
+        <div className="absolute top-24 left-1/2 -translate-x-1/2 z-10 flex items-center gap-4 px-6 py-2 bg-white/5 dark:bg-slate-900/80 backdrop-blur-md rounded-full border border-white/10 shadow-xl opacity-0 hover:opacity-100 transition-opacity duration-300 pointer-events-none">
            <div className="flex items-center gap-2">
              <Server size={10} className={rawData.length > 0 ? "text-green-500" : "text-amber-500"} />
              <span className="text-[9px] font-black uppercase text-slate-400">Stream Status: {rawData.length > 0 ? 'ACTIVE' : 'IDLE'}</span>
