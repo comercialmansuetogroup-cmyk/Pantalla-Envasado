@@ -27,9 +27,9 @@ interface VisualSettings {
   // Tipografías
   nameFontSize: number;      // Producto Nombre
   codeFontSize: number;      // Producto Código
-  clientNameFontSize: number; // Cliente Título
-  tableHeaderFontSize: number; // Cabeceras Referencia/Stock
-  trendFontSize: number;     // Porcentajes
+  clientNameFontSize: number; // Cliente Título (NUEVO)
+  tableHeaderFontSize: number; // Cabeceras Referencia/Stock (NUEVO)
+  trendFontSize: number;     // Porcentajes (NUEVO)
 }
 
 const DEFAULT_SETTINGS: VisualSettings = {
@@ -39,9 +39,9 @@ const DEFAULT_SETTINGS: VisualSettings = {
   maxRowsPerCol: 20,
   nameFontSize: 16,
   codeFontSize: 18,
-  clientNameFontSize: 32, // Un poco más grande por defecto
-  tableHeaderFontSize: 12, // Aumentado para mejor legibilidad
-  trendFontSize: 12,
+  clientNameFontSize: 30, // Default ajustado
+  tableHeaderFontSize: 11, // Default un poco más grande
+  trendFontSize: 11,
 };
 
 // --- UTILIDADES ---
@@ -572,10 +572,10 @@ const ClientColumn: React.FC<{ data: any; darkMode: boolean; settings: VisualSet
       <div className={`px-4 py-4 border-b-2 ${darkMode ? 'bg-white/[0.01] border-white/10' : 'bg-gray-50 border-gray-200'}`}>
         
         {/* HEADER CLIENTE */}
-        <div className="flex items-center justify-between mb-2">
-            <div className="flex items-center gap-4 overflow-hidden">
+        <div className={`flex items-center mb-2 ${numCols > 1 ? 'justify-center py-2' : 'justify-between'}`}>
+            <div className={`flex items-center gap-4 overflow-hidden ${numCols > 1 ? 'justify-center' : ''}`}>
                 <h3 
-                  className={`font-black uppercase tracking-tighter truncate leading-none ${darkMode ? 'text-white' : 'text-gray-900'}`}
+                  className={`font-black uppercase tracking-tighter truncate leading-none ${numCols > 1 ? 'text-center' : ''} ${darkMode ? 'text-white' : 'text-gray-900'}`}
                   style={{ fontSize: `${settings.clientNameFontSize}px` }}
                 >
                 {data.name}
@@ -585,13 +585,9 @@ const ClientColumn: React.FC<{ data: any; darkMode: boolean; settings: VisualSet
         </div>
         
         {/* CABECERAS DE COLUMNAS INTERNAS (Repetida para mantener alineación) */}
-        <div className="flex w-full">
+        <div className="flex w-full divide-x divide-transparent">
              {Array.from({ length: numCols }).map((_, idx) => (
-                <div 
-                  key={idx} 
-                  className={`flex-1 flex justify-between items-center px-4 mt-2 opacity-50 font-black uppercase tracking-wider ${idx > 0 ? 'border-l border-white/[0.05]' : ''}`} 
-                  style={{ fontSize: `${settings.tableHeaderFontSize}px` }}
-                >
+                <div key={idx} className={`flex-1 flex justify-between items-center px-2 mt-2 opacity-50 font-black uppercase tracking-wider ${idx > 0 ? 'pl-4' : ''}`} style={{ fontSize: `${settings.tableHeaderFontSize}px` }}>
                     <span className="flex-1">Referencia</span>
                     <div className="grid grid-cols-3 gap-2 w-[180px] xl:w-[220px] text-right">
                         <span>Stock Disp.</span>
