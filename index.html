@@ -25,12 +25,10 @@
   </style>
 
   <script>
-    // Capturador de errores para depuración en vivo
     window.onerror = function(message, source, lineno, colno, error) {
       if (message.includes('invariant=31') || message.includes('Objects are not valid')) {
         console.group('%c🚨 REACT ERROR #31 DETECTADO', 'background: #7f1d1d; color: #fff; padding: 10px; font-weight: bold;');
         console.error('Mensaje:', message);
-        console.error('Este error suele ocurrir por renderizar un objeto en lugar de texto o por conflicto de versiones de React.');
         if (error) console.error('Stack:', error.stack);
         console.groupEnd();
       }
