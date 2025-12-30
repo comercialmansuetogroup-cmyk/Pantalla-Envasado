@@ -4,72 +4,66 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>FactoryFlow Dashboard</title>
+  
+  <!-- Tailwind CSS -->
   <script src="https://cdn.tailwindcss.com"></script>
-  <style>
-    /* Custom Scrollbar for dark/elegant look */
-    ::-webkit-scrollbar {
-      width: 8px;
-      height: 8px;
-    }
-    ::-webkit-scrollbar-track {
-      background: transparent;
-    }
-    ::-webkit-scrollbar-thumb {
-      background: #475569;
-      border-radius: 4px;
-    }
-    ::-webkit-scrollbar-thumb:hover {
-      background: #64748b;
-    }
+  
+  <!-- Babel Standalone: Permite ejecutar TSX directamente en el navegador -->
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
 
-    /* Animation Utilities */
-    @keyframes fadeIn {
-      from { opacity: 0; }
-      to { opacity: 1; }
-    }
-    @keyframes fadeInUp {
-      from { opacity: 0; transform: translateY(20px); }
-      to { opacity: 1; transform: translateY(0); }
-    }
-    .animate-fade-in {
-      animation: fadeIn 0.5s ease-out forwards;
-    }
-    .animate-fade-in-up {
-      animation: fadeInUp 0.5s ease-out forwards;
-    }
+  <style>
+    ::-webkit-scrollbar { width: 8px; height: 8px; }
+    ::-webkit-scrollbar-track { background: transparent; }
+    ::-webkit-scrollbar-thumb { background: #475569; border-radius: 4px; }
     
-    /* 3xl Breakpoint for 4K screens */
+    @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+    @keyframes fadeInUp { from { opacity: 0; transform: translateY(20px); } to { opacity: 1; transform: translateY(0); } }
+    .animate-fade-in { animation: fadeIn 0.5s ease-out forwards; }
+    .animate-fade-in-up { animation: fadeInUp 0.5s ease-out forwards; }
+    
     @media (min-width: 2000px) {
-      .3xl\:grid-cols-5 {
-        grid-template-columns: repeat(5, minmax(0, 1fr));
-      }
+      .3xl\:grid-cols-5 { grid-template-columns: repeat(5, minmax(0, 1fr)); }
     }
   </style>
-  <script>
-    // Sistema de diagnóstico de emergencia
-    window.onerror = function(msg, url, line, col, error) {
-      const errorDiv = document.createElement('div');
-      errorDiv.style.cssText = 'position:fixed;top:0;left:0;width:100%;background:#b91c1c;color:white;padding:20px;z-index:99999;font-family:monospace;font-size:12px;';
-      errorDiv.innerHTML = '<strong>ERROR DE CARGA:</strong> ' + msg + '<br><small>' + url + ' L:' + line + '</small>';
-      document.body.appendChild(errorDiv);
-      return false;
-    };
-  </script>
-<script type="importmap">
+
+  <script type="importmap">
 {
   "imports": {
+    "react": "https://esm.sh/react@19.0.0",
+    "react-dom/client": "https://esm.sh/react-dom@19.0.0/client",
+    "recharts": "https://esm.sh/recharts@2.12.7",
+    "lucide-react": "https://esm.sh/lucide-react@0.408.0",
     "react-dom/": "https://esm.sh/react-dom@^19.2.3/",
-    "recharts": "https://esm.sh/recharts@^3.6.0",
-    "lucide-react": "https://esm.sh/lucide-react@^0.562.0",
-    "react/": "https://esm.sh/react@^19.2.3/",
-    "react": "https://esm.sh/react@^19.2.3"
+    "react/": "https://esm.sh/react@^19.2.3/"
   }
 }
 </script>
 </head>
 <body class="bg-slate-950">
   <div id="root"></div>
-  <!-- Script para asegurar que el entry point se carga -->
-  <script type="module" src="./index.tsx"></script>
+  
+  <!-- 
+    Cambiamos el script a type="text/babel" para que Babel lo procese.
+    Añadimos data-type="module" para que respete el importmap.
+    Añadimos data-presets para que entienda TypeScript y React.
+  -->
+  <script 
+    type="text/babel" 
+    data-type="module" 
+    data-presets="react,typescript" 
+    src="./index.tsx">
+  </script>
+
+  <script>
+    // Sistema de diagnóstico mejorado
+    window.onerror = function(msg, url, line, col, error) {
+      if (msg.includes('Script error')) return;
+      const errorDiv = document.createElement('div');
+      errorDiv.style.cssText = 'position:fixed;bottom:20px;right:20px;background:#ef4444;color:white;padding:15px;border-radius:10px;z-index:9999;font-family:sans-serif;box-shadow:0 10px 15px -3px rgba(0,0,0,0.1);';
+      errorDiv.innerHTML = '<b>Error detectado:</b> ' + msg;
+      document.body.appendChild(errorDiv);
+      return false;
+    };
+  </script>
 </body>
 </html>

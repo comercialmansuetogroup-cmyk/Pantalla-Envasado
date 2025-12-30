@@ -6,7 +6,12 @@ const bodyParser = require('body-parser');
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-// Almacenamiento en memoria (Persiste mientras el proceso esté vivo en Railway)
+// Configuración manual de tipos MIME para evitar el error "application/octet-stream"
+express.static.mime.define({
+  'application/javascript': ['ts', 'tsx']
+});
+
+// Almacenamiento en memoria
 let latestData = null;
 
 app.use(cors());
@@ -24,26 +29,17 @@ app.post('/api/webhook', (req, res) => {
 
   if (req.body && req.body.zonas) {
     latestData = req.body;
-    console.log(`[✓] DATOS RECIBIDOS: ${req.body.zonas.length} líneas de producción procesadas.`);
-    // Log para depuración manual en la consola de Railway
-    const clientes = req.body.zonas.map(z => z.codigo_agente).filter((v, i, a) => a.indexOf(v) === i);
-    console.log(`[i] Clientes detectados en el lote: ${clientes.join(', ')}`);
-    
+    console.log(`[✓] DATOS RECIBIDOS: ${req.body.zonas.length} líneas procesadas.`);
     return res.status(200).json({ status: 'success' });
   }
-
-  console.warn('[!] Webhook recibido pero el JSON no tiene el formato esperado (falta "zonas").');
   res.status(400).json({ error: 'Formato inválido' });
 });
 
-// API: Entrega datos al Frontend
 app.get('/api/data', (req, res) => {
-  if (!latestData) {
-    console.log('[i] Frontend solicitó datos pero el buffer está vacío (esperando a Make).');
-  }
   res.json(latestData);
 });
 
+// Servir estáticos con la configuración de MIME types activa
 app.use(express.static(__dirname));
 
 app.get('*', (req, res) => {
@@ -51,11 +47,5 @@ app.get('*', (req, res) => {
 });
 
 app.listen(PORT, () => {
-  console.log(`
-  ================================================
-  FACTORY OPS: SERVER ONLINE
-  Puerto: ${PORT}
-  Webhook: /api/webhook
-  ================================================
-  `);
+  console.log(`SERVER RUNNING ON PORT ${PORT}`);
 });
