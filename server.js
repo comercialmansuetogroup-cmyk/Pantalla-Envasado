@@ -1,4 +1,3 @@
-
 const express = require('express');
 const path = require('path');
 const cors = require('cors');
@@ -7,10 +6,10 @@ const bodyParser = require('body-parser');
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-// TOKEN PERSONALIZADO (Cópialo para Make)
+// TOKEN PERSONALIZADO (Este es el que debes usar en Make)
 const CUSTOM_DASHBOARD_TOKEN = "DASHBOARD_V3_KEY_2025";
 
-// Middleware para asegurar que los archivos .tsx se sirvan con el tipo correcto
+// Asegurar que el navegador entienda los archivos .tsx y .ts como JS
 app.use((req, res, next) => {
   if (req.url.endsWith('.tsx') || req.url.endsWith('.ts')) {
     res.setHeader('Content-Type', 'application/javascript');
@@ -23,48 +22,50 @@ let latestData = null;
 app.use(cors());
 app.use(bodyParser.json({ limit: '50mb' }));
 
-// Silenciar error de favicon
+// Evitar error 404 de favicon
 app.get('/favicon.ico', (req, res) => res.status(204).end());
 
-// WEBHOOK: Recibe datos de Make (POST)
+// WEBHOOK: Endpoint para Make
 app.post('/api/webhook', (req, res) => {
   const authHeader = req.headers.authorization;
   const expectedToken = `Bearer ${CUSTOM_DASHBOARD_TOKEN}`;
 
   if (!authHeader || authHeader !== expectedToken) {
-    console.warn(`[!] Acceso denegado. Se esperaba: ${expectedToken}`);
-    return res.status(401).json({ error: 'Token de Dashboard inválido' });
+    console.warn(`[!] Acceso no autorizado: ${authHeader}`);
+    return res.status(401).json({ error: 'Token inválido' });
   }
 
   if (req.body && req.body.zonas) {
     latestData = req.body;
-    console.log(`[✓] ÉXITO: Recibidos datos de ${req.body.zonas.length} zonas.`);
+    console.log(`[✓] DATOS RECIBIDOS: ${req.body.zonas.length} registros nuevos.`);
     return res.status(200).json({ status: 'success' });
   }
   
-  res.status(400).json({ error: 'JSON mal formado' });
+  res.status(400).json({ error: 'Formato de datos incorrecto' });
 });
 
-// API para el Frontend
+// GET: El frontend consulta esto cada 5 segundos
 app.get('/api/data', (req, res) => {
   res.json(latestData);
 });
 
-// Servir archivos estáticos DESDE LA RAÍZ
-app.use(express.static(path.join(__dirname, '.')));
+// Archivos estáticos
+app.use(express.static(__dirname));
 
-// El catch-all solo para rutas de navegación (no archivos con puntos)
+// Manejo de rutas SPA (Single Page Application)
 app.get('*', (req, res) => {
+  // Si la ruta pide un archivo real que no existe, damos 404
   if (req.url.includes('.')) {
-    return res.status(404).send('Archivo no encontrado');
+    return res.status(404).send('Not found');
   }
+  // Si no, servimos el index.html
   res.sendFile(path.join(__dirname, 'index.html'));
 });
 
 app.listen(PORT, () => {
-  console.log(`-----------------------------------------`);
-  console.log(`DASHBOARD ACTIVO EN PUERTO: ${PORT}`);
-  console.log(`WEBHOOK URL: /api/webhook`);
-  console.log(`TOKEN REQUERIDO: Bearer ${CUSTOM_DASHBOARD_TOKEN}`);
-  console.log(`-----------------------------------------`);
+  console.log(`=========================================`);
+  console.log(`🚀 DASHBOARD LISTO EN PUERTO: ${PORT}`);
+  console.log(`📍 URL WEBHOOK: /api/webhook`);
+  console.log(`🔑 TOKEN: Bearer ${CUSTOM_DASHBOARD_TOKEN}`);
+  console.log(`=========================================`);
 });

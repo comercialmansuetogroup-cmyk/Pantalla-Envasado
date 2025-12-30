@@ -6,10 +6,9 @@ import { SettingsModal } from './components/SettingsModal.tsx';
 import { processIncomingData } from './services/dataProcessor.ts';
 import { Server, Radio, Clock, Database, Loader2 } from 'lucide-react';
 
-// Cambiamos a function declaration para evitar errores de inicialización de const en Babel Standalone
 export default function App() {
   const [darkMode, setDarkMode] = useState(true);
-  const [currentView, setCurrentView] = useState('live'); // 'live' | 'stats'
+  const [currentView, setCurrentView] = useState('live'); 
   const [clientGroups, setClientGroups] = useState([]);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [loading, setLoading] = useState(false);
@@ -29,18 +28,16 @@ export default function App() {
       
       const data = await response.json();
       
-      if (data && data.zonas && data.zonas.length > 0) {
+      if (data && data.zonas && Array.isArray(data.zonas)) {
         const processed = processIncomingData(data);
         setClientGroups(processed);
         setLastUpdated(new Date());
         setError(null);
-      } else {
-        if (clientGroups.length === 0) {
-          setError("EN LÍNEA: Esperando primera señal de Make...");
-        }
+      } else if (!clientGroups.length) {
+        setError("SISTEMA ACTIVO: Esperando primer envío desde Make...");
       }
     } catch (err) {
-      setError("ERROR DE CONEXIÓN: Verifica que Railway esté activo.");
+      setError("ERROR: El servidor de Railway no responde.");
     } finally {
       setLoading(false);
       isFetchingRef.current = false;
@@ -54,7 +51,7 @@ export default function App() {
   }, []);
 
   return (
-    <div className={`min-h-screen font-sans transition-colors duration-500 ${darkMode ? 'bg-slate-950 text-slate-100' : 'bg-gray-50 text-gray-900'}`}>
+    <div className={`min-h-screen transition-colors duration-500 ${darkMode ? 'bg-slate-950 text-slate-100' : 'bg-gray-50 text-gray-900'}`}>
       <Header 
         darkMode={darkMode} 
         toggleTheme={() => setDarkMode(!darkMode)} 
@@ -64,60 +61,56 @@ export default function App() {
       />
 
       <main className="p-8 max-w-[2400px] mx-auto w-full">
+        {/* Status Bar */}
         <div className="mb-8 flex flex-col md:flex-row items-center justify-between gap-4 px-8 py-4 bg-white/5 dark:bg-slate-900/40 backdrop-blur-xl rounded-[2rem] border border-white/10 shadow-2xl">
           <div className="flex items-center gap-5">
-            <div className="relative flex h-4 w-4">
-              <span className={`animate-ping absolute inline-flex h-full w-full rounded-full opacity-75 ${error && clientGroups.length === 0 ? 'bg-amber-500' : 'bg-green-500'}`}></span>
-              <span className={`relative inline-flex rounded-full h-4 w-4 ${error && clientGroups.length === 0 ? 'bg-amber-500' : 'bg-green-500'}`}></span>
+            <div className="relative flex h-3 w-3">
+              <span className={`animate-ping absolute inline-flex h-full w-full rounded-full opacity-75 ${clientGroups.length > 0 ? 'bg-green-500' : 'bg-amber-500'}`}></span>
+              <span className={`relative inline-flex rounded-full h-3 w-3 ${clientGroups.length > 0 ? 'bg-green-500' : 'bg-amber-500'}`}></span>
             </div>
             <div className="flex flex-col text-left">
               <div className="flex items-center gap-2">
-                <Server size={14} className="text-red-600" />
-                <span className="text-sm font-black tracking-tight uppercase">
-                  {error && clientGroups.length === 0 ? 'Status: Standby' : 'Status: Conectado'}
+                <Server size={12} className="text-red-600" />
+                <span className="text-[10px] font-black uppercase tracking-tighter">
+                  {clientGroups.length > 0 ? 'Data Stream: Active' : 'Data Stream: Waiting'}
                 </span>
               </div>
-              <span className="text-[10px] opacity-40 uppercase tracking-[0.2em] font-black">
-                SISTEMA OPERATIVO V3.1
-              </span>
             </div>
           </div>
 
           <div className="flex items-center gap-8">
-            {loading && <Loader2 size={16} className="animate-spin text-red-600" />}
+            {loading && <Loader2 size={14} className="animate-spin text-red-600" />}
             {lastUpdated && (
-              <div className="flex items-center gap-3 px-4 py-2 bg-green-500/10 rounded-full border border-green-500/20">
-                <Clock size={14} className="text-green-500" />
-                <span className="text-[11px] font-black text-green-500 uppercase tabular-nums">
+              <div className="flex items-center gap-3 px-4 py-1.5 bg-green-500/10 rounded-full border border-green-500/20">
+                <Clock size={12} className="text-green-500" />
+                <span className="text-[10px] font-bold text-green-500 uppercase tabular-nums">
                   Sync: {lastUpdated.toLocaleTimeString()}
                 </span>
               </div>
             )}
-            <div className="flex items-center gap-3 opacity-60">
-              <Database size={14} />
-              <span className="text-[11px] font-black uppercase tracking-wider text-red-600">PROD-SERVER</span>
+            <div className="flex items-center gap-2 opacity-40">
+              <Database size={12} />
+              <span className="text-[9px] font-black uppercase tracking-widest text-red-600">PRODUCTION_V3</span>
             </div>
           </div>
         </div>
 
-        {clientGroups.length === 0 && (
-          <div className="mt-20 flex flex-col items-center justify-center text-center space-y-8 animate-fade-in-up">
+        {clientGroups.length === 0 ? (
+          <div className="mt-24 flex flex-col items-center justify-center text-center space-y-6 animate-fade-in">
             <div className="relative">
-               <div className="absolute inset-0 bg-red-600 blur-[60px] opacity-20 rounded-full animate-pulse"></div>
-               <div className="relative w-32 h-32 bg-red-600/10 rounded-[3rem] flex items-center justify-center text-red-600 border border-red-600/20 shadow-2xl">
-                 <Radio size={56} className="animate-pulse" />
+               <div className="absolute inset-0 bg-red-600 blur-[40px] opacity-10 rounded-full animate-pulse"></div>
+               <div className="relative w-24 h-24 bg-red-600/10 rounded-[2rem] flex items-center justify-center text-red-600 border border-red-600/20 shadow-xl">
+                 <Radio size={40} className="animate-pulse" />
                </div>
             </div>
-            <div className="max-w-md space-y-3">
-              <h2 className="text-3xl font-black uppercase tracking-tighter">Esperando Datos de Make</h2>
-              <p className="text-sm text-gray-500 dark:text-gray-400 leading-relaxed font-medium px-4">
-                {error || "El servidor está listo para recibir el POST desde Make. Lanza el escenario para ver los datos."}
+            <div className="max-w-md space-y-2">
+              <h2 className="text-2xl font-black uppercase tracking-tight">Consola de Recepción</h2>
+              <p className="text-xs text-gray-500 dark:text-gray-400 font-medium px-6 uppercase tracking-wider">
+                {error || "El sistema está listo. Envía un POST desde Make para visualizar la producción."}
               </p>
             </div>
           </div>
-        )}
-
-        {clientGroups.length > 0 && (
+        ) : (
           <div className="animate-fade-in">
             {currentView === 'live' ? (
               <LiveDashboard data={clientGroups} darkMode={darkMode} />
