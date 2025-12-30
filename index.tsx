@@ -5,55 +5,71 @@ import {
   ArrowLeft, Calendar, TrendingUp, X, Server, 
   Key, Globe, Clipboard, Radio, Clock, Database, Trash2
 } from 'lucide-react';
-import { 
-  BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, 
-  ResponsiveContainer, Cell, PieChart, Pie, Legend
-} from 'recharts';
 
 const CLIENT_MAPPING: Record<string, string> = {
-  '24': 'Filippo',
-  '26': 'Pingüino',
-  '23': 'Insólito',
-  '15': 'Tenerife Norte',
-  '10': 'Gran Canaria',
-  '14': 'Gran Canaria',
-  '5': 'Gran Canaria',
+  '24': 'FILIPPO',
+  '26': 'PINGÜINO',
+  '23': 'INSÓLITO',
+  '15': 'TENERIFE NORTE',
+  '10': 'GRAN CANARIA',
+  '14': 'GRAN CANARIA',
+  '5': 'GRAN CANARIA',
 };
 
+// Lógica de procesamiento mejorada para AGREGACIÓN TOTAL
 const processIncomingData = (data: any) => {
   if (!data || !data.zonas || !Array.isArray(data.zonas)) return [];
-  const clientMap = new Map();
+  
+  // Usamos un mapa para agrupar por cliente
+  const clientMap = new Map<string, any>();
 
   data.zonas.forEach((zona: any) => {
     const agentCodeRaw = String(zona.codigo_agente || '').trim();
-    const clientName = CLIENT_MAPPING[agentCodeRaw] || `Zona ${agentCodeRaw}`;
+    const clientName = CLIENT_MAPPING[agentCodeRaw] || (agentCodeRaw ? `ZONA ${agentCodeRaw}` : 'ZONA DESCONOCIDA');
     
     if (!clientMap.has(clientName)) {
       clientMap.set(clientName, {
-        clientId: clientName,
         clientName: clientName,
-        products: [],
+        productTotals: new Map<string, number>(), // Mapa interno para sumar cantidades por producto
         grandTotal: 0
       });
     }
 
     const clientGroup = clientMap.get(clientName);
-    const entryTotal = Array.isArray(zona.productos) 
-      ? zona.productos.reduce((acc: number, p: any) => acc + (Number(p.cantidad) || 0), 0)
-      : 0;
-
-    const productName = String(zona.nombre || 'Producto').trim();
-    const existingProd = clientGroup.products.find((p: any) => p.name === productName);
-
-    if (existingProd) {
-      existingProd.totalQuantity += entryTotal;
-    } else {
-      clientGroup.products.push({ name: productName, totalQuantity: entryTotal });
+    
+    // Sumamos la cantidad de esta línea específica
+    let lineQty = 0;
+    if (Array.isArray(zona.productos)) {
+      lineQty = zona.productos.reduce((acc: number, p: any) => acc + (Number(p.cantidad) || 0), 0);
+    } else if (zona.cantidad) {
+      // Soporte para formato plano si Make envía cantidad directamente
+      lineQty = Number(zona.cantidad) || 0;
     }
-    clientGroup.grandTotal += entryTotal;
+
+    const productName = String(zona.nombre || 'PRODUCTO SIN NOMBRE').trim().toUpperCase();
+    
+    // Agregamos al producto específico
+    const currentProductQty = clientGroup.productTotals.get(productName) || 0;
+    clientGroup.productTotals.set(productName, currentProductQty + lineQty);
+    
+    // Agregamos al gran total del cliente
+    clientGroup.grandTotal += lineQty;
   });
 
-  return Array.from(clientMap.values()).sort((a: any, b: any) => a.clientName.localeCompare(b.clientName));
+  // Convertimos los mapas a arreglos para el renderizado
+  return Array.from(clientMap.values())
+    .map(client => ({
+      ...client,
+      products: Array.from(client.productTotals.entries())
+        .map(([name, totalQuantity]) => ({ name, totalQuantity }))
+        .sort((a, b) => b.totalQuantity - a.totalQuantity) // Ordenar productos por cantidad
+    }))
+    .sort((a: any, b: any) => {
+      // REGLA DE ORO: GRAN CANARIA SIEMPRE PRIMERO
+      if (a.clientName === 'GRAN CANARIA') return -1;
+      if (b.clientName === 'GRAN CANARIA') return 1;
+      return a.clientName.localeCompare(b.clientName);
+    });
 };
 
 const SettingsModal: React.FC<{ isOpen: boolean; onClose: () => void; onReset: () => void }> = ({ isOpen, onClose, onReset }) => {
@@ -87,8 +103,8 @@ const SettingsModal: React.FC<{ isOpen: boolean; onClose: () => void; onReset: (
             </div>
           </div>
           <div className="pt-4">
-            <button onClick={onReset} className="flex items-center gap-2 text-red-600 font-bold hover:bg-red-50 p-3 rounded-xl transition-colors">
-              <Trash2 size={18} /> Borrar todos los datos del servidor
+            <button onClick={onReset} className="flex items-center gap-3 text-red-600 font-black uppercase text-xs tracking-widest hover:bg-red-50 p-4 rounded-2xl transition-all border border-red-100">
+              <Trash2 size={18} /> Borrar todos los datos de hoy
             </button>
           </div>
         </div>
@@ -101,7 +117,7 @@ const SettingsModal: React.FC<{ isOpen: boolean; onClose: () => void; onReset: (
 };
 
 const ClientColumn: React.FC<{ data: any; darkMode: boolean }> = ({ data, darkMode }) => (
-  <div className={`flex flex-col h-full rounded-[2.5rem] overflow-hidden shadow-2xl border transition-all duration-500 hover:scale-[1.02] ${darkMode ? 'bg-slate-900/60 border-white/5' : 'bg-white border-gray-100'}`}>
+  <div className={`flex flex-col h-full rounded-[2.5rem] overflow-hidden shadow-2xl border transition-all duration-500 hover:translate-y-[-4px] ${darkMode ? 'bg-slate-900/60 border-white/5' : 'bg-white border-gray-100'}`}>
     <div className={`px-8 py-6 border-b flex justify-between items-center ${darkMode ? 'bg-white/5 border-white/5' : 'bg-gray-50 border-gray-100'}`}>
       <h3 className={`text-xl font-black uppercase tracking-tight truncate ${darkMode ? 'text-white' : 'text-gray-800'}`}>{data.clientName}</h3>
       <span className="text-[10px] font-black px-3 py-1 bg-red-600 text-white rounded-full">LIVE</span>
@@ -117,8 +133,8 @@ const ClientColumn: React.FC<{ data: any; darkMode: boolean }> = ({ data, darkMo
         <tbody className="divide-y dark:divide-white/5">
           {data.products.map((p: any, i: number) => (
             <tr key={i} className="group">
-              <td className="py-4 pr-4 font-bold text-sm text-gray-400 group-hover:text-red-500 transition-colors">{p.name}</td>
-              <td className="py-4 text-right font-black text-xl tabular-nums">{p.totalQuantity}</td>
+              <td className="py-4 pr-4 font-bold text-[11px] leading-tight text-gray-400 group-hover:text-red-500 transition-colors uppercase">{p.name}</td>
+              <td className="py-4 text-right font-black text-2xl tabular-nums">{p.totalQuantity}</td>
             </tr>
           ))}
         </tbody>
@@ -126,7 +142,7 @@ const ClientColumn: React.FC<{ data: any; darkMode: boolean }> = ({ data, darkMo
     </div>
     <div className={`px-10 py-8 mt-auto border-t ${darkMode ? 'bg-red-600/5 border-white/5' : 'bg-red-50 border-red-100'}`}>
       <div className="flex justify-between items-center">
-        <span className="text-xs font-black uppercase text-red-600 tracking-widest">Total</span>
+        <span className="text-xs font-black uppercase text-red-600/60 tracking-[0.2em]">Total Unidades</span>
         <span className="text-5xl font-black text-red-600">{data.grandTotal}</span>
       </div>
     </div>
@@ -135,7 +151,6 @@ const ClientColumn: React.FC<{ data: any; darkMode: boolean }> = ({ data, darkMo
 
 function App() {
   const [darkMode, setDarkMode] = useState(true);
-  const [currentView, setCurrentView] = useState('live');
   const [clientGroups, setClientGroups] = useState<any[]>([]);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
@@ -152,7 +167,7 @@ function App() {
   };
 
   const resetData = async () => {
-    if (!confirm("¿Seguro que quieres borrar toda la producción de hoy?")) return;
+    if (!confirm("¿Deseas resetear el contador de producción acumulado?")) return;
     try {
       await fetch('/api/reset', { 
         method: 'POST', 
@@ -169,6 +184,10 @@ function App() {
     return () => clearInterval(interval);
   }, []);
 
+  const totalGlobalProduccion = useMemo(() => {
+    return clientGroups.reduce((acc, c) => acc + c.grandTotal, 0);
+  }, [clientGroups]);
+
   return (
     <div className={`min-h-screen ${darkMode ? 'bg-slate-950 text-slate-100' : 'bg-gray-50 text-gray-900'}`}>
       <header className={`sticky top-0 z-50 w-full px-10 py-6 backdrop-blur-xl border-b ${darkMode ? 'bg-slate-950/80 border-white/5' : 'bg-white/80 border-gray-100'}`}>
@@ -181,6 +200,10 @@ function App() {
             </div>
           </div>
           <div className="flex items-center gap-4">
+            <div className="hidden lg:flex flex-col items-end mr-6 px-6 py-2 border-r border-white/10">
+               <span className="text-[10px] font-black text-gray-500 uppercase tracking-widest">Producción Total</span>
+               <span className="text-2xl font-black text-red-600 tabular-nums">{totalGlobalProduccion}</span>
+            </div>
             <button onClick={() => setDarkMode(!darkMode)} className={`p-5 rounded-2xl border transition-all ${darkMode ? 'bg-white/5 border-white/10' : 'bg-gray-100 border-gray-200'}`}>
               {darkMode ? <Sun size={24} className="text-yellow-400" /> : <Moon size={24} />}
             </button>
@@ -195,9 +218,9 @@ function App() {
         <div className="mb-10 flex items-center justify-between px-10 py-5 bg-white/5 rounded-[2.5rem] border border-white/5 shadow-2xl">
           <div className="flex items-center gap-5">
             <div className={`w-3 h-3 rounded-full ${clientGroups.length > 0 ? 'bg-green-500 animate-pulse' : 'bg-amber-500'}`} />
-            <span className="text-xs font-black uppercase tracking-widest">{clientGroups.length > 0 ? `${clientGroups.length} Clientes Activos` : 'Esperando primer envío...'}</span>
+            <span className="text-xs font-black uppercase tracking-widest">{clientGroups.length > 0 ? `${clientGroups.length} Clientes en Producción` : 'Esperando primer envío...'}</span>
           </div>
-          {lastUpdated && <span className="text-xs font-bold opacity-40 uppercase tabular-nums">Última Sincronización: {lastUpdated.toLocaleTimeString()}</span>}
+          {lastUpdated && <span className="text-xs font-bold opacity-40 uppercase tabular-nums">Sync: {lastUpdated.toLocaleTimeString()}</span>}
         </div>
 
         {clientGroups.length === 0 ? (
@@ -210,7 +233,7 @@ function App() {
           </div>
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5 gap-10 animate-fade-in">
-            {clientGroups.map((g) => <ClientColumn key={g.clientId} data={g} darkMode={darkMode} />)}
+            {clientGroups.map((g) => <ClientColumn key={g.clientName} data={g} darkMode={darkMode} />)}
           </div>
         )}
       </main>
