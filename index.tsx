@@ -474,24 +474,13 @@ const TrendBadge: React.FC<{ value: number; darkMode: boolean; fontSize: number 
   );
 };
 
-const ProductRow: React.FC<{ p: any; settings: VisualSettings; darkMode: boolean; previousState: any }> = ({ p, settings, darkMode, previousState }) => {
+const ProductRow: React.FC<{ p: any; settings: VisualSettings; darkMode: boolean; isHighlighted: boolean }> = ({ p, settings, darkMode, isHighlighted }) => {
   const showName = settings.displayMode === 'name' || settings.displayMode === 'both';
   const showCode = settings.displayMode === 'code' || settings.displayMode === 'both';
   const stockClass = p.stock > 0 ? (darkMode ? 'text-blue-400' : 'text-blue-600') : 'text-slate-600 dark:text-slate-600';
 
-  const [isFlashing, setIsFlashing] = useState(false);
   const [isExiting, setIsExiting] = useState(false);
   
-  useEffect(() => {
-     if (previousState) {
-        if (p.toProduce !== previousState.toProduce || p.stock !== previousState.stock) {
-            setIsFlashing(true);
-            const timer = setTimeout(() => setIsFlashing(false), 2000); 
-            return () => clearTimeout(timer);
-        }
-     }
-  }, [p.toProduce, p.stock, previousState]);
-
   useEffect(() => {
      if (p.toProduce <= 0) {
          setIsExiting(true);
@@ -499,11 +488,11 @@ const ProductRow: React.FC<{ p: any; settings: VisualSettings; darkMode: boolean
   }, [p.toProduce]);
 
   const rowBaseClass = `flex items-center justify-between py-2 px-4 border-b group transition-all duration-500 gap-x-2`;
-  const bgClass = isFlashing 
+  const bgClass = isHighlighted 
     ? (darkMode ? 'bg-green-500/20' : 'bg-green-100') 
     : (isExiting ? (darkMode ? 'bg-green-900/40 opacity-50' : 'bg-green-50 opacity-50') : (darkMode ? 'border-white/[0.04] hover:bg-white/[0.02]' : 'border-gray-100 hover:bg-gray-50'));
   
-  const textFlashClass = isFlashing ? 'scale-[1.02]' : '';
+  const textFlashClass = isHighlighted ? 'scale-[1.02]' : '';
 
   return (
     <div className={`${rowBaseClass} ${bgClass} ${textFlashClass}`}>
@@ -526,10 +515,10 @@ const ProductRow: React.FC<{ p: any; settings: VisualSettings; darkMode: boolean
       </div>
       
       <div className="grid grid-cols-3 gap-2 w-[180px] xl:w-[220px] text-right items-center">
-        <div className={`font-bold tabular-nums text-sm ${stockClass} transition-all ${isFlashing ? 'text-green-500 scale-110' : ''}`}>
+        <div className={`font-bold tabular-nums text-sm ${stockClass} transition-all ${isHighlighted ? 'text-green-500 scale-110' : ''}`}>
            {p.stock.toLocaleString('es-ES')}
         </div>
-        <div className={`font-black tabular-nums text-sm transition-all ${p.toProduce > 0 ? 'text-orange-500' : 'text-green-500'} ${isFlashing ? 'scale-125' : ''}`}>
+        <div className={`font-black tabular-nums text-sm transition-all ${p.toProduce > 0 ? 'text-orange-500' : 'text-green-500'} ${isHighlighted ? 'scale-125' : ''}`}>
            {p.toProduce <= 0 ? (
              <span className="flex items-center justify-end gap-1"><Package size={12} /> OK</span>
            ) : p.toProduce.toLocaleString('es-ES')}
@@ -542,7 +531,7 @@ const ProductRow: React.FC<{ p: any; settings: VisualSettings; darkMode: boolean
   );
 };
 
-const ClientColumn: React.FC<{ data: any; darkMode: boolean; settings: VisualSettings; prevData: any }> = ({ data, darkMode, settings, prevData }) => {
+const ClientColumn: React.FC<{ data: any; darkMode: boolean; settings: VisualSettings; highlightedCode: string | null }> = ({ data, darkMode, settings, highlightedCode }) => {
   const productCount = data.products.length;
   const maxRows = settings.maxRowsPerCol;
   const numCols = Math.ceil(productCount / maxRows) || 1;
@@ -551,17 +540,9 @@ const ClientColumn: React.FC<{ data: any; darkMode: boolean; settings: VisualSet
 
   const columnWidth = Math.max(450, numCols * 450);
 
-  const prevProductsMap = useMemo(() => {
-     const map = new Map();
-     if (prevData && prevData.productsArray) {
-         prevData.productsArray.forEach((p: any) => map.set(p.rowId, p));
-     }
-     return map;
-  }, [prevData]);
-
-  // CAMBIO IMPORTANTE: width -> minWidth y añadido flex-1 para que crezca y ocupe el espacio
+  // CAMBIO IMPORTANTE: flex-shrink-0 para evitar que se comprima
   return (
-    <div style={{ minWidth: `${columnWidth}px` }} className={`flex-1 flex flex-col h-full border-r last:border-r-0 transition-all ${darkMode ? 'bg-slate-950 border-white/5' : 'bg-white border-gray-200'}`}>
+    <div style={{ minWidth: `${columnWidth}px` }} className={`flex-shrink-0 flex-1 flex flex-col h-full border-r last:border-r-0 transition-all ${darkMode ? 'bg-slate-950 border-white/5' : 'bg-white border-gray-200'}`}>
       <div className={`px-4 py-4 border-b-2 ${darkMode ? 'bg-white/[0.01] border-white/10' : 'bg-gray-50 border-gray-200'}`}>
         <div className="flex items-center justify-between mb-2">
             <div className="flex items-center gap-4 overflow-hidden">
@@ -593,7 +574,7 @@ const ClientColumn: React.FC<{ data: any; darkMode: boolean; settings: VisualSet
                     p={p} 
                     settings={settings} 
                     darkMode={darkMode} 
-                    previousState={prevProductsMap.get(p.rowId)}
+                    isHighlighted={highlightedCode ? p.code === highlightedCode : false}
                 />
             ))}
             {colProducts.length < maxRows && Array.from({ length: maxRows - colProducts.length }).map((_, emptyIdx) => (
@@ -843,20 +824,20 @@ function App() {
 
   // Tracking de estado para animaciones
   const [completedItems, setCompletedItems] = useState<Set<string>>(new Set());
-  const [prevClientGroups, setPrevClientGroups] = useState<any[]>([]);
   const [systemLogs, setSystemLogs] = useState<string[]>([]);
+  
+  // NUEVO: Tracking preciso de la última actualización
+  const [highlightedCode, setHighlightedCode] = useState<string | null>(null);
 
   // Función para manejar items completados (Animación de salida)
   const handleCompletedItems = useCallback((newGroups: any[]) => {
       newGroups.forEach(client => {
           client.productsArray.forEach((p: any) => {
               if (p.toProduce <= 0) {
-                  // Si llega a 0, lo añadimos al set de "completados visibles"
                   setCompletedItems(prev => {
                       if (!prev.has(p.rowId)) {
                           const newSet = new Set(prev);
                           newSet.add(p.rowId);
-                          // Programar su eliminación visual después de la animación (3s)
                           setTimeout(() => {
                               setCompletedItems(current => {
                                   const updated = new Set(current);
@@ -881,7 +862,8 @@ function App() {
   const fetchData = useCallback(async () => {
     setLoading(true);
     try {
-      const res = await fetch('/api/data');
+      // Añadimos timestamp para evitar caché agresiva del navegador
+      const res = await fetch(`/api/data?t=${Date.now()}`);
       if (!res.ok) throw new Error("Sync Fail");
       const json = await res.json();
       if (json && json.zonas) {
@@ -904,6 +886,12 @@ function App() {
         const data = JSON.parse(event.data);
         if (data.type === 'update') {
             fetchData(); // Recargar datos inmediatamente
+            // Si el evento trae el código actualizado, lo marcamos
+            if (data.updatedCode) {
+                setHighlightedCode(data.updatedCode);
+                // Limpiar el resaltado después de 3 segundos para que no se quede fijo
+                setTimeout(() => setHighlightedCode(null), 3000);
+            }
         } else if (data.type === 'sys_log') {
             const time = new Date(data.timestamp).toLocaleTimeString();
             setSystemLogs(prev => [`[${time}] ${data.message}`, ...prev].slice(0, 50));
@@ -921,13 +909,6 @@ function App() {
       handleCompletedItems(groups);
       return groups;
   }, [rawData, completedItems, handleCompletedItems]);
-
-  // Guardar referencia previa para comparaciones UI
-  useEffect(() => {
-      if (clientGroups.length > 0) {
-          setPrevClientGroups(clientGroups);
-      }
-  }, [clientGroups]);
 
   const totalGlobal = useMemo(() => roundSafe(clientGroups.reduce((acc, c) => acc + (c.total || 0), 0)), [clientGroups]);
   const currentLogo = darkMode ? visualSettings.logoDark : visualSettings.logoLight;
@@ -1009,7 +990,7 @@ function App() {
                     data={g} 
                     darkMode={darkMode} 
                     settings={visualSettings} 
-                    prevData={prevClientGroups.find(pg => pg.name === g.name)}
+                    highlightedCode={highlightedCode}
                   />
               ))}
             </div>

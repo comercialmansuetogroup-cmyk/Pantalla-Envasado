@@ -42,9 +42,9 @@ app.get('/api/events', (req, res) => {
   });
 });
 
-const broadcastUpdate = () => {
+const broadcastUpdate = (extraData = {}) => {
   clients.forEach(client => {
-    client.res.write(`data: ${JSON.stringify({ type: 'update', timestamp: Date.now() })}\n\n`);
+    client.res.write(`data: ${JSON.stringify({ type: 'update', timestamp: Date.now(), ...extraData })}\n\n`);
   });
 };
 
@@ -61,6 +61,10 @@ const broadcastLog = (msg) => {
  * Obtener todos los datos acumulados
  */
 app.get('/api/data', (req, res) => {
+  // Evitar caché estricto
+  res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
+  res.setHeader('Pragma', 'no-cache');
+  res.setHeader('Expires', '0');
   res.json({ zonas: allProductionLines });
 });
 
@@ -101,6 +105,7 @@ app.post('/api/scan', (req, res) => {
   const qtyToAdd = Number(cantidad);
   let productFound = false;
   let updatedProduct = '';
+  let updatedCode = '';
 
   // Búsqueda y actualización
   for (let zona of allProductionLines) {
@@ -114,6 +119,7 @@ app.post('/api/scan', (req, res) => {
           prod.stock_fisico = (Number(prod.stock_fisico) || 0) + qtyToAdd;
           productFound = true;
           updatedProduct = prod.nombre || prod.codigo;
+          updatedCode = pCode; // Guardamos el código real del producto actualizado
         }
       }
     } else {
@@ -126,6 +132,7 @@ app.post('/api/scan', (req, res) => {
             zona.stock_fisico = (Number(zona.stock_fisico) || 0) + qtyToAdd;
             productFound = true;
             updatedProduct = zona.nombre;
+            updatedCode = pCode;
         }
     }
   }
@@ -134,7 +141,8 @@ app.post('/api/scan', (req, res) => {
     const msg = `MATCH: ${updatedProduct} (+${qtyToAdd})`;
     console.log(`✅ ${msg}`);
     broadcastLog(msg); // Enviar log al frontend
-    broadcastUpdate(); // Actualizar datos visuales
+    // Enviamos updatedCode para que el frontend sepa EXACTAMENTE qué fila iluminar
+    broadcastUpdate({ updatedCode }); 
     return res.json({ status: 'ok', message: 'Stock actualizado', codigo, added: qtyToAdd });
   } else {
     const msg = `NO MATCH: Código ${codigo} no encontrado en lista activa`;
