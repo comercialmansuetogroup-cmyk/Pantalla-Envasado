@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect, useRef } from 'react';
 import { Header } from './components/Header.tsx';
 import { LiveDashboard } from './components/LiveDashboard.tsx';
@@ -8,7 +9,8 @@ import { Server, Radio, Clock, Database, Loader2 } from 'lucide-react';
 
 export default function App() {
   const [darkMode, setDarkMode] = useState(true);
-  const [currentView, setCurrentView] = useState('live'); 
+  // Fix: Explicitly type the currentView state to match the Header component's 'live' | 'stats' type.
+  const [currentView, setCurrentView] = useState<'live' | 'stats'>('live'); 
   const [clientGroups, setClientGroups] = useState([]);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [loading, setLoading] = useState(false);

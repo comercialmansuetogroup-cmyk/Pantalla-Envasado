@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>FactoryFlow 4K - Debug Mode</title>
+  <title>FactoryFlow 4K - Debugging Mode</title>
   
   <script src="https://cdn.tailwindcss.com"></script>
   <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
@@ -24,20 +24,16 @@
     @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
   </style>
 
-  <!-- ERROR TRACKER: Captura el error #31 antes de que React lo oculte -->
   <script>
-    window.addEventListener('error', function(event) {
-      console.group('%c🚨 DETECTOR DE ERRORES CRÍTICOS', 'background: #000; color: #ff0000; font-size: 14px; font-weight: bold; padding: 4px;');
-      console.error('MENSAJE:', event.message);
-      console.error('ARCHIVO:', event.filename);
-      console.error('LINEA:', event.lineno);
-      console.error('COLUMNA:', event.colno);
-      if (event.error && event.error.stack) {
-        console.error('STACK TRACE:', event.error.stack);
-      }
-      console.log('%cCONSEJO: El error #31 indica que intentas renderizar un objeto {} donde React espera texto o un elemento.', 'color: #ffaa00; font-weight: bold;');
+    // Monitor global de errores para capturar la traza antes de que React se rompa
+    window.onerror = function(message, source, lineno, colno, error) {
+      console.group('%c🚨 SISTEMA DE CAPTURA DE ERRORES', 'background: #7f1d1d; color: #fff; padding: 10px; font-weight: bold;');
+      console.error('ERROR:', message);
+      console.error('UBICACIÓN:', source, 'Línea:', lineno);
+      if (error && error.stack) console.error('STACK:', error.stack);
       console.groupEnd();
-    });
+      return false;
+    };
   </script>
 
   <script type="importmap">

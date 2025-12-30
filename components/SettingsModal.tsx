@@ -1,12 +1,13 @@
+
 import React from 'react';
 import { X, Server, Key, Globe, Clipboard, Info, ArrowRight } from 'lucide-react';
 import { AppSettings } from '../types.ts';
 
+// Fix: Removed currentSettings and onSave from the interface as they are not used within the component
+// but were incorrectly marked as mandatory, causing a type error during instantiation.
 interface SettingsModalProps {
   isOpen: boolean;
   onClose: () => void;
-  currentSettings: AppSettings;
-  onSave: (settings: AppSettings) => void;
 }
 
 export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose }) => {
