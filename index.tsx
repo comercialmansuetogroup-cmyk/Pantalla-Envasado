@@ -88,7 +88,6 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose, visualSe
   const railwayBaseUrl = window.location.origin;
   const webhookUrl = `${railwayBaseUrl}/api/webhook`;
   const scanUrl = `${railwayBaseUrl}/api/scan`;
-  const authToken = 'DASHBOARD_V3_KEY_2025';
 
   const copyToClipboard = (text: string) => {
     navigator.clipboard.writeText(text);
@@ -342,25 +341,20 @@ const processDataWithTrends = (rawZones: any[], completedItems: Set<string>) => 
       
       if (Array.isArray(z.productos)) {
         z.productos.forEach((p: any) => {
-          // CORRECCIÓN CRÍTICA DE NOMBRE: 
-          // Priorizar el nombre descriptivo (p.nombre o z.nombre) sobre el código.
-          // Si p.nombre es igual a p.codigo, intentamos usar z.nombre si existe.
+          // CORRECCIÓN CRÍTICA: Lógica para nombres vs códigos
           let realName = p.nombre || z.nombre || '';
           const code = p.codigo || '';
           
-          if (!realName || realName === code) {
-              // Si el nombre es igual al código, buscamos fallback en z.nombre
-              if (z.nombre && z.nombre !== code) {
-                  realName = z.nombre;
-              } else {
-                  // Último recurso: usar el código como nombre
-                  realName = code;
-              }
+          // Si no hay nombre, o el nombre es igual al código, intentamos mejorar con z.nombre
+          if (!realName || String(realName).trim().toUpperCase() === String(code).trim().toUpperCase()) {
+             if (z.nombre && String(z.nombre).trim().toUpperCase() !== String(code).trim().toUpperCase()) {
+                realName = z.nombre;
+             } else {
+                realName = code; // Fallback
+             }
           }
 
-          const prodIdentifier = p.codigo || p.nombre || z.nombre || 'ITEM';
-          const pNameKey = String(prodIdentifier).toUpperCase();
-          
+          const pNameKey = String(p.codigo || p.nombre || z.nombre || 'ITEM').toUpperCase();
           const specificDesc = String(realName).toUpperCase();
           const qty = extractUnitsFromDescription(specificDesc, p.cantidad);
           const stock = extractUnitsFromDescription(specificDesc, p.stock_fisico);
@@ -369,26 +363,24 @@ const processDataWithTrends = (rawZones: any[], completedItems: Set<string>) => 
             globalStockMap.set(pNameKey, stock);
           }
 
-          const itemCode = p.codigo || 'N/A';
-          // Usamos 'realName' para la visualización UI
-          const itemName = realName;
-
           if (!c.products.has(pNameKey)) {
-            c.products.set(pNameKey, { name: itemName, code: itemCode, qty: 0, stock: 0 }); 
+            c.products.set(pNameKey, { name: realName, code: p.codigo || 'N/A', qty: 0, stock: 0 }); 
           }
           const prodEntry = c.products.get(pNameKey);
           prodEntry.qty += qty;
           c.total += qty;
         });
       } else {
-        const pNameKey = String(z.nombre || 'ITEM').toUpperCase();
+        // Estructura Legacy
+        const realName = z.nombre || 'ITEM';
+        const pNameKey = String(realName).toUpperCase();
         const qty = extractUnitsFromDescription(pNameKey, z.cantidad);
         const stock = extractUnitsFromDescription(pNameKey, z.stock_fisico);
         
         if (stock > (globalStockMap.get(pNameKey) || 0)) globalStockMap.set(pNameKey, stock);
         
         const itemCode = agentCode;
-        if (!c.products.has(pNameKey)) c.products.set(pNameKey, { name: pNameKey, code: itemCode, qty: 0, stock: 0 });
+        if (!c.products.has(pNameKey)) c.products.set(pNameKey, { name: realName, code: itemCode, qty: 0, stock: 0 });
         const prodEntry = c.products.get(pNameKey);
         prodEntry.qty += qty;
         c.total += qty;
@@ -407,7 +399,7 @@ const processDataWithTrends = (rawZones: any[], completedItems: Set<string>) => 
       const visibleProducts = new Map();
 
       client.products.forEach((p: any, key: string) => {
-          const availableStock = runningStock.get(p.name.toUpperCase()) || runningStock.get(p.code.toUpperCase()) || 0;
+          const availableStock = runningStock.get(key) || 0;
           const stockAssigned = Math.min(p.qty, availableStock);
           const toProduce = Math.max(0, p.qty - stockAssigned);
           
@@ -420,9 +412,8 @@ const processDataWithTrends = (rawZones: any[], completedItems: Set<string>) => 
              visibleProducts.set(key, p);
           }
           
-          const stockKey = p.name.toUpperCase(); 
-          if(runningStock.has(stockKey)) {
-               runningStock.set(stockKey, Math.max(0, availableStock - stockAssigned));
+          if(runningStock.has(key)) {
+               runningStock.set(key, Math.max(0, availableStock - stockAssigned));
           }
       });
 
@@ -849,18 +840,22 @@ function App() {
     return saved ? JSON.parse(saved) : DEFAULT_SETTINGS;
   });
 
+  // Tracking de estado para animaciones
   const [completedItems, setCompletedItems] = useState<Set<string>>(new Set());
   const [prevClientGroups, setPrevClientGroups] = useState<any[]>([]);
   const [systemLogs, setSystemLogs] = useState<string[]>([]);
 
+  // Función para manejar items completados (Animación de salida)
   const handleCompletedItems = useCallback((newGroups: any[]) => {
       newGroups.forEach(client => {
           client.productsArray.forEach((p: any) => {
               if (p.toProduce <= 0) {
+                  // Si llega a 0, lo añadimos al set de "completados visibles"
                   setCompletedItems(prev => {
                       if (!prev.has(p.rowId)) {
                           const newSet = new Set(prev);
                           newSet.add(p.rowId);
+                          // Programar su eliminación visual después de la animación (3s)
                           setTimeout(() => {
                               setCompletedItems(current => {
                                   const updated = new Set(current);
@@ -896,15 +891,18 @@ function App() {
     finally { setLoading(false); }
   }, []);
 
+  // --- SSE (Real Time Events) ---
   useEffect(() => {
+    // Conexión inicial
     fetchData();
 
+    // Suscripción a eventos del servidor
     const eventSource = new EventSource('/api/events');
     
     eventSource.onmessage = (event) => {
         const data = JSON.parse(event.data);
         if (data.type === 'update') {
-            fetchData(); 
+            fetchData(); // Recargar datos inmediatamente
         } else if (data.type === 'sys_log') {
             const time = new Date(data.timestamp).toLocaleTimeString();
             setSystemLogs(prev => [`[${time}] ${data.message}`, ...prev].slice(0, 50));
@@ -918,10 +916,12 @@ function App() {
 
   const clientGroups = useMemo(() => {
       const groups = processDataWithTrends(rawData, completedItems);
+      // Detectar completados para animar
       handleCompletedItems(groups);
       return groups;
   }, [rawData, completedItems, handleCompletedItems]);
 
+  // Guardar referencia previa para comparaciones UI
   useEffect(() => {
       if (clientGroups.length > 0) {
           setPrevClientGroups(clientGroups);
@@ -947,4 +947,98 @@ function App() {
                   <h2 className={`text-2xl font-black tracking-tighter uppercase leading-none ${darkMode ? 'text-white' : 'text-slate-900'}`}>Factory<span className="text-red-600">Flow</span></h2>
                   <p className="text-[9px] font-black text-slate-500 uppercase tracking-[0.5em] mt-1 italic">Producción de Pedidos en Vivo</p>
                 </div>
-              </
+              </>
+            )}
+          </div>
+          
+          <div className="flex items-center gap-8">
+            <div className="flex p-1 bg-white/5 rounded-2xl border border-white/10 backdrop-blur-sm shadow-inner">
+              <button onClick={() => setView('live')} className={`flex items-center gap-2 px-6 py-2 rounded-xl text-[10px] font-black transition-all ${view === 'live' ? 'bg-red-600 text-white shadow-xl' : 'hover:bg-white/5 text-slate-500'}`}>
+                <LayoutDashboard size={14} /> PEDIDOS
+              </button>
+              <button onClick={() => setView('stats')} className={`flex items-center gap-2 px-6 py-2 rounded-xl text-[10px] font-black transition-all ${view === 'stats' ? 'bg-red-600 text-white shadow-xl' : 'hover:bg-white/5 text-slate-500'}`}>
+                <BarChart3 size={14} /> ANALÍTICA
+              </button>
+            </div>
+
+            <div className="flex flex-col items-end pr-8 border-r border-white/10">
+               <span className="text-[9px] font-black text-slate-500 uppercase tracking-widest mb-1">PRODUCCIÓN GLOBAL</span>
+               <span className="text-4xl font-black text-red-600 leading-none tracking-tighter tabular-nums">
+                {totalGlobal.toLocaleString('es-ES')}
+               </span>
+            </div>
+            
+            <div className="flex items-center gap-4">
+              <button onClick={() => setIsSettingsOpen(true)} className="p-3 rounded-xl border border-white/10 bg-white/5 hover:bg-white/10 transition-all shadow-md text-slate-400 hover:text-white"><Settings size={20} /></button>
+              <button onClick={() => setDarkMode(!darkMode)} className="p-3 rounded-xl border border-white/10 bg-white/5 hover:bg-white/10 transition-all shadow-md">
+                {darkMode ? <Sun size={20} className="text-yellow-400" /> : <Moon size={20} className="text-slate-700" />}
+              </button>
+            </div>
+          </div>
+        </div>
+      </header>
+
+      <main className="flex-1 w-full flex overflow-hidden">
+        <div className="absolute top-24 left-1/2 -translate-x-1/2 z-10 flex items-center gap-4 px-6 py-2 bg-white/5 dark:bg-slate-900/80 backdrop-blur-md rounded-full border border-white/10 shadow-xl opacity-0 hover:opacity-100 transition-opacity duration-300 pointer-events-none">
+           <div className="flex items-center gap-2">
+             <Server size={10} className={rawData.length > 0 ? "text-green-500" : "text-amber-500"} />
+             <span className="text-[9px] font-black uppercase text-slate-400">Stream Status: {rawData.length > 0 ? 'ACTIVE' : 'IDLE'}</span>
+           </div>
+           {lastSync && (
+             <div className="flex items-center gap-2 border-l border-white/10 pl-4">
+               <Clock size={10} className="text-blue-500" />
+               <span className="text-[9px] font-bold text-slate-400">{lastSync.toLocaleTimeString()}</span>
+             </div>
+           )}
+        </div>
+
+        {rawData.length === 0 ? (
+          <div className="flex-1 flex flex-col items-center justify-center gap-8 opacity-40">
+            <div className="p-10 bg-red-600/5 rounded-full border border-red-600/10 animate-pulse">
+              <Radio size={80} className="text-red-600" />
+            </div>
+            <h2 className="text-3xl font-black uppercase tracking-[1em] text-slate-500">Sincronizando...</h2>
+          </div>
+        ) : (
+          view === 'live' ? (
+            <div className="flex w-full h-full animate-fade-in divide-x divide-white/5 overflow-x-auto overflow-y-hidden">
+              {clientGroups.map((g) => (
+                  <ClientColumn 
+                    key={g.name} 
+                    data={g} 
+                    darkMode={darkMode} 
+                    settings={visualSettings} 
+                    prevData={prevClientGroups.find(pg => pg.name === g.name)}
+                  />
+              ))}
+            </div>
+          ) : (
+            <StatsDashboard rawData={rawData} darkMode={darkMode} />
+          )
+        )}
+      </main>
+
+      <footer className={`flex-none px-10 py-2.5 border-t flex justify-between items-center text-[9px] font-black uppercase tracking-[0.5em] ${darkMode ? 'bg-slate-900 border-white/5 text-slate-700' : 'bg-slate-200 border-gray-300 text-slate-500'}`}>
+        <div className="flex items-center gap-4">
+          <div className="w-2.5 h-2.5 rounded-full bg-green-500 shadow-[0_0_10px_rgba(34,197,94,0.6)]" />
+          NÚCLEO ONLINE • {clientGroups.length} NODOS
+        </div>
+        <div className="flex items-center gap-8">
+          <div className="flex items-center gap-2 opacity-40 italic"><Database size={12} /> SYNC_PRO_VERSION</div>
+          {lastSync && <div className="flex items-center gap-3 text-slate-500 font-bold"><Clock size={14} /> ÚLTIMA SYNC: {lastSync.toLocaleTimeString()}</div>}
+        </div>
+      </footer>
+
+      <SettingsModal 
+        isOpen={isSettingsOpen} 
+        onClose={() => setIsSettingsOpen(false)} 
+        visualSettings={visualSettings} 
+        onSaveSettings={updateVisualSettings} 
+        systemLogs={systemLogs}
+      />
+    </div>
+  );
+}
+
+const rootElement = document.getElementById('root');
+if (rootElement) ReactDOM.createRoot(rootElement).render(<App />);
