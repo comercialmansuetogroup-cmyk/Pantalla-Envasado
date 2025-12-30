@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>FactoryFlow Dashboard</title>
+  <title>FactoryFlow Dashboard v3</title>
   
   <script src="https://cdn.tailwindcss.com"></script>
   <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
@@ -11,12 +11,11 @@
   <style>
     ::-webkit-scrollbar { width: 6px; }
     ::-webkit-scrollbar-thumb { background: #dc2626; border-radius: 10px; }
-    body { margin: 0; background-color: #020617; color: white; overflow-x: hidden; font-family: sans-serif; }
-    .animate-fade-in { animation: fadeIn 0.4s ease-out forwards; }
-    @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+    body { margin: 0; background-color: #020617; color: white; overflow-x: hidden; font-family: ui-sans-serif, system-ui, sans-serif; }
+    .animate-fade-in { animation: fadeIn 0.5s ease-out forwards; }
+    @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
   </style>
 
-  <!-- Importmap unificado a React 18.2.0 para evitar colisiones de versiones -->
   <script type="importmap">
 {
   "imports": {
@@ -34,7 +33,6 @@
 <body>
   <div id="root"></div>
   
-  <!-- Cargamos el dashboard con Babel -->
   <script 
     type="text/babel" 
     data-type="module" 
@@ -43,13 +41,12 @@
   </script>
 
   <script>
-    // Capturador de errores global para el dashboard
     window.onerror = function(msg, url, line, col, error) {
       if (msg.includes('Script error')) return;
-      console.error("Dashboard Error:", msg);
+      console.error("Critical Dashboard Error:", msg);
       const errorDiv = document.createElement('div');
       errorDiv.style.cssText = 'position:fixed;bottom:20px;right:20px;background:#ef4444;color:white;padding:20px;border-radius:15px;z-index:9999;font-size:12px;max-width:350px;box-shadow:0 20px 25px -5px rgba(0,0,0,0.5);border:1px solid rgba(255,255,255,0.2);';
-      errorDiv.innerHTML = '<b style="display:block;margin-bottom:5px;font-size:14px;">⚠️ Error de Ejecución</b>' + msg + '<br><small style="opacity:0.7">Refresca la página o revisa la configuración de Make.</small>';
+      errorDiv.innerHTML = '<b style="display:block;margin-bottom:5px;font-size:14px;">⚠️ Error de Ejecución</b>' + msg + '<br><br><small style="opacity:0.8">Tip: El servidor está enviando HTML en lugar de JS. Revisa el log de Railway.</small>';
       document.body.appendChild(errorDiv);
       return false;
     };
