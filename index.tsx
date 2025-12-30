@@ -4,7 +4,7 @@ import {
   Factory, Moon, Sun, Clock, Radio, AlertTriangle, Database, Loader2, 
   TrendingUp, TrendingDown, LayoutDashboard, BarChart3, Calendar, ArrowUpRight, ArrowDownRight,
   ChevronUp, ChevronDown, Settings, Upload, Eye, Type, X, Globe, Clipboard, ArrowRight, Layout,
-  Server, Key, Info, FileSpreadsheet, Printer, Download, Filter, Percent
+  Server, Key, Info, FileSpreadsheet, Printer, Download, Filter, Percent, Minus
 } from 'lucide-react';
 import { 
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, 
@@ -297,21 +297,27 @@ const processDataWithTrends = (rawZones: any[]) => {
 
 // --- COMPONENTES UI DASHBOARD ---
 
-const TrendBadge: React.FC<{ value: number; darkMode: boolean }> = ({ value, darkMode }) => {
-  // If value is 0 or very small, showing a neutral state could be cleaner, 
-  // but let's assume 0 is just hidden or neutral. 
-  // If it's the first day, value might be 0 or 100 depending on logic.
-  if (Math.abs(value) < 0.1) return <div className="w-8"></div>; // Spacer
+const TrendBadge: React.FC<{ value: number; darkMode: boolean; size?: 'sm' | 'md' }> = ({ value, darkMode, size = 'sm' }) => {
+  if (Math.abs(value) < 0.1) {
+    return (
+      <div className={`flex items-center justify-center font-bold text-slate-400 opacity-50 ${size === 'md' ? 'px-2 py-1 text-xs' : 'text-[9px]'}`}>
+        <Minus size={size === 'md' ? 14 : 10} />
+        0%
+      </div>
+    );
+  }
 
   const isUp = value > 0;
   
   return (
-    <div className={`flex items-center gap-1 font-black text-[10px] px-1.5 py-0.5 rounded-md ${
+    <div className={`flex items-center gap-0.5 font-black leading-none rounded-md whitespace-nowrap ${
+      size === 'md' ? 'text-xs px-2 py-1' : 'text-[9px] px-1 py-0.5'
+    } ${
       isUp 
-        ? (darkMode ? 'text-green-400 bg-green-900/30' : 'text-green-700 bg-green-100')
-        : (darkMode ? 'text-red-400 bg-red-900/30' : 'text-red-700 bg-red-100')
+        ? (darkMode ? 'text-green-400 bg-green-500/10' : 'text-green-700 bg-green-100')
+        : (darkMode ? 'text-red-400 bg-red-500/10' : 'text-red-700 bg-red-100')
     }`}>
-      {isUp ? <ArrowUpRight size={10} strokeWidth={3} /> : <ArrowDownRight size={10} strokeWidth={3} />}
+      {isUp ? <ArrowUpRight size={size === 'md' ? 14 : 10} strokeWidth={3} /> : <ArrowDownRight size={size === 'md' ? 14 : 10} strokeWidth={3} />}
       {Math.abs(Math.round(value))}%
     </div>
   );
@@ -326,12 +332,16 @@ const ProductRow: React.FC<{ p: any; settings: VisualSettings; darkMode: boolean
       <div className="flex-1 min-w-0 flex items-center gap-4">
         <div className="flex flex-col min-w-0">
           {showCode && (
-            <span 
-              className={`font-black leading-none mb-1 truncate ${darkMode ? 'text-white' : 'text-slate-900'}`}
-              style={{ fontSize: `${settings.codeFontSize}px` }}
-            >
-              #{p.code}
-            </span>
+            <div className="flex items-center gap-2 mb-0.5">
+               <span 
+                className={`font-black leading-none truncate ${darkMode ? 'text-white' : 'text-slate-900'}`}
+                style={{ fontSize: `${settings.codeFontSize}px` }}
+              >
+                #{p.code}
+              </span>
+              {/* Trend Badge next to Code/Item as requested for individual line analysis */}
+              <TrendBadge value={p.trend} darkMode={darkMode} size="sm" />
+            </div>
           )}
           {showName && (
             <span 
@@ -344,12 +354,9 @@ const ProductRow: React.FC<{ p: any; settings: VisualSettings; darkMode: boolean
         </div>
       </div>
       
-      {/* Cantidad y Tendencia juntas como se solicitó */}
-      <div className="flex items-center gap-3">
-        <TrendBadge value={p.trend} darkMode={darkMode} />
-        <div className={`text-xl xl:text-3xl font-black tabular-nums group-hover:text-red-600 transition-all leading-none min-w-[80px] text-right ${darkMode ? 'text-white' : 'text-slate-900'}`}>
-          {p.qty.toLocaleString('es-ES')}
-        </div>
+      {/* Cantidad Total */}
+      <div className={`text-xl xl:text-3xl font-black tabular-nums group-hover:text-red-600 transition-all leading-none min-w-[80px] text-right ${darkMode ? 'text-white' : 'text-slate-900'}`}>
+        {p.qty.toLocaleString('es-ES')}
       </div>
     </div>
   );
@@ -364,16 +371,14 @@ const ClientColumn: React.FC<{ data: any; darkMode: boolean; settings: VisualSet
 
   return (
     <div style={{ flex: `${numCols} 0 0` }} className={`flex flex-col h-full border-r last:border-r-0 transition-all ${darkMode ? 'bg-slate-950 border-white/5' : 'bg-white border-gray-200'}`}>
-      <div className={`px-8 py-4 border-b-2 ${numCols > 1 ? 'text-center' : 'text-left'} ${darkMode ? 'bg-white/[0.01] border-white/10' : 'bg-gray-50 border-gray-200'}`}>
+      <div className={`px-6 py-4 border-b-2 ${numCols > 1 ? 'text-center' : 'text-left'} ${darkMode ? 'bg-white/[0.01] border-white/10' : 'bg-gray-50 border-gray-200'}`}>
         <div className={`flex items-center gap-4 ${numCols > 1 ? 'justify-center' : 'justify-between'}`}>
-          <h3 className={`text-xl xl:text-3xl font-black uppercase tracking-tighter truncate ${darkMode ? 'text-white' : 'text-gray-900'}`}>
-            {data.name}
-          </h3>
-          <div className="flex items-center gap-2">
-             {/* Total trend badge removed here, moved to product specific as requested or kept minimal */}
-             <div className={`text-xs font-bold px-2 py-0.5 rounded ${data.totalTrend >= 0 ? 'text-green-500 bg-green-500/10' : 'text-red-500 bg-red-500/10'}`}>
-               {data.totalTrend > 0 ? '+' : ''}{Math.round(data.totalTrend)}%
-             </div>
+          <div className="flex items-center gap-3 overflow-hidden">
+            <h3 className={`text-xl xl:text-2xl font-black uppercase tracking-tighter truncate ${darkMode ? 'text-white' : 'text-gray-900'}`}>
+              {data.name}
+            </h3>
+            {/* Trend Badge next to Client Name for Global Zone Trend */}
+            <TrendBadge value={data.totalTrend} darkMode={darkMode} size="md" />
           </div>
         </div>
       </div>
@@ -404,28 +409,23 @@ const ClientColumn: React.FC<{ data: any; darkMode: boolean; settings: VisualSet
 // --- ESTADÍSTICAS AVANZADAS (FULL WIDTH) ---
 const StatsDashboard: React.FC<{ rawData: any[], darkMode: boolean }> = ({ rawData, darkMode }) => {
   const [filter, setFilter] = useState<'week' | 'biweekly' | 'month' | 'quarter' | 'year'>('week');
-  const [customRange, setCustomRange] = useState({ start: '', end: '' });
-
+  
   // Procesamiento de datos para gráficas
   const { chartData, topProducts, bottomProducts, totals } = useMemo(() => {
     const map = new Map<string, number>();
     const productMap = new Map<string, number>();
     
-    // Simular lógica de filtrado por fecha aquí si rawData tuviera fechas reales variadas
-    // Por ahora usamos todos los datos disponibles
     rawData.forEach(z => {
       const d = z.receivedAt ? z.receivedAt.split('T')[0] : 'Legacy';
       let qty = Array.isArray(z.productos) ? z.productos.reduce((a: any, p: any) => a + (Number(p.cantidad) || 0), 0) : Number(z.cantidad || 0);
       
       map.set(d, (map.get(d) || 0) + qty);
 
-      // Desglose por producto para rankings
       if (Array.isArray(z.productos)) {
         z.productos.forEach((p: any) => {
-           const pName = z.nombre || 'Producto'; 
-           // Nota: en la estructura actual nombre viene fuera, pero si hay array productos el nombre puede estar dentro o ser generico
-           // Ajustamos para usar el nombre disponible
-           const name = (p.nombre || z.nombre || 'ITEM').toUpperCase();
+           // const name = (p.nombre || z.nombre || 'ITEM').toUpperCase(); // Old Logic
+           // Adjust logic to extract name if possible, or fallback
+           const name = (z.nombre || p.codigo || 'ITEM').toUpperCase();
            const q = Number(p.cantidad) || 0;
            productMap.set(name, (productMap.get(name) || 0) + q);
         });
@@ -465,22 +465,22 @@ const StatsDashboard: React.FC<{ rawData: any[], darkMode: boolean }> = ({ rawDa
   };
 
   return (
-    <div className="flex flex-col gap-8 h-full overflow-y-auto p-8 animate-fade-in bg-slate-950/20 w-full max-w-full">
+    <div className={`flex flex-col gap-8 h-full overflow-y-auto p-8 animate-fade-in w-full max-w-full ${darkMode ? 'bg-slate-950 text-white' : 'bg-slate-50 text-slate-900'}`}>
       
       {/* Header Analítica */}
-      <div className="flex flex-col xl:flex-row justify-between items-start xl:items-center bg-white/5 p-8 rounded-[2rem] border border-white/10 backdrop-blur-md gap-6">
-        <div className="flex items-center gap-6 text-slate-900 dark:text-white">
+      <div className={`flex flex-col xl:flex-row justify-between items-start xl:items-center p-8 rounded-[2rem] border backdrop-blur-md gap-6 ${darkMode ? 'bg-slate-900 border-slate-800' : 'bg-white border-slate-200 shadow-sm'}`}>
+        <div className="flex items-center gap-6">
           <div className="p-4 bg-red-600 rounded-2xl shadow-lg shadow-red-600/20">
             <BarChart3 className="text-white" size={32} />
           </div>
           <div>
             <h2 className="text-3xl font-black uppercase tracking-tighter leading-none">Centro de Inteligencia</h2>
-            <p className="text-sm text-slate-500 uppercase tracking-widest mt-2 font-bold">Análisis de Rendimiento y Proyecciones</p>
+            <p className="text-sm uppercase tracking-widest mt-2 font-bold opacity-60">Análisis de Rendimiento y Proyecciones</p>
           </div>
         </div>
         
         <div className="flex flex-wrap items-center gap-4">
-          <div className="flex p-1.5 bg-slate-200 dark:bg-black/40 rounded-2xl border border-slate-300 dark:border-white/10">
+          <div className={`flex p-1.5 rounded-2xl border ${darkMode ? 'bg-slate-950 border-slate-800' : 'bg-slate-100 border-slate-200'}`}>
             {[
               {k: 'week', l: 'Semanal'}, 
               {k: 'biweekly', l: 'Quincenal'}, 
@@ -491,7 +491,7 @@ const StatsDashboard: React.FC<{ rawData: any[], darkMode: boolean }> = ({ rawDa
               <button 
                 key={f.k} 
                 onClick={() => setFilter(f.k as any)} 
-                className={`px-5 py-2.5 rounded-xl text-xs font-black uppercase tracking-wider transition-all ${filter === f.k ? 'bg-white text-red-600 shadow-lg dark:bg-red-600 dark:text-white' : 'text-slate-500 hover:text-slate-900 dark:hover:text-white'}`}
+                className={`px-5 py-2.5 rounded-xl text-xs font-black uppercase tracking-wider transition-all ${filter === f.k ? 'bg-red-600 text-white shadow-lg' : (darkMode ? 'text-slate-400 hover:text-white' : 'text-slate-500 hover:text-slate-900')}`}
               >
                 {f.l}
               </button>
@@ -510,73 +510,74 @@ const StatsDashboard: React.FC<{ rawData: any[], darkMode: boolean }> = ({ rawDa
 
       {/* KPI Grid */}
       <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-6">
-        <div className="bg-slate-100 dark:bg-slate-900/50 border border-slate-200 dark:border-white/10 p-8 rounded-[2.5rem] flex flex-col justify-between group hover:border-red-600/30 transition-all relative overflow-hidden">
-          <div className="absolute top-0 right-0 p-8 opacity-10 group-hover:opacity-20 transition-opacity transform group-hover:scale-110 duration-500">
+        <div className={`p-8 rounded-[2.5rem] border flex flex-col justify-between group hover:border-red-600/30 transition-all relative overflow-hidden ${darkMode ? 'bg-slate-900 border-slate-800' : 'bg-white border-slate-200 shadow-sm'}`}>
+          <div className="absolute top-0 right-0 p-8 opacity-5 group-hover:opacity-10 transition-opacity transform group-hover:scale-110 duration-500">
             <TrendingUp size={100} className={darkMode ? 'text-white' : 'text-slate-900'} />
           </div>
-          <span className="text-[10px] font-black text-slate-500 uppercase tracking-[0.2em] z-10">Crecimiento Neto</span>
+          <span className="text-[10px] font-black uppercase tracking-[0.2em] z-10 opacity-60">Crecimiento Neto</span>
           <div className="flex items-center gap-4 mt-4 z-10">
             <span className="text-5xl font-black text-green-500">+22.4%</span>
           </div>
-          <p className="text-[10px] text-slate-400 font-bold mt-2 z-10">Vs Periodo Anterior</p>
+          <p className="text-[10px] font-bold mt-2 z-10 opacity-40">Vs Periodo Anterior</p>
         </div>
 
-        <div className="bg-slate-100 dark:bg-slate-900/50 border border-slate-200 dark:border-white/10 p-8 rounded-[2.5rem] flex flex-col justify-between group hover:border-red-600/30 transition-all relative overflow-hidden">
-           <div className="absolute top-0 right-0 p-8 opacity-10 group-hover:opacity-20 transition-opacity transform group-hover:scale-110 duration-500">
+        <div className={`p-8 rounded-[2.5rem] border flex flex-col justify-between group hover:border-red-600/30 transition-all relative overflow-hidden ${darkMode ? 'bg-slate-900 border-slate-800' : 'bg-white border-slate-200 shadow-sm'}`}>
+           <div className="absolute top-0 right-0 p-8 opacity-5 group-hover:opacity-10 transition-opacity transform group-hover:scale-110 duration-500">
             <Database size={100} className={darkMode ? 'text-white' : 'text-slate-900'} />
           </div>
-          <span className="text-[10px] font-black text-slate-500 uppercase tracking-[0.2em] z-10">Total Procesado</span>
+          <span className="text-[10px] font-black uppercase tracking-[0.2em] z-10 opacity-60">Total Procesado</span>
           <div className="flex items-center gap-4 mt-4 z-10">
-            <span className={`text-5xl font-black ${darkMode ? 'text-white' : 'text-slate-900'}`}>{totals.toLocaleString()}</span>
+            <span className="text-5xl font-black">{totals.toLocaleString()}</span>
           </div>
-          <p className="text-[10px] text-slate-400 font-bold mt-2 z-10">Unidades producidas</p>
+          <p className="text-[10px] font-bold mt-2 z-10 opacity-40">Unidades producidas</p>
         </div>
 
-        <div className="bg-slate-100 dark:bg-slate-900/50 border border-slate-200 dark:border-white/10 p-8 rounded-[2.5rem] flex flex-col justify-between group hover:border-red-600/30 transition-all relative overflow-hidden">
-          <span className="text-[10px] font-black text-slate-500 uppercase tracking-[0.2em] z-10">Eficiencia Operativa</span>
+        <div className={`p-8 rounded-[2.5rem] border flex flex-col justify-between group hover:border-red-600/30 transition-all relative overflow-hidden ${darkMode ? 'bg-slate-900 border-slate-800' : 'bg-white border-slate-200 shadow-sm'}`}>
+          <span className="text-[10px] font-black uppercase tracking-[0.2em] z-10 opacity-60">Eficiencia Operativa</span>
           <div className="flex items-center gap-4 mt-4 z-10">
             <span className="text-5xl font-black text-red-600">98.2%</span>
           </div>
-          <div className="w-full bg-slate-300 dark:bg-slate-700 h-2 rounded-full mt-4 overflow-hidden z-10">
+          <div className={`w-full h-2 rounded-full mt-4 overflow-hidden z-10 ${darkMode ? 'bg-slate-800' : 'bg-slate-200'}`}>
             <div className="bg-red-600 h-full w-[98.2%]"></div>
           </div>
         </div>
 
-        <div className="bg-slate-100 dark:bg-slate-900/50 border border-slate-200 dark:border-white/10 p-8 rounded-[2.5rem] flex flex-col justify-between group hover:border-red-600/30 transition-all relative overflow-hidden">
-          <span className="text-[10px] font-black text-slate-500 uppercase tracking-[0.2em] z-10">Media Diaria</span>
+        <div className={`p-8 rounded-[2.5rem] border flex flex-col justify-between group hover:border-red-600/30 transition-all relative overflow-hidden ${darkMode ? 'bg-slate-900 border-slate-800' : 'bg-white border-slate-200 shadow-sm'}`}>
+          <span className="text-[10px] font-black uppercase tracking-[0.2em] z-10 opacity-60">Media Diaria</span>
           <div className="flex items-center gap-4 mt-4 z-10">
-             <span className={`text-5xl font-black ${darkMode ? 'text-white' : 'text-slate-900'}`}>
+             <span className="text-5xl font-black">
                {(totals / (chartData.length || 1)).toFixed(0)}
              </span>
           </div>
-          <p className="text-[10px] text-slate-400 font-bold mt-2 z-10">Unidades / Día</p>
+          <p className="text-[10px] font-bold mt-2 z-10 opacity-40">Unidades / Día</p>
         </div>
       </div>
 
       {/* Gráficos Principales */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 min-h-[500px]">
         {/* Comparativa Historica (2/3 width) */}
-        <div className="lg:col-span-2 bg-slate-100 dark:bg-slate-900/80 border border-slate-200 dark:border-white/10 p-8 rounded-[3rem] flex flex-col shadow-xl">
+        <div className={`lg:col-span-2 p-8 rounded-[3rem] border flex flex-col shadow-xl ${darkMode ? 'bg-slate-900 border-slate-800' : 'bg-white border-slate-200'}`}>
           <div className="flex justify-between items-center mb-8">
-            <h3 className="text-xs font-black uppercase tracking-[0.3em] text-slate-500 flex items-center gap-2">
+            <h3 className="text-xs font-black uppercase tracking-[0.3em] opacity-60 flex items-center gap-2">
               <div className="w-2 h-2 rounded-full bg-red-600" /> Comparativa de Rendimiento
             </h3>
-            <div className="flex gap-4 text-[10px] font-bold uppercase text-slate-500">
+            <div className="flex gap-4 text-[10px] font-bold uppercase opacity-60">
                <span className="flex items-center gap-2"><div className="w-3 h-3 bg-red-600 rounded-sm"></div> Periodo Actual</span>
-               <span className="flex items-center gap-2"><div className="w-3 h-3 bg-slate-400/30 rounded-sm"></div> Periodo Anterior</span>
+               <span className="flex items-center gap-2"><div className={`w-3 h-3 rounded-sm ${darkMode ? 'bg-slate-700' : 'bg-slate-300'}`}></div> Periodo Anterior</span>
             </div>
           </div>
           <div className="flex-1 min-h-0">
             <ResponsiveContainer width="100%" height="100%">
               <BarChart data={chartData} barGap={0}>
-                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke={darkMode ? "#ffffff10" : "#00000010"} />
+                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke={darkMode ? "#1e293b" : "#e2e8f0"} />
                 <XAxis dataKey="name" stroke="#64748b" fontSize={10} tickLine={false} axisLine={false} dy={10} />
                 <YAxis stroke="#64748b" fontSize={10} tickLine={false} axisLine={false} />
                 <Tooltip 
-                  cursor={{fill: darkMode ? '#ffffff05' : '#00000005'}}
-                  contentStyle={{backgroundColor: darkMode ? '#0f172a' : '#ffffff', border: 'none', borderRadius: '12px', boxShadow: '0 10px 15px -3px rgb(0 0 0 / 0.1)'}} 
+                  cursor={{fill: darkMode ? '#1e293b' : '#f8fafc'}}
+                  contentStyle={{backgroundColor: darkMode ? '#0f172a' : '#ffffff', border: darkMode ? '1px solid #1e293b' : '1px solid #e2e8f0', borderRadius: '12px', boxShadow: '0 10px 15px -3px rgb(0 0 0 / 0.1)'}} 
+                  itemStyle={{color: darkMode ? '#fff' : '#000'}}
                 />
-                <Bar dataKey="prevTotal" fill={darkMode ? "#cbd5e120" : "#94a3b840"} radius={[4, 4, 0, 0]} barSize={20} />
+                <Bar dataKey="prevTotal" fill={darkMode ? "#334155" : "#cbd5e1"} radius={[4, 4, 0, 0]} barSize={20} />
                 <Bar dataKey="total" fill="#dc2626" radius={[4, 4, 0, 0]} barSize={20} />
               </BarChart>
             </ResponsiveContainer>
@@ -585,16 +586,16 @@ const StatsDashboard: React.FC<{ rawData: any[], darkMode: boolean }> = ({ rawDa
 
         {/* Tablas de Ranking (1/3 width) */}
         <div className="flex flex-col gap-6">
-           <div className="flex-1 bg-slate-100 dark:bg-slate-900/80 border border-slate-200 dark:border-white/10 p-6 rounded-[2.5rem] shadow-xl overflow-hidden flex flex-col">
-              <h3 className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-500 mb-4 flex items-center gap-2">
+           <div className={`flex-1 p-6 rounded-[2.5rem] border shadow-xl overflow-hidden flex flex-col ${darkMode ? 'bg-slate-900 border-slate-800' : 'bg-white border-slate-200'}`}>
+              <h3 className="text-[10px] font-black uppercase tracking-[0.2em] opacity-60 mb-4 flex items-center gap-2">
                  <ArrowUpRight className="text-green-500" size={14} /> Top 5 Productos
               </h3>
               <div className="flex-1 overflow-y-auto space-y-3">
                  {topProducts.map((p, i) => (
-                    <div key={i} className="flex items-center justify-between p-3 bg-white dark:bg-white/5 rounded-xl border border-slate-200 dark:border-white/5">
+                    <div key={i} className={`flex items-center justify-between p-3 rounded-xl border ${darkMode ? 'bg-slate-800/50 border-slate-800' : 'bg-slate-50 border-slate-100'}`}>
                        <div className="flex items-center gap-3 min-w-0">
-                          <span className="font-black text-slate-300 text-lg">#{i+1}</span>
-                          <span className={`text-xs font-bold truncate ${darkMode ? 'text-white' : 'text-slate-900'}`}>{p.name}</span>
+                          <span className="font-black opacity-30 text-lg">#{i+1}</span>
+                          <span className="text-xs font-bold truncate">{p.name}</span>
                        </div>
                        <span className="text-xs font-black text-green-500">{p.value.toLocaleString()}</span>
                     </div>
@@ -602,14 +603,14 @@ const StatsDashboard: React.FC<{ rawData: any[], darkMode: boolean }> = ({ rawDa
               </div>
            </div>
 
-           <div className="flex-1 bg-slate-100 dark:bg-slate-900/80 border border-slate-200 dark:border-white/10 p-6 rounded-[2.5rem] shadow-xl overflow-hidden flex flex-col">
-              <h3 className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-500 mb-4 flex items-center gap-2">
+           <div className={`flex-1 p-6 rounded-[2.5rem] border shadow-xl overflow-hidden flex flex-col ${darkMode ? 'bg-slate-900 border-slate-800' : 'bg-white border-slate-200'}`}>
+              <h3 className="text-[10px] font-black uppercase tracking-[0.2em] opacity-60 mb-4 flex items-center gap-2">
                  <ArrowDownRight className="text-red-500" size={14} /> Menor Rotación
               </h3>
               <div className="flex-1 overflow-y-auto space-y-3">
                  {bottomProducts.map((p, i) => (
-                    <div key={i} className="flex items-center justify-between p-3 bg-white dark:bg-white/5 rounded-xl border border-slate-200 dark:border-white/5">
-                       <span className={`text-xs font-bold truncate ${darkMode ? 'text-white' : 'text-slate-900'}`}>{p.name}</span>
+                    <div key={i} className={`flex items-center justify-between p-3 rounded-xl border ${darkMode ? 'bg-slate-800/50 border-slate-800' : 'bg-slate-50 border-slate-100'}`}>
+                       <span className="text-xs font-bold truncate">{p.name}</span>
                        <span className="text-xs font-black text-red-500">{p.value.toLocaleString()}</span>
                     </div>
                  ))}
