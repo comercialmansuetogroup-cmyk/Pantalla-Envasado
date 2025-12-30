@@ -3,20 +3,39 @@ import ReactDOM from 'react-dom/client';
 import { 
   Factory, Moon, Sun, Clock, Radio, AlertTriangle, Database, Loader2, 
   TrendingUp, TrendingDown, LayoutDashboard, BarChart3, Calendar, ArrowUpRight, ArrowDownRight,
-  Filter, ChevronUp, ChevronDown
+  ChevronUp, ChevronDown, Settings, Upload, Eye, Type
 } from 'lucide-react';
 import { 
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, 
-  LineChart, Line, AreaChart, Area, Cell, PieChart, Pie, Legend
+  AreaChart, Area, Cell
 } from 'recharts';
+import { SettingsModal } from './SettingsModal.tsx';
 
-// --- CONFIGURACIÓN ---
+// --- CONFIGURACIÓN Y TIPOS ---
 const CLIENT_MAPPING: Record<string, string> = {
   '24': 'FILIPPO', '26': 'PINGÜINO', '23': 'LA PALMA', '15': 'TENERIFE NORTE',
   '10': 'GRAN CANARIA', '14': 'GRAN CANARIA', '5': 'GRAN CANARIA', '0': 'GRAN CANARIA'
 };
 
 const CHART_COLORS = ['#dc2626', '#ef4444', '#f87171', '#fca5a5', '#b91c1c'];
+
+interface VisualSettings {
+  logoLight: string | null;
+  logoDark: string | null;
+  displayMode: 'name' | 'code' | 'both';
+  maxRowsPerCol: number;
+  nameFontSize: number;
+  codeFontSize: number;
+}
+
+const DEFAULT_SETTINGS: VisualSettings = {
+  logoLight: null,
+  logoDark: null,
+  displayMode: 'name',
+  maxRowsPerCol: 20,
+  nameFontSize: 16,
+  codeFontSize: 18,
+};
 
 // --- UTILIDADES ---
 const roundSafe = (num: any): number => {
@@ -48,13 +67,22 @@ const processDataWithTrends = (rawZones: any[]) => {
     const clients = new Map<string, any>();
     (zonesByDate.get(date) || []).forEach(z => {
       const clientName = CLIENT_MAPPING[z.codigo_agente] || `ZONA ${z.codigo_agente || '0'}`;
-      if (!clients.has(clientName)) clients.set(clientName, { name: clientName, products: new Map<string, number>(), total: 0 });
+      if (!clients.has(clientName)) clients.set(clientName, { name: clientName, products: new Map<string, any>(), total: 0 });
       
       const c = clients.get(clientName);
       const prodName = String(z.nombre || 'PRODUCTO').trim().toUpperCase();
+      const prodCode = String(z.codigo_agente || 'N/A').trim(); // Usamos código_agente como ref si no hay código de producto explícito
+      
       let qty = Array.isArray(z.productos) ? z.productos.reduce((acc: number, p: any) => acc + (Number(p.cantidad) || 0), 0) : Number(z.cantidad) || 0;
       
-      c.products.set(prodName, (c.products.get(prodName) || 0) + qty);
+      // Intentamos extraer un código de producto si existe en el JSON
+      const itemCode = (z.productos && z.productos[0]?.codigo) || prodCode;
+
+      if (!c.products.has(prodName)) {
+        c.products.set(prodName, { name: prodName, code: itemCode, qty: 0 });
+      }
+      const p = c.products.get(prodName);
+      p.qty += qty;
       c.total += qty;
     });
     return clients;
@@ -63,7 +91,6 @@ const processDataWithTrends = (rawZones: any[]) => {
   const currentStats = getStatsForDate(latestDate);
   
   return Array.from(currentStats.values()).map(client => {
-    // Buscar la última fecha registrada PARA ESTE CLIENTE que no sea hoy
     let prevStatsForClient = null;
     for (let i = allDatesSorted.length - 2; i >= 0; i--) {
       const stats = getStatsForDate(allDatesSorted[i]);
@@ -73,11 +100,12 @@ const processDataWithTrends = (rawZones: any[]) => {
       }
     }
 
-    const products = Array.from(client.products.entries()).map(([name, qty]) => {
-      const prevQty = prevStatsForClient?.products.get(name) || 0;
-      const trend = prevQty > 0 ? ((qty - prevQty) / prevQty) * 100 : 0;
-      return { name, qty, trend };
-    }).sort((a, b) => b.qty - a.qty);
+    const products = Array.from(client.products.values()).map((p: any) => {
+      const prevProd = prevStatsForClient?.products.get(p.name);
+      const prevQty = prevProd?.qty || 0;
+      const trend = prevQty > 0 ? ((p.qty - prevQty) / prevQty) * 100 : 0;
+      return { ...p, trend };
+    }).sort((a: any, b: any) => b.qty - a.qty);
 
     const totalTrend = (prevStatsForClient?.total > 0) ? ((client.total - prevStatsForClient.total) / prevStatsForClient.total) * 100 : 0;
     
@@ -98,30 +126,49 @@ const TrendBadge: React.FC<{ value: number }> = ({ value }) => {
   );
 };
 
-const ProductRow: React.FC<{ name: string; qty: number; trend: number }> = ({ name, qty, trend }) => (
-  <div className="flex items-center justify-between py-2 px-4 border-b border-white/[0.04] group hover:bg-white/[0.02] transition-colors gap-x-16">
-    <div className="flex-1 min-w-0 flex items-center gap-4">
-      <div className="text-sm xl:text-base font-bold text-slate-400 group-hover:text-red-500 transition-colors uppercase truncate tracking-normal">
-        <SafeText value={name} />
-      </div>
-      <TrendBadge value={trend} />
-    </div>
-    <div className="text-xl xl:text-3xl font-black tabular-nums text-white group-hover:text-red-600 transition-all leading-none min-w-[100px] text-right">
-      {qty.toLocaleString('es-ES')}
-    </div>
-  </div>
-);
+const ProductRow: React.FC<{ p: any; settings: VisualSettings }> = ({ p, settings }) => {
+  const showName = settings.displayMode === 'name' || settings.displayMode === 'both';
+  const showCode = settings.displayMode === 'code' || settings.displayMode === 'both';
 
-const ClientColumn: React.FC<{ data: any; darkMode: boolean }> = ({ data, darkMode }) => {
+  return (
+    <div className="flex items-center justify-between py-2 px-4 border-b border-white/[0.04] group hover:bg-white/[0.02] transition-colors gap-x-8">
+      <div className="flex-1 min-w-0 flex items-center gap-4">
+        <div className="flex flex-col min-w-0">
+          {showCode && (
+            <span 
+              className="font-black text-white leading-none mb-1 truncate"
+              style={{ fontSize: `${settings.codeFontSize}px` }}
+            >
+              #{p.code}
+            </span>
+          )}
+          {showName && (
+            <span 
+              className={`font-bold transition-colors uppercase truncate leading-none ${settings.displayMode === 'both' ? 'text-slate-500 group-hover:text-red-400' : 'text-slate-400 group-hover:text-red-500'}`}
+              style={{ fontSize: `${settings.nameFontSize}px` }}
+            >
+              {p.name}
+            </span>
+          )}
+        </div>
+        <TrendBadge value={p.trend} />
+      </div>
+      <div className="text-xl xl:text-3xl font-black tabular-nums text-white group-hover:text-red-600 transition-all leading-none min-w-[100px] text-right">
+        {p.qty.toLocaleString('es-ES')}
+      </div>
+    </div>
+  );
+};
+
+const ClientColumn: React.FC<{ data: any; darkMode: boolean; settings: VisualSettings }> = ({ data, darkMode, settings }) => {
   const productCount = data.products.length;
-  const MAX_ROWS = 20;
-  const numCols = Math.ceil(productCount / MAX_ROWS) || 1;
+  const maxRows = settings.maxRowsPerCol;
+  const numCols = Math.ceil(productCount / maxRows) || 1;
   const columns = [];
-  for (let i = 0; i < numCols; i++) columns.push(data.products.slice(i * MAX_ROWS, (i + 1) * MAX_ROWS));
+  for (let i = 0; i < numCols; i++) columns.push(data.products.slice(i * maxRows, (i + 1) * maxRows));
 
   return (
     <div style={{ flex: `${numCols} 0 0` }} className={`flex flex-col h-full border-r last:border-r-0 transition-all ${darkMode ? 'bg-slate-950 border-white/5' : 'bg-white border-gray-200'}`}>
-      {/* Header Centrado si hay >1 columna */}
       <div className={`px-8 py-4 border-b-2 ${numCols > 1 ? 'text-center' : 'text-left'} ${darkMode ? 'bg-white/[0.01] border-white/10' : 'bg-gray-50 border-gray-200'}`}>
         <div className={`flex items-center gap-4 ${numCols > 1 ? 'justify-center' : 'justify-between'}`}>
           <h3 className={`text-xl xl:text-3xl font-black uppercase tracking-tighter truncate ${darkMode ? 'text-white' : 'text-gray-900'}`}>
@@ -137,8 +184,8 @@ const ClientColumn: React.FC<{ data: any; darkMode: boolean }> = ({ data, darkMo
       <div className="flex-1 flex overflow-hidden">
         {columns.map((colProducts, colIdx) => (
           <div key={colIdx} className={`flex-1 flex flex-col p-2 ${colIdx > 0 ? 'border-l border-white/[0.05]' : ''}`}>
-            {colProducts.map((p: any, i: number) => <ProductRow key={i} name={p.name} qty={p.qty} trend={p.trend} />)}
-            {colProducts.length < MAX_ROWS && Array.from({ length: MAX_ROWS - colProducts.length }).map((_, emptyIdx) => (
+            {colProducts.map((p: any, i: number) => <ProductRow key={i} p={p} settings={settings} />)}
+            {colProducts.length < maxRows && Array.from({ length: maxRows - colProducts.length }).map((_, emptyIdx) => (
               <div key={`empty-${emptyIdx}`} className="py-2.5 px-3 border-b border-transparent opacity-0">.</div>
             ))}
           </div>
@@ -281,6 +328,16 @@ function App() {
   const [rawData, setRawData] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
   const [lastSync, setLastSync] = useState<Date | null>(null);
+  const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+  const [visualSettings, setVisualSettings] = useState<VisualSettings>(() => {
+    const saved = localStorage.getItem('factoryFlow_visualSettings');
+    return saved ? JSON.parse(saved) : DEFAULT_SETTINGS;
+  });
+
+  const updateVisualSettings = (newSettings: VisualSettings) => {
+    setVisualSettings(newSettings);
+    localStorage.setItem('factoryFlow_visualSettings', JSON.stringify(newSettings));
+  };
 
   const fetchData = useCallback(async () => {
     setLoading(true);
@@ -305,12 +362,20 @@ function App() {
   const clientGroups = useMemo(() => processDataWithTrends(rawData), [rawData]);
   const totalGlobal = useMemo(() => roundSafe(clientGroups.reduce((acc, c) => acc + (c.total || 0), 0)), [clientGroups]);
 
+  const currentLogo = darkMode ? visualSettings.logoDark : visualSettings.logoLight;
+
   return (
     <div className={`flex flex-col h-screen w-screen overflow-hidden ${darkMode ? 'bg-slate-950 text-slate-100' : 'bg-slate-50 text-slate-900'}`}>
       <header className={`flex-none w-full px-10 py-3 border-b-2 ${darkMode ? 'bg-slate-950 border-white/10' : 'bg-white border-gray-300'}`}>
         <div className="flex justify-between items-center w-full">
           <div className="flex items-center gap-6">
-            <div className="bg-red-600 p-2.5 rounded-xl shadow-lg shadow-red-600/20"><Factory size={26} className="text-white" /></div>
+            <div className="bg-red-600 p-2.5 rounded-xl shadow-lg shadow-red-600/20">
+              {currentLogo ? (
+                <img src={currentLogo} alt="Logo" className="w-8 h-8 object-contain" />
+              ) : (
+                <Factory size={26} className="text-white" />
+              )}
+            </div>
             <div>
               <h2 className="text-2xl font-black tracking-tighter uppercase leading-none">Factory<span className="text-red-600">Flow</span></h2>
               <p className="text-[9px] font-black text-slate-500 uppercase tracking-[0.5em] mt-1 italic">Producción de Pedidos en Vivo</p>
@@ -334,9 +399,17 @@ function App() {
                </span>
             </div>
             
-            <button onClick={() => setDarkMode(!darkMode)} className="p-3 rounded-xl border border-white/10 bg-white/5 hover:bg-white/10 transition-all shadow-md">
-              {darkMode ? <Sun size={20} className="text-yellow-400" /> : <Moon size={20} className="text-slate-700" />}
-            </button>
+            <div className="flex items-center gap-4">
+              <button 
+                onClick={() => setIsSettingsOpen(true)}
+                className="p-3 rounded-xl border border-white/10 bg-white/5 hover:bg-white/10 transition-all shadow-md text-slate-400 hover:text-white"
+              >
+                <Settings size={20} />
+              </button>
+              <button onClick={() => setDarkMode(!darkMode)} className="p-3 rounded-xl border border-white/10 bg-white/5 hover:bg-white/10 transition-all shadow-md">
+                {darkMode ? <Sun size={20} className="text-yellow-400" /> : <Moon size={20} className="text-slate-700" />}
+              </button>
+            </div>
           </div>
         </div>
       </header>
@@ -352,7 +425,7 @@ function App() {
         ) : (
           view === 'live' ? (
             <div className="flex w-full h-full animate-fade-in divide-x divide-white/5 overflow-x-auto overflow-y-hidden">
-              {clientGroups.map((g) => <ClientColumn key={g.name} data={g} darkMode={darkMode} />)}
+              {clientGroups.map((g) => <ClientColumn key={g.name} data={g} darkMode={darkMode} settings={visualSettings} />)}
             </div>
           ) : (
             <StatsDashboard rawData={rawData} darkMode={darkMode} />
@@ -370,6 +443,13 @@ function App() {
           {lastSync && <div className="flex items-center gap-3 text-slate-500 font-bold"><Clock size={14} /> ÚLTIMA SYNC: {lastSync.toLocaleTimeString()}</div>}
         </div>
       </footer>
+
+      <SettingsModal 
+        isOpen={isSettingsOpen} 
+        onClose={() => setIsSettingsOpen(false)} 
+        visualSettings={visualSettings}
+        onSaveSettings={updateVisualSettings}
+      />
     </div>
   );
 }
