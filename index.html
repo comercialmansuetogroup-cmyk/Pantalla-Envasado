@@ -3,16 +3,14 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>FactoryFlow 4K - Real Time Dashboard</title>
+  <title>FactoryFlow 4K - Debug Mode</title>
   
   <script src="https://cdn.tailwindcss.com"></script>
   <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
 
   <style>
-    /* Reset total para visualización industrial en pantallas 4K */
     * { box-sizing: border-box; margin: 0; padding: 0; }
     ::-webkit-scrollbar { display: none; }
-    
     html, body { 
       background-color: #020617; 
       color: white; 
@@ -21,17 +19,26 @@
       height: 100vh;
       width: 100vw;
     }
-
-    #root {
-      height: 100vh;
-      width: 100vw;
-      display: flex;
-      flex-direction: column;
-    }
-
+    #root { height: 100vh; width: 100vw; display: flex; flex-direction: column; }
     .animate-fade-in { animation: fadeIn 0.4s ease-out forwards; }
     @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
   </style>
+
+  <!-- ERROR TRACKER: Captura el error #31 antes de que React lo oculte -->
+  <script>
+    window.addEventListener('error', function(event) {
+      console.group('%c🚨 DETECTOR DE ERRORES CRÍTICOS', 'background: #000; color: #ff0000; font-size: 14px; font-weight: bold; padding: 4px;');
+      console.error('MENSAJE:', event.message);
+      console.error('ARCHIVO:', event.filename);
+      console.error('LINEA:', event.lineno);
+      console.error('COLUMNA:', event.colno);
+      if (event.error && event.error.stack) {
+        console.error('STACK TRACE:', event.error.stack);
+      }
+      console.log('%cCONSEJO: El error #31 indica que intentas renderizar un objeto {} donde React espera texto o un elemento.', 'color: #ffaa00; font-weight: bold;');
+      console.groupEnd();
+    });
+  </script>
 
   <script type="importmap">
 {
