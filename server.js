@@ -12,7 +12,7 @@ const CUSTOM_DASHBOARD_TOKEN = "DASHBOARD_V3_KEY_2025";
 app.use(cors());
 app.use(bodyParser.json({ limit: '50mb' }));
 
-// Almacén en memoria persistente durante la vida del proceso
+// Almacén en memoria persistente
 let allProductionLines = [];
 
 app.use(express.static(__dirname));
@@ -25,21 +25,19 @@ app.get('/api/data', (req, res) => {
 });
 
 /**
- * Endpoint para limpiar el dashboard (Opcional, requiere token)
+ * Reiniciar datos
  */
 app.post('/api/reset', (req, res) => {
   const authHeader = req.headers.authorization;
   if (authHeader === `Bearer ${CUSTOM_DASHBOARD_TOKEN}`) {
     allProductionLines = [];
-    console.log("♻️  Buffer de producción reiniciado");
     return res.json({ status: 'reset_ok' });
   }
   res.status(401).json({ error: 'No autorizado' });
 });
 
 /**
- * Endpoint Webhook para Make (ACUMULATIVO)
- * Los datos se añaden al buffer actual, no se reemplazan.
+ * Webhook acumulativo con marca de tiempo
  */
 app.post('/api/webhook', (req, res) => {
   const authHeader = req.headers.authorization;
@@ -50,13 +48,18 @@ app.post('/api/webhook', (req, res) => {
   }
 
   if (req.body && req.body.zonas && Array.isArray(req.body.zonas)) {
-    // IMPORTANTE: Concatenamos los datos nuevos con los existentes para persistencia
-    allProductionLines = [...allProductionLines, ...req.body.zonas];
-    console.log(`📥 Recibidos ${req.body.zonas.length} registros desde Make. Total en memoria: ${allProductionLines.length}`);
-    return res.status(200).json({ status: 'ok', total_records: allProductionLines.length });
+    const timestamp = new Date().toISOString();
+    const zonesWithTime = req.body.zonas.map(z => ({ 
+      ...z, 
+      receivedAt: timestamp 
+    }));
+    
+    allProductionLines = [...allProductionLines, ...zonesWithTime];
+    console.log(`📥 Webhook: +${req.body.zonas.length} registros. Total: ${allProductionLines.length}`);
+    return res.status(200).json({ status: 'ok' });
   }
   
-  res.status(400).json({ error: 'Formato de datos incorrecto. Se espera un objeto con "zonas" (array).' });
+  res.status(400).json({ error: 'Formato incorrecto' });
 });
 
 app.get('*', (req, res) => {
@@ -66,5 +69,5 @@ app.get('*', (req, res) => {
 });
 
 app.listen(PORT, () => {
-  console.log(`🚀 FACTORYFLOW V4 - PERSISTENCIA ACTIVA EN PUERTO ${PORT}`);
+  console.log(`🚀 FACTORYFLOW PRO - PORT ${PORT}`);
 });

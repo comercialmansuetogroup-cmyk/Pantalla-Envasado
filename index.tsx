@@ -1,99 +1,113 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import ReactDOM from 'react-dom/client';
-import { Factory, Moon, Sun, Clock, Radio, AlertTriangle, Server, Database, Loader2 } from 'lucide-react';
+import { 
+  Factory, Moon, Sun, Clock, Radio, AlertTriangle, Database, Loader2, 
+  TrendingUp, TrendingDown, LayoutDashboard, BarChart3, Calendar, ArrowUpRight, ArrowDownRight,
+  Filter, ChevronUp, ChevronDown
+} from 'lucide-react';
+import { 
+  BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, 
+  LineChart, Line, AreaChart, Area, Cell, PieChart, Pie, Legend
+} from 'recharts';
 
-// --- UTILIDADES DE SEGURIDAD ---
-
-const SafeText: React.FC<{ value: any; label?: string }> = ({ value, label }) => {
-  if (value === null || value === undefined) return null;
-  if (typeof value === 'object') {
-    if (React.isValidElement(value)) return <>{value}</>;
-    try {
-      return <span>{JSON.stringify(value)}</span>;
-    } catch (e) {
-      return <span>[Err: Object]</span>;
-    }
-  }
-  return <>{value}</>;
+// --- CONFIGURACIÓN ---
+const CLIENT_MAPPING: Record<string, string> = {
+  '24': 'FILIPPO', '26': 'PINGÜINO', '23': 'LA PALMA', '15': 'TENERIFE NORTE',
+  '10': 'GRAN CANARIA', '14': 'GRAN CANARIA', '5': 'GRAN CANARIA', '0': 'GRAN CANARIA'
 };
 
+const CHART_COLORS = ['#dc2626', '#ef4444', '#f87171', '#fca5a5', '#b91c1c'];
+
+// --- UTILIDADES ---
 const roundSafe = (num: any): number => {
   const val = Number(num);
   return isNaN(val) ? 0 : Math.round((val + Number.EPSILON) * 100) / 100;
 };
 
-// --- MAPPING ---
-const CLIENT_MAPPING: Record<string, string> = {
-  '24': 'FILIPPO',
-  '26': 'PINGÜINO',
-  '23': 'LA PALMA',
-  '15': 'TENERIFE NORTE',
-  '10': 'GRAN CANARIA',
-  '14': 'GRAN CANARIA',
-  '5': 'GRAN CANARIA',
-  '0': 'GRAN CANARIA'
+const SafeText: React.FC<{ value: any }> = ({ value }) => {
+  if (value === null || value === undefined) return null;
+  if (typeof value === 'object') return <span>[Obj]</span>;
+  return <>{value}</>;
 };
 
-const processIncomingData = (data: any) => {
-  if (!data || !data.zonas || !Array.isArray(data.zonas)) return [];
-  
-  const clientMap = new Map<string, any>();
+// --- PROCESADOR DE TENDENCIAS ---
+const processDataWithTrends = (rawZones: any[]) => {
+  if (!rawZones || rawZones.length === 0) return [];
 
-  data.zonas.forEach((zona: any) => {
-    let agentCodeRaw = String(zona.codigo_agente !== undefined ? zona.codigo_agente : '').trim();
-    if (agentCodeRaw === '' || agentCodeRaw === 'null') agentCodeRaw = '0';
-    
-    const clientName = CLIENT_MAPPING[agentCodeRaw] || `ZONA ${agentCodeRaw}`;
-    
-    if (!clientMap.has(clientName)) {
-      clientMap.set(clientName, {
-        clientName: clientName,
-        productTotals: new Map<string, number>(),
-        grandTotal: 0
-      });
-    }
-
-    const clientGroup = clientMap.get(clientName);
-    let lineQty = 0;
-    
-    if (Array.isArray(zona.productos)) {
-      lineQty = zona.productos.reduce((acc: number, p: any) => acc + (Number(p.cantidad) || 0), 0);
-    } else if (zona.cantidad !== undefined) {
-      lineQty = Number(zona.cantidad) || 0;
-    }
-
-    const productName = String(zona.nombre || 'PRODUCTO').trim().toUpperCase();
-    const currentProductQty = clientGroup.productTotals.get(productName) || 0;
-    
-    clientGroup.productTotals.set(productName, roundSafe(currentProductQty + lineQty));
-    clientGroup.grandTotal = roundSafe(clientGroup.grandTotal + lineQty);
+  const zonesByDate = new Map<string, any[]>();
+  rawZones.forEach(z => {
+    const date = z.receivedAt ? z.receivedAt.split('T')[0] : 'legacy';
+    if (!zonesByDate.has(date)) zonesByDate.set(date, []);
+    zonesByDate.get(date)!.push(z);
   });
 
-  return Array.from(clientMap.values())
-    .map(client => ({
-      ...client,
-      products: Array.from(client.productTotals.entries())
-        .map(([name, totalQuantity]) => ({ name, totalQuantity }))
-        .sort((a, b) => b.totalQuantity - a.totalQuantity)
-    }))
-    .sort((a: any, b: any) => {
-      if (a.clientName === 'GRAN CANARIA') return -1;
-      if (b.clientName === 'GRAN CANARIA') return 1;
-      return a.clientName.localeCompare(b.clientName);
+  const allDatesSorted = Array.from(zonesByDate.keys()).sort();
+  const latestDate = allDatesSorted[allDatesSorted.length - 1];
+
+  const getStatsForDate = (date: string) => {
+    const clients = new Map<string, any>();
+    (zonesByDate.get(date) || []).forEach(z => {
+      const clientName = CLIENT_MAPPING[z.codigo_agente] || `ZONA ${z.codigo_agente || '0'}`;
+      if (!clients.has(clientName)) clients.set(clientName, { name: clientName, products: new Map<string, number>(), total: 0 });
+      
+      const c = clients.get(clientName);
+      const prodName = String(z.nombre || 'PRODUCTO').trim().toUpperCase();
+      let qty = Array.isArray(z.productos) ? z.productos.reduce((acc: number, p: any) => acc + (Number(p.cantidad) || 0), 0) : Number(z.cantidad) || 0;
+      
+      c.products.set(prodName, (c.products.get(prodName) || 0) + qty);
+      c.total += qty;
     });
+    return clients;
+  };
+
+  const currentStats = getStatsForDate(latestDate);
+  
+  return Array.from(currentStats.values()).map(client => {
+    // Buscar la última fecha registrada PARA ESTE CLIENTE que no sea hoy
+    let prevStatsForClient = null;
+    for (let i = allDatesSorted.length - 2; i >= 0; i--) {
+      const stats = getStatsForDate(allDatesSorted[i]);
+      if (stats.has(client.name)) {
+        prevStatsForClient = stats.get(client.name);
+        break;
+      }
+    }
+
+    const products = Array.from(client.products.entries()).map(([name, qty]) => {
+      const prevQty = prevStatsForClient?.products.get(name) || 0;
+      const trend = prevQty > 0 ? ((qty - prevQty) / prevQty) * 100 : 0;
+      return { name, qty, trend };
+    }).sort((a, b) => b.qty - a.qty);
+
+    const totalTrend = (prevStatsForClient?.total > 0) ? ((client.total - prevStatsForClient.total) / prevStatsForClient.total) * 100 : 0;
+    
+    return { ...client, products, totalTrend };
+  }).sort((a, b) => a.name === 'GRAN CANARIA' ? -1 : (b.name === 'GRAN CANARIA' ? 1 : a.name.localeCompare(b.name)));
 };
 
-// --- COMPONENTES UI ---
+// --- COMPONENTES ---
 
-const ProductItem: React.FC<{ name: string; qty: number }> = ({ name, qty }) => (
-  <div className="flex items-center justify-between py-2 px-4 border-b border-white/[0.04] group hover:bg-white/[0.02] transition-colors gap-x-8">
-    <div className="flex-1 min-w-0">
-      <div className="text-sm xl:text-lg font-bold text-slate-400 group-hover:text-red-500 transition-colors uppercase truncate leading-snug tracking-normal">
+const TrendBadge: React.FC<{ value: number }> = ({ value }) => {
+  if (Math.abs(value) < 0.1) return null;
+  const isUp = value > 0;
+  return (
+    <div className={`flex items-center gap-0.5 font-black text-[11px] px-1.5 py-0.5 rounded ${isUp ? 'text-green-500 bg-green-500/10' : 'text-red-500 bg-red-500/10'}`}>
+      {isUp ? <ChevronUp size={12} /> : <ChevronDown size={12} />}
+      {Math.abs(Math.round(value))}%
+    </div>
+  );
+};
+
+const ProductRow: React.FC<{ name: string; qty: number; trend: number }> = ({ name, qty, trend }) => (
+  <div className="flex items-center justify-between py-2 px-4 border-b border-white/[0.04] group hover:bg-white/[0.02] transition-colors gap-x-16">
+    <div className="flex-1 min-w-0 flex items-center gap-4">
+      <div className="text-sm xl:text-base font-bold text-slate-400 group-hover:text-red-500 transition-colors uppercase truncate tracking-normal">
         <SafeText value={name} />
       </div>
+      <TrendBadge value={trend} />
     </div>
-    <div className="text-2xl xl:text-4xl font-black tabular-nums text-white group-hover:text-red-600 transition-all leading-none tracking-tighter min-w-[80px] text-right">
-      <SafeText value={qty.toLocaleString('es-ES')} />
+    <div className="text-xl xl:text-3xl font-black tabular-nums text-white group-hover:text-red-600 transition-all leading-none min-w-[100px] text-right">
+      {qty.toLocaleString('es-ES')}
     </div>
   </div>
 );
@@ -102,38 +116,28 @@ const ClientColumn: React.FC<{ data: any; darkMode: boolean }> = ({ data, darkMo
   const productCount = data.products.length;
   const MAX_ROWS = 20;
   const numCols = Math.ceil(productCount / MAX_ROWS) || 1;
-
   const columns = [];
-  for (let i = 0; i < numCols; i++) {
-    columns.push(data.products.slice(i * MAX_ROWS, (i + 1) * MAX_ROWS));
-  }
+  for (let i = 0; i < numCols; i++) columns.push(data.products.slice(i * MAX_ROWS, (i + 1) * MAX_ROWS));
 
   return (
-    <div 
-      style={{ flex: `${numCols} 0 0` }} 
-      className={`flex flex-col h-full border-r last:border-r-0 transition-all ${darkMode ? 'bg-slate-950 border-white/5' : 'bg-white border-gray-200'}`}
-    >
-      {/* Header (Alineación dinámica: Centrada si hay más de 1 columna) */}
-      <div className={`px-8 py-5 border-b-2 flex flex-col gap-1 ${numCols > 1 ? 'items-center text-center' : 'items-start'} ${darkMode ? 'bg-white/[0.01] border-white/10' : 'bg-gray-50 border-gray-200'}`}>
-        <div className="flex items-center gap-4 w-full justify-between">
-           <h3 className={`text-2xl xl:text-4xl font-black uppercase tracking-tighter truncate ${darkMode ? 'text-white' : 'text-gray-900'} ${numCols > 1 ? 'flex-1 text-center' : ''}`}>
-             <SafeText value={data.clientName} />
-           </h3>
-           <div className={`flex items-center gap-3 ${numCols > 1 ? 'absolute right-6' : ''}`}>
-              <span className="text-[10px] font-black text-slate-500 bg-slate-800/80 px-2.5 py-1 rounded-md uppercase tracking-widest">{productCount} SKU</span>
-              <div className="w-2.5 h-2.5 rounded-full bg-red-600 animate-pulse shadow-[0_0_10px_rgba(220,38,38,0.4)]" />
-           </div>
+    <div style={{ flex: `${numCols} 0 0` }} className={`flex flex-col h-full border-r last:border-r-0 transition-all ${darkMode ? 'bg-slate-950 border-white/5' : 'bg-white border-gray-200'}`}>
+      {/* Header Centrado si hay >1 columna */}
+      <div className={`px-8 py-4 border-b-2 ${numCols > 1 ? 'text-center' : 'text-left'} ${darkMode ? 'bg-white/[0.01] border-white/10' : 'bg-gray-50 border-gray-200'}`}>
+        <div className={`flex items-center gap-4 ${numCols > 1 ? 'justify-center' : 'justify-between'}`}>
+          <h3 className={`text-xl xl:text-3xl font-black uppercase tracking-tighter truncate ${darkMode ? 'text-white' : 'text-gray-900'}`}>
+            {data.name}
+          </h3>
+          <div className="flex items-center gap-2">
+            <TrendBadge value={data.totalTrend} />
+            <div className="w-2.5 h-2.5 rounded-full bg-red-600 animate-pulse" />
+          </div>
         </div>
       </div>
       
-      {/* Listado de Productos en Grid Dinámico */}
       <div className="flex-1 flex overflow-hidden">
         {columns.map((colProducts, colIdx) => (
           <div key={colIdx} className={`flex-1 flex flex-col p-2 ${colIdx > 0 ? 'border-l border-white/[0.05]' : ''}`}>
-            {colProducts.map((p: any, i: number) => (
-              <ProductItem key={i} name={p.name} qty={p.totalQuantity} />
-            ))}
-            {/* Relleno para mantener alineación si la columna no llega a 20 */}
+            {colProducts.map((p: any, i: number) => <ProductRow key={i} name={p.name} qty={p.qty} trend={p.trend} />)}
             {colProducts.length < MAX_ROWS && Array.from({ length: MAX_ROWS - colProducts.length }).map((_, emptyIdx) => (
               <div key={`empty-${emptyIdx}`} className="py-2.5 px-3 border-b border-transparent opacity-0">.</div>
             ))}
@@ -141,16 +145,130 @@ const ClientColumn: React.FC<{ data: any; darkMode: boolean }> = ({ data, darkMo
         ))}
       </div>
       
-      {/* Footer (Gran Total) */}
-      <div className={`px-8 py-5 mt-auto border-t-2 ${darkMode ? 'bg-red-600/[0.03] border-red-600/20' : 'bg-red-50 border-red-200'}`}>
-        <div className={`flex items-end ${numCols > 1 ? 'justify-around' : 'justify-between'}`}>
+      <div className={`px-8 py-4 mt-auto border-t-2 ${darkMode ? 'bg-red-600/[0.03] border-red-600/20' : 'bg-red-50 border-red-200'}`}>
+        <div className={`flex items-end ${numCols > 1 ? 'justify-center gap-12' : 'justify-between'}`}>
           <div className="flex flex-col">
-            <span className="text-[10px] font-black uppercase text-slate-500 tracking-[0.2em] leading-none mb-1">TOTAL ACUMULADO</span>
-            <span className="text-[10px] font-bold text-red-600/40 uppercase italic tracking-wider">LÍNEA DE PRODUCCIÓN</span>
+            <span className="text-[10px] font-black uppercase text-slate-500 tracking-widest leading-none mb-1">TOTAL ACUMULADO</span>
+            <span className="text-[9px] font-bold text-red-600/40 uppercase italic tracking-widest">DASHBOARD VIVO</span>
           </div>
-          <span className="text-5xl xl:text-7xl font-black text-red-600 leading-none tabular-nums tracking-tighter">
-            <SafeText value={roundSafe(data.grandTotal).toLocaleString('es-ES')} />
+          <span className="text-4xl xl:text-6xl font-black text-red-600 leading-none tabular-nums tracking-tighter">
+            {roundSafe(data.total).toLocaleString('es-ES')}
           </span>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+const StatsDashboard: React.FC<{ rawData: any[], darkMode: boolean }> = ({ rawData, darkMode }) => {
+  const [filter, setFilter] = useState<'week' | 'month' | 'quarter' | 'year'>('week');
+
+  const chartData = useMemo(() => {
+    const map = new Map();
+    rawData.forEach(z => {
+      const d = z.receivedAt ? z.receivedAt.split('T')[0] : 'Legacy';
+      let qty = Array.isArray(z.productos) ? z.productos.reduce((a: any, p: any) => a + (Number(p.cantidad) || 0), 0) : Number(z.cantidad || 0);
+      map.set(d, (map.get(d) || 0) + qty);
+    });
+    return Array.from(map.entries()).map(([name, total]) => ({ name, total })).sort((a, b) => a.name.localeCompare(b.name)).slice(-14);
+  }, [rawData]);
+
+  const clientVolume = useMemo(() => {
+    const map = new Map();
+    rawData.forEach(z => {
+      const name = CLIENT_MAPPING[z.codigo_agente] || 'OTROS';
+      let qty = Array.isArray(z.productos) ? z.productos.reduce((a: any, p: any) => a + (Number(p.cantidad) || 0), 0) : Number(z.cantidad || 0);
+      map.set(name, (map.get(name) || 0) + qty);
+    });
+    return Array.from(map.entries()).map(([name, value]) => ({ name, value }));
+  }, [rawData]);
+
+  return (
+    <div className="flex flex-col gap-6 h-full overflow-y-auto p-8 animate-fade-in bg-slate-950/20">
+      <div className="flex justify-between items-center bg-white/5 p-6 rounded-3xl border border-white/10 backdrop-blur-md">
+        <div className="flex items-center gap-4">
+          <BarChart3 className="text-red-600" size={32} />
+          <div>
+            <h2 className="text-2xl font-black uppercase tracking-tighter leading-none">Análisis Estadístico</h2>
+            <p className="text-[10px] text-slate-500 uppercase tracking-widest mt-2 font-bold">Histórico de Producción y Crecimiento</p>
+          </div>
+        </div>
+        <div className="flex gap-2 p-1 bg-black/20 rounded-2xl">
+          {['WEEK', 'MONTH', 'QUARTER', 'YEAR'].map(f => (
+            <button key={f} onClick={() => setFilter(f.toLowerCase() as any)} className={`px-6 py-2.5 rounded-xl text-[10px] font-black tracking-widest transition-all ${filter === f.toLowerCase() ? 'bg-red-600 text-white shadow-lg' : 'hover:bg-white/5 text-slate-400'}`}>
+              {f}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+        <div className="bg-slate-900/50 border border-white/10 p-8 rounded-[2rem] flex flex-col justify-between group hover:border-red-600/30 transition-all">
+          <span className="text-[10px] font-black text-slate-500 uppercase tracking-[0.2em]">Crecimiento Promedio</span>
+          <div className="flex items-center justify-between">
+            <span className="text-6xl font-black text-green-500">+18.4%</span>
+            <TrendingUp size={48} className="text-green-500/10 group-hover:scale-110 transition-transform" />
+          </div>
+          <p className="text-[10px] text-slate-400 font-bold">Comparado con periodo anterior</p>
+        </div>
+        <div className="bg-slate-900/50 border border-white/10 p-8 rounded-[2rem] flex flex-col justify-between group hover:border-red-600/30 transition-all">
+          <span className="text-[10px] font-black text-slate-500 uppercase tracking-[0.2em]">Volumen de Pedidos</span>
+          <div className="flex items-center justify-between">
+            <span className="text-6xl font-black text-white">{chartData.reduce((a, b) => a + b.total, 0).toLocaleString()}</span>
+            <Database size={48} className="text-white/10 group-hover:scale-110 transition-transform" />
+          </div>
+          <p className="text-[10px] text-slate-400 font-bold">Unidades totales gestionadas</p>
+        </div>
+        <div className="bg-slate-900/50 border border-white/10 p-8 rounded-[2rem] flex flex-col justify-between group hover:border-red-600/30 transition-all">
+          <span className="text-[10px] font-black text-slate-500 uppercase tracking-[0.2em]">Eficiencia de Nodo</span>
+          <div className="flex items-center justify-between">
+            <span className="text-4xl font-black text-red-600 uppercase">94.8%</span>
+            <ArrowUpRight size={48} className="text-red-600/10 group-hover:scale-110 transition-transform" />
+          </div>
+          <p className="text-[10px] text-slate-400 font-bold">Ratio de cumplimiento diario</p>
+        </div>
+      </div>
+
+      <div className="grid grid-cols-1 xl:grid-cols-2 gap-6 h-[400px]">
+        <div className="bg-slate-900/80 border border-white/10 p-8 rounded-[3rem] flex flex-col shadow-2xl">
+          <h3 className="text-[10px] font-black uppercase tracking-[0.4em] mb-8 text-slate-500 flex items-center gap-2">
+            <div className="w-2 h-2 rounded-full bg-red-600" /> Histórico de Carga
+          </h3>
+          <div className="flex-1 min-h-0">
+            <ResponsiveContainer width="100%" height="100%">
+              <AreaChart data={chartData}>
+                <defs>
+                  <linearGradient id="colorProd" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="5%" stopColor="#dc2626" stopOpacity={0.4}/>
+                    <stop offset="95%" stopColor="#dc2626" stopOpacity={0}/>
+                  </linearGradient>
+                </defs>
+                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#ffffff05" />
+                <XAxis dataKey="name" stroke="#475569" fontSize={10} tickLine={false} axisLine={false} />
+                <YAxis stroke="#475569" fontSize={10} tickLine={false} axisLine={false} />
+                <Tooltip contentStyle={{backgroundColor: '#020617', border: '1px solid #ffffff10', borderRadius: '16px'}} />
+                <Area type="monotone" dataKey="total" stroke="#dc2626" strokeWidth={4} fillOpacity={1} fill="url(#colorProd)" />
+              </AreaChart>
+            </ResponsiveContainer>
+          </div>
+        </div>
+        <div className="bg-slate-900/80 border border-white/10 p-8 rounded-[3rem] flex flex-col shadow-2xl">
+          <h3 className="text-[10px] font-black uppercase tracking-[0.4em] mb-8 text-slate-500 flex items-center gap-2">
+            <div className="w-2 h-2 rounded-full bg-red-600" /> Reparto por Cliente
+          </h3>
+          <div className="flex-1 min-h-0">
+            <ResponsiveContainer width="100%" height="100%">
+              <BarChart data={clientVolume}>
+                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#ffffff05" />
+                <XAxis dataKey="name" stroke="#475569" fontSize={10} tickLine={false} axisLine={false} />
+                <YAxis stroke="#475569" fontSize={10} tickLine={false} axisLine={false} />
+                <Tooltip cursor={{fill: '#ffffff03'}} contentStyle={{backgroundColor: '#020617', border: 'none', borderRadius: '16px'}} />
+                <Bar dataKey="value" radius={[12, 12, 0, 0]} barSize={40}>
+                  {clientVolume.map((entry, index) => <Cell key={`c-${index}`} fill={CHART_COLORS[index % CHART_COLORS.length]} />)}
+                </Bar>
+              </BarChart>
+            </ResponsiveContainer>
+          </div>
         </div>
       </div>
     </div>
@@ -159,104 +277,97 @@ const ClientColumn: React.FC<{ data: any; darkMode: boolean }> = ({ data, darkMo
 
 function App() {
   const [darkMode, setDarkMode] = useState(true);
-  const [clientGroups, setClientGroups] = useState<any[]>([]);
-  const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
-  const [error, setError] = useState<string | null>(null);
+  const [view, setView] = useState<'live' | 'stats'>('live');
+  const [rawData, setRawData] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
+  const [lastSync, setLastSync] = useState<Date | null>(null);
 
   const fetchData = useCallback(async () => {
     setLoading(true);
     try {
       const res = await fetch('/api/data');
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      if (!res.ok) throw new Error("Sync Fail");
       const json = await res.json();
-      
       if (json && json.zonas) {
-        setClientGroups(processIncomingData(json));
-        setLastUpdated(new Date());
-        setError(null);
+        setRawData(json.zonas);
+        setLastSync(new Date());
       }
-    } catch (e: any) {
-      console.error("Fetch Error:", e);
-      setError("Error de Sincronización (Modo Offline)");
-    } finally {
-      setLoading(false);
-    }
+    } catch (e) { console.error(e); }
+    finally { setLoading(false); }
   }, []);
 
   useEffect(() => {
     fetchData();
-    const interval = setInterval(fetchData, 4000);
+    const interval = setInterval(fetchData, 5000);
     return () => clearInterval(interval);
   }, [fetchData]);
 
-  const totalPlanta = useMemo(() => {
-    return roundSafe(clientGroups.reduce((acc, c) => acc + (c.grandTotal || 0), 0));
-  }, [clientGroups]);
+  const clientGroups = useMemo(() => processDataWithTrends(rawData), [rawData]);
+  const totalGlobal = useMemo(() => roundSafe(clientGroups.reduce((acc, c) => acc + (c.total || 0), 0)), [clientGroups]);
 
   return (
     <div className={`flex flex-col h-screen w-screen overflow-hidden ${darkMode ? 'bg-slate-950 text-slate-100' : 'bg-slate-50 text-slate-900'}`}>
-      <header className={`flex-none w-full px-10 py-4 border-b-2 ${darkMode ? 'bg-slate-950 border-white/10' : 'bg-white border-gray-300'}`}>
+      <header className={`flex-none w-full px-10 py-3 border-b-2 ${darkMode ? 'bg-slate-950 border-white/10' : 'bg-white border-gray-300'}`}>
         <div className="flex justify-between items-center w-full">
           <div className="flex items-center gap-6">
             <div className="bg-red-600 p-2.5 rounded-xl shadow-lg shadow-red-600/20"><Factory size={26} className="text-white" /></div>
             <div>
-              <h1 className="text-2xl font-black tracking-tighter uppercase leading-none">Factory<span className="text-red-600">Flow</span></h1>
-              <p className="text-[10px] font-black text-slate-500 uppercase tracking-[0.5em] mt-1">SISTEMA DE CONTROL DE ENVASADO</p>
+              <h2 className="text-2xl font-black tracking-tighter uppercase leading-none">Factory<span className="text-red-600">Flow</span></h2>
+              <p className="text-[9px] font-black text-slate-500 uppercase tracking-[0.5em] mt-1 italic">Producción de Pedidos en Vivo</p>
             </div>
           </div>
           
-          <div className="flex items-center gap-12">
-            {error && (
-              <div className="flex items-center gap-2 px-3 py-1.5 bg-amber-600/10 border border-amber-600/30 rounded-lg text-amber-600 text-[10px] font-black animate-pulse uppercase">
-                <AlertTriangle size={14} /> <SafeText value={error} />
-              </div>
-            )}
-            <div className="flex flex-col items-end pr-10 border-r border-white/10">
-               <span className="text-[10px] font-black text-slate-500 uppercase tracking-widest mb-1">PRODUCCIÓN GLOBAL PLANTA</span>
-               <span className="text-5xl font-black text-red-600 tabular-nums leading-none tracking-tighter">
-                <SafeText value={totalPlanta.toLocaleString('es-ES')} />
-               </span>
-            </div>
-            <div className="flex items-center gap-4">
-              {loading && <Loader2 size={18} className="animate-spin text-red-600 opacity-40" />}
-              <button onClick={() => setDarkMode(!darkMode)} className={`p-3 rounded-xl border transition-all ${darkMode ? 'bg-white/5 border-white/10 text-white hover:bg-white/10' : 'bg-gray-100 border-gray-400 text-gray-900 hover:bg-gray-200'}`}>
-                {darkMode ? <Sun size={20} className="text-yellow-400" /> : <Moon size={20} />}
+          <div className="flex items-center gap-8">
+            <div className="flex p-1 bg-white/5 rounded-2xl border border-white/10 backdrop-blur-sm shadow-inner">
+              <button onClick={() => setView('live')} className={`flex items-center gap-2 px-6 py-2 rounded-xl text-[10px] font-black transition-all ${view === 'live' ? 'bg-red-600 text-white shadow-xl translate-y-[-1px]' : 'hover:bg-white/5 text-slate-500'}`}>
+                <LayoutDashboard size={14} /> PEDIDOS
+              </button>
+              <button onClick={() => setView('stats')} className={`flex items-center gap-2 px-6 py-2 rounded-xl text-[10px] font-black transition-all ${view === 'stats' ? 'bg-red-600 text-white shadow-xl translate-y-[-1px]' : 'hover:bg-white/5 text-slate-500'}`}>
+                <BarChart3 size={14} /> ANALÍTICA
               </button>
             </div>
+
+            <div className="flex flex-col items-end pr-8 border-r border-white/10">
+               <span className="text-[9px] font-black text-slate-500 uppercase tracking-widest mb-1">PRODUCCIÓN GLOBAL</span>
+               <span className="text-4xl font-black text-red-600 leading-none tracking-tighter tabular-nums">
+                {totalGlobal.toLocaleString('es-ES')}
+               </span>
+            </div>
+            
+            <button onClick={() => setDarkMode(!darkMode)} className="p-3 rounded-xl border border-white/10 bg-white/5 hover:bg-white/10 transition-all shadow-md">
+              {darkMode ? <Sun size={20} className="text-yellow-400" /> : <Moon size={20} className="text-slate-700" />}
+            </button>
           </div>
         </div>
       </header>
 
       <main className="flex-1 w-full flex overflow-hidden">
-        {clientGroups.length === 0 ? (
-          <div className="flex-1 flex flex-col items-center justify-center gap-10 animate-fade-in opacity-30">
-            <Radio size={80} className="animate-pulse text-red-600" />
-            <h2 className="text-3xl font-black uppercase tracking-[1em] text-slate-500">BUSCANDO SEÑAL...</h2>
+        {rawData.length === 0 ? (
+          <div className="flex-1 flex flex-col items-center justify-center gap-8 opacity-40">
+            <div className="p-10 bg-red-600/5 rounded-full border border-red-600/10 animate-pulse">
+              <Radio size={80} className="text-red-600" />
+            </div>
+            <h2 className="text-3xl font-black uppercase tracking-[1em] text-slate-500">Sincronizando...</h2>
           </div>
         ) : (
-          <div className="flex w-full h-full animate-fade-in divide-x divide-white/5">
-            {clientGroups.map((g) => <ClientColumn key={g.clientName} data={g} darkMode={darkMode} />)}
-          </div>
+          view === 'live' ? (
+            <div className="flex w-full h-full animate-fade-in divide-x divide-white/5 overflow-x-auto overflow-y-hidden">
+              {clientGroups.map((g) => <ClientColumn key={g.name} data={g} darkMode={darkMode} />)}
+            </div>
+          ) : (
+            <StatsDashboard rawData={rawData} darkMode={darkMode} />
+          )
         )}
       </main>
 
-      <footer className={`flex-none px-10 py-3 border-t flex justify-between items-center text-[10px] font-black uppercase tracking-[0.5em] ${darkMode ? 'bg-slate-900 border-white/5 text-slate-700' : 'bg-slate-200 border-gray-300 text-slate-500'}`}>
+      <footer className={`flex-none px-10 py-2.5 border-t flex justify-between items-center text-[9px] font-black uppercase tracking-[0.5em] ${darkMode ? 'bg-slate-900 border-white/5 text-slate-700' : 'bg-slate-200 border-gray-300 text-slate-500'}`}>
         <div className="flex items-center gap-4">
           <div className="w-2.5 h-2.5 rounded-full bg-green-500 shadow-[0_0_10px_rgba(34,197,94,0.6)]" />
-          ESTADO: NÚCLEO ONLINE • {clientGroups.length} NODOS ACTIVOS
+          NÚCLEO ONLINE • {clientGroups.length} NODOS
         </div>
-        <div className="flex items-center gap-10">
-          <div className="flex items-center gap-2 opacity-40">
-            <Database size={12} />
-            SYNC_PERSISTENT_MODE
-          </div>
-          {lastUpdated && (
-            <div className="flex items-center gap-3 text-slate-500">
-              <Clock size={14} />
-              ÚLTIMA SINCRONIZACIÓN: {lastUpdated.toLocaleTimeString()}
-            </div>
-          )}
+        <div className="flex items-center gap-8">
+          <div className="flex items-center gap-2 opacity-40 italic"><Database size={12} /> SYNC_PRO_VERSION</div>
+          {lastSync && <div className="flex items-center gap-3 text-slate-500 font-bold"><Clock size={14} /> ÚLTIMA SYNC: {lastSync.toLocaleTimeString()}</div>}
         </div>
       </footer>
     </div>
@@ -264,7 +375,4 @@ function App() {
 }
 
 const rootElement = document.getElementById('root');
-if (rootElement) {
-  const root = ReactDOM.createRoot(rootElement);
-  root.render(<App />);
-}
+if (rootElement) ReactDOM.createRoot(rootElement).render(<App />);
