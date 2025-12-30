@@ -86,14 +86,14 @@ const processIncomingData = (data: any) => {
 // --- COMPONENTES UI ---
 
 const ProductItem: React.FC<{ name: string; qty: number }> = ({ name, qty }) => (
-  <div className="flex items-center justify-between py-1.5 px-3 border-b border-white/[0.06] group hover:bg-white/[0.02] transition-colors">
-    <div className="flex-1 min-w-0 pr-4">
-      <div className="text-base xl:text-lg font-black text-slate-400 group-hover:text-red-500 transition-colors uppercase truncate leading-none tracking-tight">
+  <div className="flex items-center justify-between py-2 px-4 border-b border-white/[0.04] group hover:bg-white/[0.02] transition-colors gap-x-8">
+    <div className="flex-1 min-w-0">
+      <div className="text-sm xl:text-lg font-bold text-slate-400 group-hover:text-red-500 transition-colors uppercase truncate leading-snug tracking-normal">
         <SafeText value={name} />
       </div>
     </div>
-    <div className="text-3xl xl:text-5xl font-black tabular-nums text-white group-hover:text-red-600 transition-all leading-none tracking-tighter">
-      <SafeText value={qty} />
+    <div className="text-2xl xl:text-4xl font-black tabular-nums text-white group-hover:text-red-600 transition-all leading-none tracking-tighter min-w-[80px] text-right">
+      <SafeText value={qty.toLocaleString('es-ES')} />
     </div>
   </div>
 );
@@ -110,37 +110,43 @@ const ClientColumn: React.FC<{ data: any; darkMode: boolean }> = ({ data, darkMo
 
   return (
     <div 
-      style={{ flex: `${numCols} 0 auto` }} 
-      className={`flex flex-col h-full border-r last:border-r-0 transition-all min-w-[350px] ${darkMode ? 'bg-slate-950 border-white/5' : 'bg-white border-gray-200'}`}
+      style={{ flex: `${numCols} 0 0` }} 
+      className={`flex flex-col h-full border-r last:border-r-0 transition-all ${darkMode ? 'bg-slate-950 border-white/5' : 'bg-white border-gray-200'}`}
     >
-      {/* Header (Textos más equilibrados) */}
-      <div className={`px-5 py-4 border-b flex justify-between items-center ${darkMode ? 'bg-white/[0.01] border-white/10' : 'bg-gray-50 border-gray-200'}`}>
-        <h3 className={`text-2xl xl:text-4xl font-black uppercase tracking-tighter truncate ${darkMode ? 'text-white' : 'text-gray-900'}`}>
-          <SafeText value={data.clientName} />
-        </h3>
-        <div className="flex items-center gap-3">
-           <span className="text-[10px] font-black text-slate-500 bg-slate-800/80 px-2 py-0.5 rounded-full uppercase">{productCount} SKU</span>
-           <div className="w-2.5 h-2.5 rounded-full bg-red-600 animate-pulse" />
+      {/* Header (Alineación dinámica: Centrada si hay más de 1 columna) */}
+      <div className={`px-8 py-5 border-b-2 flex flex-col gap-1 ${numCols > 1 ? 'items-center text-center' : 'items-start'} ${darkMode ? 'bg-white/[0.01] border-white/10' : 'bg-gray-50 border-gray-200'}`}>
+        <div className="flex items-center gap-4 w-full justify-between">
+           <h3 className={`text-2xl xl:text-4xl font-black uppercase tracking-tighter truncate ${darkMode ? 'text-white' : 'text-gray-900'} ${numCols > 1 ? 'flex-1 text-center' : ''}`}>
+             <SafeText value={data.clientName} />
+           </h3>
+           <div className={`flex items-center gap-3 ${numCols > 1 ? 'absolute right-6' : ''}`}>
+              <span className="text-[10px] font-black text-slate-500 bg-slate-800/80 px-2.5 py-1 rounded-md uppercase tracking-widest">{productCount} SKU</span>
+              <div className="w-2.5 h-2.5 rounded-full bg-red-600 animate-pulse shadow-[0_0_10px_rgba(220,38,38,0.4)]" />
+           </div>
         </div>
       </div>
       
-      {/* Listado de Productos */}
+      {/* Listado de Productos en Grid Dinámico */}
       <div className="flex-1 flex overflow-hidden">
         {columns.map((colProducts, colIdx) => (
-          <div key={colIdx} className={`flex-1 flex flex-col p-1.5 ${colIdx > 0 ? 'border-l border-white/[0.05]' : ''}`}>
+          <div key={colIdx} className={`flex-1 flex flex-col p-2 ${colIdx > 0 ? 'border-l border-white/[0.05]' : ''}`}>
             {colProducts.map((p: any, i: number) => (
               <ProductItem key={i} name={p.name} qty={p.totalQuantity} />
+            ))}
+            {/* Relleno para mantener alineación si la columna no llega a 20 */}
+            {colProducts.length < MAX_ROWS && Array.from({ length: MAX_ROWS - colProducts.length }).map((_, emptyIdx) => (
+              <div key={`empty-${emptyIdx}`} className="py-2.5 px-3 border-b border-transparent opacity-0">.</div>
             ))}
           </div>
         ))}
       </div>
       
-      {/* Footer (Gran Total más equilibrado) */}
-      <div className={`px-6 py-4 mt-auto border-t-2 ${darkMode ? 'bg-red-600/5 border-red-600/20' : 'bg-red-50 border-red-200'}`}>
-        <div className="flex justify-between items-end">
+      {/* Footer (Gran Total) */}
+      <div className={`px-8 py-5 mt-auto border-t-2 ${darkMode ? 'bg-red-600/[0.03] border-red-600/20' : 'bg-red-50 border-red-200'}`}>
+        <div className={`flex items-end ${numCols > 1 ? 'justify-around' : 'justify-between'}`}>
           <div className="flex flex-col">
-            <span className="text-[10px] font-black uppercase text-slate-500 tracking-widest leading-none mb-1">TOTAL ACUMULADO</span>
-            <span className="text-[10px] font-bold text-red-600/40 uppercase italic">NÚCLEO ACTIVO</span>
+            <span className="text-[10px] font-black uppercase text-slate-500 tracking-[0.2em] leading-none mb-1">TOTAL ACUMULADO</span>
+            <span className="text-[10px] font-bold text-red-600/40 uppercase italic tracking-wider">LÍNEA DE PRODUCCIÓN</span>
           </div>
           <span className="text-5xl xl:text-7xl font-black text-red-600 leading-none tabular-nums tracking-tighter">
             <SafeText value={roundSafe(data.grandTotal).toLocaleString('es-ES')} />
@@ -162,7 +168,7 @@ function App() {
     setLoading(true);
     try {
       const res = await fetch('/api/data');
-      if (!res.ok) throw new Error(`Servidor: ${res.status}`);
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const json = await res.json();
       
       if (json && json.zonas) {
@@ -172,8 +178,7 @@ function App() {
       }
     } catch (e: any) {
       console.error("Fetch Error:", e);
-      // PERSISTENCIA: No borramos los datos actuales si el fetch falla
-      setError("Error de sincronización (Datos offline)");
+      setError("Error de Sincronización (Modo Offline)");
     } finally {
       setLoading(false);
     }
@@ -191,65 +196,65 @@ function App() {
 
   return (
     <div className={`flex flex-col h-screen w-screen overflow-hidden ${darkMode ? 'bg-slate-950 text-slate-100' : 'bg-slate-50 text-slate-900'}`}>
-      <header className={`flex-none w-full px-8 py-3 border-b-2 ${darkMode ? 'bg-slate-950 border-white/10' : 'bg-white border-gray-300'}`}>
+      <header className={`flex-none w-full px-10 py-4 border-b-2 ${darkMode ? 'bg-slate-950 border-white/10' : 'bg-white border-gray-300'}`}>
         <div className="flex justify-between items-center w-full">
-          <div className="flex items-center gap-5">
-            <div className="bg-red-600 p-2.5 rounded-xl shadow-lg"><Factory size={28} className="text-white" /></div>
+          <div className="flex items-center gap-6">
+            <div className="bg-red-600 p-2.5 rounded-xl shadow-lg shadow-red-600/20"><Factory size={26} className="text-white" /></div>
             <div>
               <h1 className="text-2xl font-black tracking-tighter uppercase leading-none">Factory<span className="text-red-600">Flow</span></h1>
-              <p className="text-[9px] font-black text-slate-500 uppercase tracking-[0.5em] mt-1">SISTEMA DE CONTROL PERSISTENTE</p>
+              <p className="text-[10px] font-black text-slate-500 uppercase tracking-[0.5em] mt-1">SISTEMA DE CONTROL DE ENVASADO</p>
             </div>
           </div>
           
-          <div className="flex items-center gap-10">
+          <div className="flex items-center gap-12">
             {error && (
-              <div className="flex items-center gap-2 px-3 py-1 bg-amber-600/10 border border-amber-600/30 rounded text-amber-500 text-[10px] font-black animate-pulse uppercase">
+              <div className="flex items-center gap-2 px-3 py-1.5 bg-amber-600/10 border border-amber-600/30 rounded-lg text-amber-600 text-[10px] font-black animate-pulse uppercase">
                 <AlertTriangle size={14} /> <SafeText value={error} />
               </div>
             )}
             <div className="flex flex-col items-end pr-10 border-r border-white/10">
-               <span className="text-[10px] font-black text-slate-500 uppercase tracking-widest mb-1">GLOBAL PLANTA</span>
+               <span className="text-[10px] font-black text-slate-500 uppercase tracking-widest mb-1">PRODUCCIÓN GLOBAL PLANTA</span>
                <span className="text-5xl font-black text-red-600 tabular-nums leading-none tracking-tighter">
                 <SafeText value={totalPlanta.toLocaleString('es-ES')} />
                </span>
             </div>
             <div className="flex items-center gap-4">
-               {loading && <Loader2 size={18} className="animate-spin text-red-600 opacity-50" />}
-               <button onClick={() => setDarkMode(!darkMode)} className={`p-3 rounded-xl border transition-all ${darkMode ? 'bg-white/5 border-white/10 text-white hover:bg-white/10' : 'bg-gray-100 border-gray-400 text-gray-900 hover:bg-gray-200'}`}>
-                 {darkMode ? <Sun size={20} className="text-yellow-400" /> : <Moon size={20} />}
-               </button>
+              {loading && <Loader2 size={18} className="animate-spin text-red-600 opacity-40" />}
+              <button onClick={() => setDarkMode(!darkMode)} className={`p-3 rounded-xl border transition-all ${darkMode ? 'bg-white/5 border-white/10 text-white hover:bg-white/10' : 'bg-gray-100 border-gray-400 text-gray-900 hover:bg-gray-200'}`}>
+                {darkMode ? <Sun size={20} className="text-yellow-400" /> : <Moon size={20} />}
+              </button>
             </div>
           </div>
         </div>
       </header>
 
-      <main className="flex-1 w-full flex overflow-x-auto overflow-y-hidden">
+      <main className="flex-1 w-full flex overflow-hidden">
         {clientGroups.length === 0 ? (
-          <div className="flex-1 flex flex-col items-center justify-center gap-8 animate-fade-in opacity-40">
+          <div className="flex-1 flex flex-col items-center justify-center gap-10 animate-fade-in opacity-30">
             <Radio size={80} className="animate-pulse text-red-600" />
             <h2 className="text-3xl font-black uppercase tracking-[1em] text-slate-500">BUSCANDO SEÑAL...</h2>
           </div>
         ) : (
-          <div className="flex h-full animate-fade-in">
+          <div className="flex w-full h-full animate-fade-in divide-x divide-white/5">
             {clientGroups.map((g) => <ClientColumn key={g.clientName} data={g} darkMode={darkMode} />)}
           </div>
         )}
       </main>
 
-      <footer className={`flex-none px-8 py-2.5 border-t flex justify-between items-center text-[9px] font-black uppercase tracking-[0.5em] ${darkMode ? 'bg-slate-900 border-white/5 text-slate-600' : 'bg-slate-200 border-gray-300 text-slate-500'}`}>
+      <footer className={`flex-none px-10 py-3 border-t flex justify-between items-center text-[10px] font-black uppercase tracking-[0.5em] ${darkMode ? 'bg-slate-900 border-white/5 text-slate-700' : 'bg-slate-200 border-gray-300 text-slate-500'}`}>
         <div className="flex items-center gap-4">
-          <div className="w-2.5 h-2.5 rounded-full bg-green-500 shadow-[0_0_10px_rgba(34,197,94,0.7)]" />
-          NÚCLEO OPERATIVO • {clientGroups.length} NODOS ACTIVOS
+          <div className="w-2.5 h-2.5 rounded-full bg-green-500 shadow-[0_0_10px_rgba(34,197,94,0.6)]" />
+          ESTADO: NÚCLEO ONLINE • {clientGroups.length} NODOS ACTIVOS
         </div>
-        <div className="flex items-center gap-6">
-          <div className="flex items-center gap-2 opacity-50">
+        <div className="flex items-center gap-10">
+          <div className="flex items-center gap-2 opacity-40">
             <Database size={12} />
-            PERSIST_MODE_ACTIVE
+            SYNC_PERSISTENT_MODE
           </div>
           {lastUpdated && (
-            <div className="flex items-center gap-3 text-slate-400">
+            <div className="flex items-center gap-3 text-slate-500">
               <Clock size={14} />
-              ÚLTIMA SYNC: {lastUpdated.toLocaleTimeString()}
+              ÚLTIMA SINCRONIZACIÓN: {lastUpdated.toLocaleTimeString()}
             </div>
           )}
         </div>
