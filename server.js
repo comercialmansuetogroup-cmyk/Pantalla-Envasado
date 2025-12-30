@@ -69,27 +69,38 @@ app.get('/api/data', (req, res) => {
  * Recibe: { "codigo": "12345", "cantidad": 5 }
  */
 app.post('/api/scan', (req, res) => {
+  // --- DEBUGGING EXTREMO PARA VERIFICAR CONEXIÓN ---
+  console.log('------------------------------------------------');
+  console.log('📡 [DEBUG] PETICIÓN ENTRANTE A /api/scan');
+  console.log('👉 IP:', req.ip);
+  console.log('👉 Headers:', JSON.stringify(req.headers, null, 2));
+  console.log('👉 Body:', JSON.stringify(req.body, null, 2));
+  console.log('------------------------------------------------');
+  // -----------------------------------------------------
+
   const authHeader = req.headers.authorization;
   const expectedToken = `Bearer ${CUSTOM_DASHBOARD_TOKEN}`;
 
   // Validación laxa para facilitar pruebas
   if (authHeader && authHeader !== expectedToken) {
-    console.error(`🔒 Intento de acceso no autorizado: ${authHeader}`);
+    const errorMsg = `🔒 ERROR TOKEN: Recibido [${authHeader}] vs Esperado [${expectedToken}]`;
+    console.error(errorMsg);
+    broadcastLog(errorMsg);
     return res.status(401).json({ error: 'Token inválido' });
   }
 
   const { codigo, cantidad } = req.body;
 
   if (!codigo || cantidad === undefined) {
-    console.error(`❌ SCAN Error: Datos incompletos`, req.body);
+    const errorMsg = `❌ SCAN Error: Datos incompletos (Codigo: ${codigo}, Cant: ${cantidad})`;
+    console.error(errorMsg);
+    broadcastLog(errorMsg);
     return res.status(400).json({ error: 'Faltan datos: codigo o cantidad' });
   }
 
   const qtyToAdd = Number(cantidad);
   let productFound = false;
   let updatedProduct = '';
-
-  console.log(`📡 RECEPCIÓN SCAN: Código [${codigo}] Cantidad [${qtyToAdd}]`);
 
   // Búsqueda y actualización
   for (let zona of allProductionLines) {

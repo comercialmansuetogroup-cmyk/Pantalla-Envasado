@@ -559,8 +559,9 @@ const ClientColumn: React.FC<{ data: any; darkMode: boolean; settings: VisualSet
      return map;
   }, [prevData]);
 
+  // CAMBIO IMPORTANTE: width -> minWidth y añadido flex-1 para que crezca y ocupe el espacio
   return (
-    <div style={{ width: `${columnWidth}px`, flex: 'none' }} className={`flex flex-col h-full border-r last:border-r-0 transition-all ${darkMode ? 'bg-slate-950 border-white/5' : 'bg-white border-gray-200'}`}>
+    <div style={{ minWidth: `${columnWidth}px` }} className={`flex-1 flex flex-col h-full border-r last:border-r-0 transition-all ${darkMode ? 'bg-slate-950 border-white/5' : 'bg-white border-gray-200'}`}>
       <div className={`px-4 py-4 border-b-2 ${darkMode ? 'bg-white/[0.01] border-white/10' : 'bg-gray-50 border-gray-200'}`}>
         <div className="flex items-center justify-between mb-2">
             <div className="flex items-center gap-4 overflow-hidden">
