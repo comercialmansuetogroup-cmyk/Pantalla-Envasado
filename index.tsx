@@ -250,15 +250,14 @@ const processDataWithTrends = (rawZones: any[]) => {
 
   // Helper para procesar un set de datos (de una fecha específica)
   const processDataSet = (date: string) => {
-    // A. Identificar Stock Global por Producto (Máximo reportado en cualquier línea para ese código)
-    // Asumimos que Make envía el mismo 'stock_fisico' para el producto en todas las líneas donde aparece, 
-    // o tomamos el mayor valor encontrado como el "Stock Real en Bodega".
+    // A. Identificar Stock Global por Producto y DEMANDA GLOBAL (NUEVO REQUISITO)
     const globalStockMap = new Map<string, number>();
+    const globalDemandMap = new Map<string, number>();
     
     // B. Estructura temporal de Clientes
     const clientsMap = new Map<string, any>();
     
-    // Primera pasada: Construir estructura base y encontrar stock global
+    // Primera pasada: Construir estructura base, encontrar stock global y calcular demanda global
     (zonesByDate.get(date) || []).forEach(z => {
       const clientName = CLIENT_MAPPING[z.codigo_agente] || `ZONA ${z.codigo_agente || '0'}`;
       if (!clientsMap.has(clientName)) {
@@ -266,15 +265,11 @@ const processDataWithTrends = (rawZones: any[]) => {
       }
       
       const c = clientsMap.get(clientName);
-      // Normalización de nombre y código
-      const prodName = String(z.nombre || 'PRODUCTO').trim().toUpperCase();
-      const prodCode = String(z.codigo_agente || 'N/A').trim(); // Fallback si no hay array productos
+      const prodCode = String(z.codigo_agente || 'N/A').trim(); 
 
       // Procesar productos dentro de la zona
       if (Array.isArray(z.productos)) {
         z.productos.forEach((p: any) => {
-          // Identificador único del producto para el mapa global de stock (usamos nombre para simplificar agrupación visual)
-          // Idealmente usaríamos p.codigo, pero para visualización agrupamos por nombre.
           const pNameKey = (z.nombre || p.codigo || 'ITEM').toUpperCase(); 
           const qty = Number(p.cantidad) || 0;
           const stock = Number(p.stock_fisico) || 0;
@@ -284,22 +279,26 @@ const processDataWithTrends = (rawZones: any[]) => {
             globalStockMap.set(pNameKey, stock);
           }
 
+          // CALCULAR DEMANDA TOTAL GLOBAL DEL PRODUCTO
+          globalDemandMap.set(pNameKey, (globalDemandMap.get(pNameKey) || 0) + qty);
+
           // Añadir pedido al cliente
           const itemCode = p.codigo || prodCode;
           if (!c.products.has(pNameKey)) {
-            c.products.set(pNameKey, { name: pNameKey, code: itemCode, qty: 0, stock: 0 }); // Stock se calculará después
+            c.products.set(pNameKey, { name: pNameKey, code: itemCode, qty: 0, stock: 0 }); 
           }
           const prodEntry = c.products.get(pNameKey);
           prodEntry.qty += qty;
           c.total += qty;
         });
       } else {
-        // Fallback para estructura antigua
         const pNameKey = String(z.nombre || 'ITEM').toUpperCase();
         const qty = Number(z.cantidad) || 0;
         const stock = Number(z.stock_fisico) || 0;
         
         if (stock > (globalStockMap.get(pNameKey) || 0)) globalStockMap.set(pNameKey, stock);
+        // CALCULAR DEMANDA TOTAL GLOBAL
+        globalDemandMap.set(pNameKey, (globalDemandMap.get(pNameKey) || 0) + qty);
         
         const itemCode = prodCode;
         if (!c.products.has(pNameKey)) c.products.set(pNameKey, { name: pNameKey, code: itemCode, qty: 0, stock: 0 });
@@ -310,7 +309,6 @@ const processDataWithTrends = (rawZones: any[]) => {
     });
 
     // C. Convertir a Array y ORDENAR POR PRIORIDAD (Gran Canaria Primero)
-    // Esto es crucial para la lógica de cascada.
     const sortedClients = Array.from(clientsMap.values()).sort((a, b) => {
       if (a.name === 'GRAN CANARIA') return -1;
       if (b.name === 'GRAN CANARIA') return 1;
@@ -318,22 +316,34 @@ const processDataWithTrends = (rawZones: any[]) => {
     });
 
     // D. Aplicar Lógica de Cascada (Waterfall)
-    // Creamos una copia del stock global para ir "consumiéndolo"
     const runningStock = new Map<string, number>(globalStockMap);
 
     sortedClients.forEach(client => {
+      // FILTRO DE VISIBILIDAD: Eliminamos productos si Stock Global >= Demanda Global
+      const visibleProducts = new Map<string, any>();
+
+      client.products.forEach((p: any, key: string) => {
+        const totalGlobalDemand = globalDemandMap.get(p.name) || 0;
+        const totalGlobalStock = globalStockMap.get(p.name) || 0;
+
+        // REGLA: Mostrar SOLO SI el Stock Global es INFERIOR a la Demanda Total
+        // Si Stock >= Demanda, significa que está cubierto, no mostrar.
+        if (totalGlobalStock < totalGlobalDemand) {
+           visibleProducts.set(key, p);
+        }
+      });
+      
+      // Reemplazamos el mapa de productos del cliente solo con los visibles
+      client.products = visibleProducts;
+
+      // Aplicar Cascada a los productos visibles
       client.products.forEach((p: any) => {
         const availableStock = runningStock.get(p.name) || 0;
         
         // Asignamos stock al producto de este cliente hasta cubrir la demanda o agotar stock
         const stockAssigned = Math.min(p.qty, availableStock);
         
-        // Guardamos cuánto stock se usó para este pedido específico (para mostrar en la columna Stock)
-        p.stock = availableStock; // Mostramos el stock disponible ANTES de descontar este pedido (opcional, o mostrar stockAssigned)
-        // Corrección visual: La columna "Stock" suele mostrar lo que hay disponible. 
-        // Si mostramos stockAssigned, el usuario ve cuánto se cubre.
-        // Si mostramos availableStock, ve cuánto había al llegar a este cliente.
-        // Vamos a mostrar availableStock para que se vea que a los últimos les llega 0.
+        p.stock = availableStock; // Stock disponible ANTES de este cliente
         
         // Cálculo A PRODUCIR: Lo que falta
         p.toProduce = Math.max(0, p.qty - stockAssigned);
@@ -346,19 +356,19 @@ const processDataWithTrends = (rawZones: any[]) => {
       client.productsArray = Array.from(client.products.values()).sort((a: any, b: any) => b.qty - a.qty);
     });
 
-    return { clients: sortedClients, productMap: clientsMap }; // Devolvemos clients ya procesados
+    return { clients: sortedClients, productMap: clientsMap }; 
   };
 
   // Procesar datos actuales y anteriores para tendencias
   const currentData = processDataSet(latestDate);
   
-  // Para tendencias, necesitamos los datos del día anterior (sin lógica de cascada compleja, solo totales)
-  let prevProductTotals = new Map<string, number>(); // Map<ClientName+ProdName, Qty>
+  // Para tendencias, necesitamos los datos del día anterior 
+  let prevProductTotals = new Map<string, number>(); 
   let prevClientTotals = new Map<string, number>();
 
   if (allDatesSorted.length >= 2) {
     const prevDate = allDatesSorted[allDatesSorted.length - 2];
-    const prevRawMap = processDataSet(prevDate).productMap; // Reutilizamos lógica básica
+    const prevRawMap = processDataSet(prevDate).productMap;
     
     prevRawMap.forEach((c: any) => {
         prevClientTotals.set(c.name, c.total);
