@@ -3,14 +3,14 @@ import { IncomingDataPayload } from './types';
 // Client Mapping based on Agent Codes
 // Filippo 24, Pingüino 26, La Palma 23, Tenerife norte 15, Gran canaria 10, 14, 5, 0
 export const CLIENT_MAPPING: Record<string, string> = {
-  '24': 'Filippo',
-  '26': 'Pingüino',
-  '23': 'La Palma',
-  '15': 'Tenerife Norte',
-  '10': 'Gran Canaria',
-  '14': 'Gran Canaria',
-  '5': 'Gran Canaria',
-  '0': 'Gran Canaria',
+  '24': 'FILIPPO',
+  '26': 'PINGÜINO',
+  '23': 'LA PALMA',
+  '15': 'TENERIFE NORTE',
+  '10': 'GRAN CANARIA',
+  '14': 'GRAN CANARIA',
+  '5': 'GRAN CANARIA',
+  '0': 'GRAN CANARIA',
 };
 
 // Colors for charts

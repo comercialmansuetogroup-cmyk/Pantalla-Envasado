@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>FactoryFlow 4K - Stable Mode</title>
+  <title>FactoryFlow 4K - Ultra Legible</title>
   
   <script src="https://cdn.tailwindcss.com"></script>
   <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
@@ -25,10 +25,12 @@
   </style>
 
   <script>
+    // Capturador de errores para depuración en vivo
     window.onerror = function(message, source, lineno, colno, error) {
       if (message.includes('invariant=31') || message.includes('Objects are not valid')) {
         console.group('%c🚨 REACT ERROR #31 DETECTADO', 'background: #7f1d1d; color: #fff; padding: 10px; font-weight: bold;');
         console.error('Mensaje:', message);
+        console.error('Este error suele ocurrir por renderizar un objeto en lugar de texto o por conflicto de versiones de React.');
         if (error) console.error('Stack:', error.stack);
         console.groupEnd();
       }
