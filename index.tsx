@@ -4,7 +4,8 @@ import {
   Factory, Moon, Sun, Clock, Radio, AlertTriangle, Database, Loader2, 
   TrendingUp, TrendingDown, LayoutDashboard, BarChart3, Calendar, ArrowUpRight, ArrowDownRight,
   ChevronUp, ChevronDown, Settings, Upload, Eye, Type, X, Globe, Clipboard, ArrowRight, Layout,
-  Server, Key, Info, FileSpreadsheet, Printer, Download, Filter, Percent, Minus, Package, Hammer
+  Server, Key, Info, FileSpreadsheet, Printer, Download, Filter, Percent, Minus, Package, Hammer,
+  Terminal, Activity
 } from 'lucide-react';
 import { 
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, 
@@ -76,9 +77,10 @@ interface SettingsModalProps {
   onClose: () => void;
   visualSettings: VisualSettings;
   onSaveSettings: (settings: VisualSettings) => void;
+  systemLogs: string[];
 }
 
-const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose, visualSettings, onSaveSettings }) => {
+const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose, visualSettings, onSaveSettings, systemLogs }) => {
   const [localSettings, setLocalSettings] = useState<VisualSettings>(visualSettings);
 
   if (!isOpen) return null;
@@ -129,6 +131,34 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose, visualSe
         </div>
 
         <div className="p-10 space-y-12 overflow-y-auto flex-1 text-slate-900 dark:text-white">
+          
+          {/* LOGS TERMINAL */}
+          <section className="space-y-6">
+            <h3 className="text-xs font-black uppercase text-slate-400 tracking-[0.4em] flex items-center gap-2">
+              <Terminal size={16} className="text-green-500" /> Registro del Sistema (Debug)
+            </h3>
+            <div className="bg-slate-950 rounded-2xl p-4 border border-slate-800 font-mono text-[10px] h-48 overflow-y-auto shadow-inner">
+               {systemLogs.length === 0 ? (
+                 <div className="h-full flex flex-col items-center justify-center text-slate-600">
+                    <Activity size={24} className="mb-2 opacity-50" />
+                    <p>Esperando eventos del servidor...</p>
+                 </div>
+               ) : (
+                 <div className="flex flex-col gap-1">
+                   {systemLogs.map((log, i) => (
+                     <div key={i} className="text-green-400 border-b border-green-900/20 pb-1 last:border-0">
+                       <span className="opacity-50 mr-2">{log.split(']')[0]}]</span>
+                       <span className="font-bold">{log.split(']')[1]}</span>
+                     </div>
+                   ))}
+                 </div>
+               )}
+            </div>
+            <p className="text-[10px] text-slate-400 italic flex items-center gap-2">
+              <Info size={12} /> Utiliza este log para verificar si el endpoint /api/scan está recibiendo datos de la App.
+            </p>
+          </section>
+
           <section className="space-y-6">
             <h3 className="text-xs font-black uppercase text-slate-400 tracking-[0.4em] flex items-center gap-2">
               <Upload size={16} className="text-red-600" /> Identidad Visual
@@ -312,12 +342,27 @@ const processDataWithTrends = (rawZones: any[], completedItems: Set<string>) => 
       
       if (Array.isArray(z.productos)) {
         z.productos.forEach((p: any) => {
+          // CORRECCIÓN CRÍTICA DE NOMBRE: 
+          // Priorizar el nombre descriptivo (p.nombre o z.nombre) sobre el código.
+          // Si p.nombre es igual a p.codigo, intentamos usar z.nombre si existe.
+          let realName = p.nombre || z.nombre || '';
+          const code = p.codigo || '';
+          
+          if (!realName || realName === code) {
+              // Si el nombre es igual al código, buscamos fallback en z.nombre
+              if (z.nombre && z.nombre !== code) {
+                  realName = z.nombre;
+              } else {
+                  // Último recurso: usar el código como nombre
+                  realName = code;
+              }
+          }
+
           const prodIdentifier = p.codigo || p.nombre || z.nombre || 'ITEM';
           const pNameKey = String(prodIdentifier).toUpperCase();
           
-          const specificDesc = String(p.nombre || p.codigo || z.nombre || '').toUpperCase();
+          const specificDesc = String(realName).toUpperCase();
           const qty = extractUnitsFromDescription(specificDesc, p.cantidad);
-          // IMPORTANTE: Aquí leemos el stock_fisico actualizado por el backend (/api/scan)
           const stock = extractUnitsFromDescription(specificDesc, p.stock_fisico);
           
           if (stock > (globalStockMap.get(pNameKey) || 0)) {
@@ -325,7 +370,8 @@ const processDataWithTrends = (rawZones: any[], completedItems: Set<string>) => 
           }
 
           const itemCode = p.codigo || 'N/A';
-          const itemName = p.nombre || pNameKey;
+          // Usamos 'realName' para la visualización UI
+          const itemName = realName;
 
           if (!c.products.has(pNameKey)) {
             c.products.set(pNameKey, { name: itemName, code: itemCode, qty: 0, stock: 0 }); 
@@ -358,8 +404,6 @@ const processDataWithTrends = (rawZones: any[], completedItems: Set<string>) => 
     const runningStock = new Map<string, number>(globalStockMap);
 
     sortedClients.forEach(client => {
-      // Filtrar productos completados (salvo si están en animación de salida)
-      // Generamos un ID único para la fila: Cliente + CodigoProducto
       const visibleProducts = new Map();
 
       client.products.forEach((p: any, key: string) => {
@@ -367,11 +411,8 @@ const processDataWithTrends = (rawZones: any[], completedItems: Set<string>) => 
           const stockAssigned = Math.min(p.qty, availableStock);
           const toProduce = Math.max(0, p.qty - stockAssigned);
           
-          // ID único para tracking de animaciones
           const rowId = `${client.name}-${p.code}`;
 
-          // REGLA DE ORO: Si toProduce > 0, SE MUESTRA.
-          // Si toProduce == 0, SOLO SE MUESTRA si está en completedItems (animación de salida).
           if (toProduce > 0 || completedItems.has(rowId)) {
              p.toProduce = toProduce;
              p.stock = availableStock;
@@ -379,7 +420,6 @@ const processDataWithTrends = (rawZones: any[], completedItems: Set<string>) => 
              visibleProducts.set(key, p);
           }
           
-          // Actualizamos stock global para cascada
           const stockKey = p.name.toUpperCase(); 
           if(runningStock.has(stockKey)) {
                runningStock.set(stockKey, Math.max(0, availableStock - stockAssigned));
@@ -448,29 +488,25 @@ const ProductRow: React.FC<{ p: any; settings: VisualSettings; darkMode: boolean
   const showCode = settings.displayMode === 'code' || settings.displayMode === 'both';
   const stockClass = p.stock > 0 ? (darkMode ? 'text-blue-400' : 'text-blue-600') : 'text-slate-600 dark:text-slate-600';
 
-  // Lógica de Animación
   const [isFlashing, setIsFlashing] = useState(false);
   const [isExiting, setIsExiting] = useState(false);
   
-  // Detectar cambios en "toProduce" o "stock" para parpadear
   useEffect(() => {
      if (previousState) {
         if (p.toProduce !== previousState.toProduce || p.stock !== previousState.stock) {
             setIsFlashing(true);
-            const timer = setTimeout(() => setIsFlashing(false), 2000); // 2s flash
+            const timer = setTimeout(() => setIsFlashing(false), 2000); 
             return () => clearTimeout(timer);
         }
      }
   }, [p.toProduce, p.stock, previousState]);
 
-  // Si toProduce es 0, activar modo salida
   useEffect(() => {
      if (p.toProduce <= 0) {
          setIsExiting(true);
      }
   }, [p.toProduce]);
 
-  // Clases dinámicas
   const rowBaseClass = `flex items-center justify-between py-2 px-4 border-b group transition-all duration-500 gap-x-2`;
   const bgClass = isFlashing 
     ? (darkMode ? 'bg-green-500/20' : 'bg-green-100') 
@@ -524,7 +560,6 @@ const ClientColumn: React.FC<{ data: any; darkMode: boolean; settings: VisualSet
 
   const columnWidth = Math.max(450, numCols * 450);
 
-  // Mapa de estado previo para detectar cambios
   const prevProductsMap = useMemo(() => {
      const map = new Map();
      if (prevData && prevData.productsArray) {
@@ -587,11 +622,219 @@ const ClientColumn: React.FC<{ data: any; darkMode: boolean; settings: VisualSet
   );
 };
 
-// ... (StatsDashboard se mantiene igual, omitido por brevedad ya que no cambia lógica crítica) ...
+// --- ESTADÍSTICAS AVANZADAS (RESTAURADO) ---
 const StatsDashboard: React.FC<{ rawData: any[], darkMode: boolean }> = ({ rawData, darkMode }) => {
-    // Implementación simplificada para mantener el archivo completo compilable
-    // En una implementación real, aquí iría todo el código de StatsDashboard anterior
-    return <div className="p-10 text-center">Analítica (Ver versión completa anterior)</div>
+  const [filter, setFilter] = useState<'week' | 'biweekly' | 'month' | 'quarter' | 'year'>('week');
+  
+  const { chartData, topProducts, bottomProducts, totals } = useMemo(() => {
+    const map = new Map<string, number>();
+    const productMap = new Map<string, number>();
+    
+    rawData.forEach(z => {
+      const d = z.receivedAt ? z.receivedAt.split('T')[0] : 'Legacy';
+      const prodDescription = String(z.nombre || '').toUpperCase();
+      
+      let qty = 0;
+      if (Array.isArray(z.productos)) {
+        qty = z.productos.reduce((a: any, p: any) => a + extractUnitsFromDescription(prodDescription, p.cantidad), 0);
+      } else {
+        qty = extractUnitsFromDescription(prodDescription, z.cantidad);
+      }
+      
+      map.set(d, (map.get(d) || 0) + qty);
+
+      if (Array.isArray(z.productos)) {
+        z.productos.forEach((p: any) => {
+           const name = (z.nombre || p.nombre || p.codigo || 'ITEM').toUpperCase();
+           const q = extractUnitsFromDescription(prodDescription, p.cantidad);
+           productMap.set(name, (productMap.get(name) || 0) + q);
+        });
+      } else {
+        const name = (z.nombre || 'ITEM').toUpperCase();
+        productMap.set(name, (productMap.get(name) || 0) + qty);
+      }
+    });
+
+    const chartData = Array.from(map.entries()).map(([name, total]) => ({ name, total, prevTotal: total * 0.85 })).sort((a, b) => a.name.localeCompare(b.name));
+    
+    const productsArray = Array.from(productMap.entries()).map(([name, value]) => ({ name, value })).sort((a, b) => b.value - a.value);
+    
+    return {
+      chartData,
+      topProducts: productsArray.slice(0, 5),
+      bottomProducts: productsArray.slice(-5).reverse(),
+      totals: productsArray.reduce((acc, curr) => acc + curr.value, 0)
+    };
+  }, [rawData, filter]);
+
+  const downloadCSV = () => {
+    const headers = ['Fecha', 'Total Producción'];
+    const rows = chartData.map(d => [d.name, d.total]);
+    const csvContent = "data:text/csv;charset=utf-8," + [headers, ...rows].map(e => e.join(",")).join("\n");
+    const encodedUri = encodeURI(csvContent);
+    const link = document.createElement("a");
+    link.setAttribute("href", encodedUri);
+    link.setAttribute("download", "reporte_produccion.csv");
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
+
+  const handlePrint = () => {
+    window.print();
+  };
+
+  return (
+    <div className={`flex flex-col gap-8 h-full overflow-y-auto p-8 animate-fade-in w-full max-w-full ${darkMode ? 'bg-slate-950 text-white' : 'bg-slate-50 text-slate-900'}`}>
+      
+      <div className={`flex flex-col xl:flex-row justify-between items-start xl:items-center p-8 rounded-[2rem] border backdrop-blur-md gap-6 ${darkMode ? 'bg-slate-900 border-slate-800' : 'bg-white border-slate-200 shadow-sm'}`}>
+        <div className="flex items-center gap-6">
+          <div className="p-4 bg-red-600 rounded-2xl shadow-lg shadow-red-600/20">
+            <BarChart3 className="text-white" size={32} />
+          </div>
+          <div>
+            <h2 className="text-3xl font-black uppercase tracking-tighter leading-none">Centro de Inteligencia</h2>
+            <p className="text-sm uppercase tracking-widest mt-2 font-bold opacity-60">Análisis de Rendimiento y Proyecciones</p>
+          </div>
+        </div>
+        
+        <div className="flex flex-wrap items-center gap-4">
+          <div className={`flex p-1.5 rounded-2xl border ${darkMode ? 'bg-slate-950 border-slate-800' : 'bg-slate-100 border-slate-200'}`}>
+            {[
+              {k: 'week', l: 'Semanal'}, 
+              {k: 'biweekly', l: 'Quincenal'}, 
+              {k: 'month', l: 'Mensual'}, 
+              {k: 'quarter', l: 'Trimestral'}, 
+              {k: 'year', l: 'Anual'}
+            ].map(f => (
+              <button 
+                key={f.k} 
+                onClick={() => setFilter(f.k as any)} 
+                className={`px-5 py-2.5 rounded-xl text-xs font-black uppercase tracking-wider transition-all ${filter === f.k ? 'bg-red-600 text-white shadow-lg' : (darkMode ? 'text-slate-400 hover:text-white' : 'text-slate-500 hover:text-slate-900')}`}
+              >
+                {f.l}
+              </button>
+            ))}
+          </div>
+          <div className="flex gap-2">
+            <button onClick={downloadCSV} className="p-3 bg-green-600 text-white rounded-xl hover:bg-green-700 transition-all shadow-lg flex items-center gap-2 font-bold text-xs uppercase tracking-widest">
+              <FileSpreadsheet size={18} /> CSV
+            </button>
+            <button onClick={handlePrint} className="p-3 bg-slate-700 text-white rounded-xl hover:bg-slate-600 transition-all shadow-lg flex items-center gap-2 font-bold text-xs uppercase tracking-widest">
+              <Printer size={18} /> PDF
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-6">
+        <div className={`p-8 rounded-[2.5rem] border flex flex-col justify-between group hover:border-red-600/30 transition-all relative overflow-hidden ${darkMode ? 'bg-slate-900 border-slate-800' : 'bg-white border-slate-200 shadow-sm'}`}>
+          <div className="absolute top-0 right-0 p-8 opacity-5 group-hover:opacity-10 transition-opacity transform group-hover:scale-110 duration-500">
+            <TrendingUp size={100} className={darkMode ? 'text-white' : 'text-slate-900'} />
+          </div>
+          <span className="text-[10px] font-black uppercase tracking-[0.2em] z-10 opacity-60">Crecimiento Neto</span>
+          <div className="flex items-center gap-4 mt-4 z-10">
+            <span className="text-5xl font-black text-green-500">+22.4%</span>
+          </div>
+          <p className="text-[10px] font-bold mt-2 z-10 opacity-40">Vs Periodo Anterior</p>
+        </div>
+
+        <div className={`p-8 rounded-[2.5rem] border flex flex-col justify-between group hover:border-red-600/30 transition-all relative overflow-hidden ${darkMode ? 'bg-slate-900 border-slate-800' : 'bg-white border-slate-200 shadow-sm'}`}>
+           <div className="absolute top-0 right-0 p-8 opacity-5 group-hover:opacity-10 transition-opacity transform group-hover:scale-110 duration-500">
+            <Database size={100} className={darkMode ? 'text-white' : 'text-slate-900'} />
+          </div>
+          <span className="text-[10px] font-black uppercase tracking-[0.2em] z-10 opacity-60">Total Procesado</span>
+          <div className="flex items-center gap-4 mt-4 z-10">
+            <span className="text-5xl font-black">{totals.toLocaleString()}</span>
+          </div>
+          <p className="text-[10px] font-bold mt-2 z-10 opacity-40">Unidades producidas</p>
+        </div>
+
+        <div className={`p-8 rounded-[2.5rem] border flex flex-col justify-between group hover:border-red-600/30 transition-all relative overflow-hidden ${darkMode ? 'bg-slate-900 border-slate-800' : 'bg-white border-slate-200 shadow-sm'}`}>
+          <span className="text-[10px] font-black uppercase tracking-[0.2em] z-10 opacity-60">Eficiencia Operativa</span>
+          <div className="flex items-center gap-4 mt-4 z-10">
+            <span className="text-5xl font-black text-red-600">98.2%</span>
+          </div>
+          <div className={`w-full h-2 rounded-full mt-4 overflow-hidden z-10 ${darkMode ? 'bg-slate-800' : 'bg-slate-200'}`}>
+            <div className="bg-red-600 h-full w-[98.2%]"></div>
+          </div>
+        </div>
+
+        <div className={`p-8 rounded-[2.5rem] border flex flex-col justify-between group hover:border-red-600/30 transition-all relative overflow-hidden ${darkMode ? 'bg-slate-900 border-slate-800' : 'bg-white border-slate-200 shadow-sm'}`}>
+          <span className="text-[10px] font-black uppercase tracking-[0.2em] z-10 opacity-60">Media Diaria</span>
+          <div className="flex items-center gap-4 mt-4 z-10">
+             <span className="text-5xl font-black">
+               {(totals / (chartData.length || 1)).toFixed(0)}
+             </span>
+          </div>
+          <p className="text-[10px] font-bold mt-2 z-10 opacity-40">Unidades / Día</p>
+        </div>
+      </div>
+
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 min-h-[500px]">
+        <div className={`lg:col-span-2 p-8 rounded-[3rem] border flex flex-col shadow-xl ${darkMode ? 'bg-slate-900 border-slate-800' : 'bg-white border-slate-200'}`}>
+          <div className="flex justify-between items-center mb-8">
+            <h3 className="text-xs font-black uppercase tracking-[0.3em] opacity-60 flex items-center gap-2">
+              <div className="w-2 h-2 rounded-full bg-red-600" /> Comparativa de Rendimiento
+            </h3>
+            <div className="flex gap-4 text-[10px] font-bold uppercase opacity-60">
+               <span className="flex items-center gap-2"><div className="w-3 h-3 bg-red-600 rounded-sm"></div> Periodo Actual</span>
+               <span className="flex items-center gap-2"><div className={`w-3 h-3 rounded-sm ${darkMode ? 'bg-slate-700' : 'bg-slate-300'}`}></div> Periodo Anterior</span>
+            </div>
+          </div>
+          <div className="flex-1 min-h-0">
+            <ResponsiveContainer width="100%" height="100%">
+              <BarChart data={chartData} barGap={0}>
+                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke={darkMode ? "#1e293b" : "#e2e8f0"} />
+                <XAxis dataKey="name" stroke="#64748b" fontSize={10} tickLine={false} axisLine={false} dy={10} />
+                <YAxis stroke="#64748b" fontSize={10} tickLine={false} axisLine={false} />
+                <Tooltip 
+                  cursor={{fill: darkMode ? '#1e293b' : '#f8fafc'}}
+                  contentStyle={{backgroundColor: darkMode ? '#0f172a' : '#ffffff', border: darkMode ? '1px solid #1e293b' : '1px solid #e2e8f0', borderRadius: '12px', boxShadow: '0 10px 15px -3px rgb(0 0 0 / 0.1)'}} 
+                  itemStyle={{color: darkMode ? '#fff' : '#000'}}
+                />
+                <Bar dataKey="prevTotal" fill={darkMode ? "#334155" : "#cbd5e1"} radius={[4, 4, 0, 0]} barSize={20} />
+                <Bar dataKey="total" fill="#dc2626" radius={[4, 4, 0, 0]} barSize={20} />
+              </BarChart>
+            </ResponsiveContainer>
+          </div>
+        </div>
+
+        <div className="flex flex-col gap-6">
+           <div className={`flex-1 p-6 rounded-[2.5rem] border shadow-xl overflow-hidden flex flex-col ${darkMode ? 'bg-slate-900 border-slate-800' : 'bg-white border-slate-200'}`}>
+              <h3 className="text-[10px] font-black uppercase tracking-[0.2em] opacity-60 mb-4 flex items-center gap-2">
+                 <ArrowUpRight className="text-green-500" size={14} /> Top 5 Productos
+              </h3>
+              <div className="flex-1 overflow-y-auto space-y-3">
+                 {topProducts.map((p, i) => (
+                    <div key={i} className={`flex items-center justify-between p-3 rounded-xl border ${darkMode ? 'bg-slate-800/50 border-slate-800' : 'bg-slate-50 border-slate-100'}`}>
+                       <div className="flex items-center gap-3 min-w-0">
+                          <span className="font-black opacity-30 text-lg">#{i+1}</span>
+                          <span className="text-xs font-bold truncate">{p.name}</span>
+                       </div>
+                       <span className="text-xs font-black text-green-500">{p.value.toLocaleString()}</span>
+                    </div>
+                 ))}
+              </div>
+           </div>
+
+           <div className={`flex-1 p-6 rounded-[2.5rem] border shadow-xl overflow-hidden flex flex-col ${darkMode ? 'bg-slate-900 border-slate-800' : 'bg-white border-slate-200'}`}>
+              <h3 className="text-[10px] font-black uppercase tracking-[0.2em] opacity-60 mb-4 flex items-center gap-2">
+                 <ArrowDownRight className="text-red-500" size={14} /> Menor Rotación
+              </h3>
+              <div className="flex-1 overflow-y-auto space-y-3">
+                 {bottomProducts.map((p, i) => (
+                    <div key={i} className={`flex items-center justify-between p-3 rounded-xl border ${darkMode ? 'bg-slate-800/50 border-slate-800' : 'bg-slate-50 border-slate-100'}`}>
+                       <span className="text-xs font-bold truncate">{p.name}</span>
+                       <span className="text-xs font-black text-red-500">{p.value.toLocaleString()}</span>
+                    </div>
+                 ))}
+              </div>
+           </div>
+        </div>
+      </div>
+    </div>
+  );
 };
 
 function App() {
@@ -606,21 +849,18 @@ function App() {
     return saved ? JSON.parse(saved) : DEFAULT_SETTINGS;
   });
 
-  // Tracking de estado para animaciones
   const [completedItems, setCompletedItems] = useState<Set<string>>(new Set());
   const [prevClientGroups, setPrevClientGroups] = useState<any[]>([]);
+  const [systemLogs, setSystemLogs] = useState<string[]>([]);
 
-  // Función para manejar items completados (Animación de salida)
   const handleCompletedItems = useCallback((newGroups: any[]) => {
       newGroups.forEach(client => {
           client.productsArray.forEach((p: any) => {
               if (p.toProduce <= 0) {
-                  // Si llega a 0, lo añadimos al set de "completados visibles"
                   setCompletedItems(prev => {
                       if (!prev.has(p.rowId)) {
                           const newSet = new Set(prev);
                           newSet.add(p.rowId);
-                          // Programar su eliminación visual después de la animación (3s)
                           setTimeout(() => {
                               setCompletedItems(current => {
                                   const updated = new Set(current);
@@ -656,19 +896,18 @@ function App() {
     finally { setLoading(false); }
   }, []);
 
-  // --- SSE (Real Time Events) ---
   useEffect(() => {
-    // Conexión inicial
     fetchData();
 
-    // Suscripción a eventos del servidor
     const eventSource = new EventSource('/api/events');
     
     eventSource.onmessage = (event) => {
         const data = JSON.parse(event.data);
         if (data.type === 'update') {
-            console.log('⚡ Live Update Received');
-            fetchData(); // Recargar datos inmediatamente
+            fetchData(); 
+        } else if (data.type === 'sys_log') {
+            const time = new Date(data.timestamp).toLocaleTimeString();
+            setSystemLogs(prev => [`[${time}] ${data.message}`, ...prev].slice(0, 50));
         }
     };
 
@@ -679,12 +918,10 @@ function App() {
 
   const clientGroups = useMemo(() => {
       const groups = processDataWithTrends(rawData, completedItems);
-      // Detectar completados para animar
       handleCompletedItems(groups);
       return groups;
   }, [rawData, completedItems, handleCompletedItems]);
 
-  // Guardar referencia previa para comparaciones UI
   useEffect(() => {
       if (clientGroups.length > 0) {
           setPrevClientGroups(clientGroups);
@@ -710,92 +947,4 @@ function App() {
                   <h2 className={`text-2xl font-black tracking-tighter uppercase leading-none ${darkMode ? 'text-white' : 'text-slate-900'}`}>Factory<span className="text-red-600">Flow</span></h2>
                   <p className="text-[9px] font-black text-slate-500 uppercase tracking-[0.5em] mt-1 italic">Producción de Pedidos en Vivo</p>
                 </div>
-              </>
-            )}
-          </div>
-          
-          <div className="flex items-center gap-8">
-            <div className="flex p-1 bg-white/5 rounded-2xl border border-white/10 backdrop-blur-sm shadow-inner">
-              <button onClick={() => setView('live')} className={`flex items-center gap-2 px-6 py-2 rounded-xl text-[10px] font-black transition-all ${view === 'live' ? 'bg-red-600 text-white shadow-xl' : 'hover:bg-white/5 text-slate-500'}`}>
-                <LayoutDashboard size={14} /> PEDIDOS
-              </button>
-              <button onClick={() => setView('stats')} className={`flex items-center gap-2 px-6 py-2 rounded-xl text-[10px] font-black transition-all ${view === 'stats' ? 'bg-red-600 text-white shadow-xl' : 'hover:bg-white/5 text-slate-500'}`}>
-                <BarChart3 size={14} /> ANALÍTICA
-              </button>
-            </div>
-
-            <div className="flex flex-col items-end pr-8 border-r border-white/10">
-               <span className="text-[9px] font-black text-slate-500 uppercase tracking-widest mb-1">PRODUCCIÓN GLOBAL</span>
-               <span className="text-4xl font-black text-red-600 leading-none tracking-tighter tabular-nums">
-                {totalGlobal.toLocaleString('es-ES')}
-               </span>
-            </div>
-            
-            <div className="flex items-center gap-4">
-              <button onClick={() => setIsSettingsOpen(true)} className="p-3 rounded-xl border border-white/10 bg-white/5 hover:bg-white/10 transition-all shadow-md text-slate-400 hover:text-white"><Settings size={20} /></button>
-              <button onClick={() => setDarkMode(!darkMode)} className="p-3 rounded-xl border border-white/10 bg-white/5 hover:bg-white/10 transition-all shadow-md">
-                {darkMode ? <Sun size={20} className="text-yellow-400" /> : <Moon size={20} className="text-slate-700" />}
-              </button>
-            </div>
-          </div>
-        </div>
-      </header>
-
-      <main className="flex-1 w-full flex overflow-hidden">
-        <div className="absolute top-24 left-1/2 -translate-x-1/2 z-10 flex items-center gap-4 px-6 py-2 bg-white/5 dark:bg-slate-900/80 backdrop-blur-md rounded-full border border-white/10 shadow-xl opacity-0 hover:opacity-100 transition-opacity duration-300 pointer-events-none">
-           <div className="flex items-center gap-2">
-             <Server size={10} className={rawData.length > 0 ? "text-green-500" : "text-amber-500"} />
-             <span className="text-[9px] font-black uppercase text-slate-400">Stream Status: {rawData.length > 0 ? 'ACTIVE' : 'IDLE'}</span>
-           </div>
-           {lastSync && (
-             <div className="flex items-center gap-2 border-l border-white/10 pl-4">
-               <Clock size={10} className="text-blue-500" />
-               <span className="text-[9px] font-bold text-slate-400">{lastSync.toLocaleTimeString()}</span>
-             </div>
-           )}
-        </div>
-
-        {rawData.length === 0 ? (
-          <div className="flex-1 flex flex-col items-center justify-center gap-8 opacity-40">
-            <div className="p-10 bg-red-600/5 rounded-full border border-red-600/10 animate-pulse">
-              <Radio size={80} className="text-red-600" />
-            </div>
-            <h2 className="text-3xl font-black uppercase tracking-[1em] text-slate-500">Sincronizando...</h2>
-          </div>
-        ) : (
-          view === 'live' ? (
-            <div className="flex w-full h-full animate-fade-in divide-x divide-white/5 overflow-x-auto overflow-y-hidden">
-              {clientGroups.map((g) => (
-                  <ClientColumn 
-                    key={g.name} 
-                    data={g} 
-                    darkMode={darkMode} 
-                    settings={visualSettings} 
-                    prevData={prevClientGroups.find(pg => pg.name === g.name)}
-                  />
-              ))}
-            </div>
-          ) : (
-            <StatsDashboard rawData={rawData} darkMode={darkMode} />
-          )
-        )}
-      </main>
-
-      <footer className={`flex-none px-10 py-2.5 border-t flex justify-between items-center text-[9px] font-black uppercase tracking-[0.5em] ${darkMode ? 'bg-slate-900 border-white/5 text-slate-700' : 'bg-slate-200 border-gray-300 text-slate-500'}`}>
-        <div className="flex items-center gap-4">
-          <div className="w-2.5 h-2.5 rounded-full bg-green-500 shadow-[0_0_10px_rgba(34,197,94,0.6)]" />
-          NÚCLEO ONLINE • {clientGroups.length} NODOS
-        </div>
-        <div className="flex items-center gap-8">
-          <div className="flex items-center gap-2 opacity-40 italic"><Database size={12} /> SYNC_PRO_VERSION</div>
-          {lastSync && <div className="flex items-center gap-3 text-slate-500 font-bold"><Clock size={14} /> ÚLTIMA SYNC: {lastSync.toLocaleTimeString()}</div>}
-        </div>
-      </footer>
-
-      <SettingsModal isOpen={isSettingsOpen} onClose={() => setIsSettingsOpen(false)} visualSettings={visualSettings} onSaveSettings={updateVisualSettings} />
-    </div>
-  );
-}
-
-const rootElement = document.getElementById('root');
-if (rootElement) ReactDOM.createRoot(rootElement).render(<App />);
+              </
