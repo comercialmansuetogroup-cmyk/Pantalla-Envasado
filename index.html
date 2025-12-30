@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>FactoryFlow 4K - Ultra Legible</title>
+  <title>FactoryFlow 4K - Legibilidad Optimizada</title>
   
   <script src="https://cdn.tailwindcss.com"></script>
   <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
@@ -25,11 +25,11 @@
   </style>
 
   <script>
+    // Captura de errores para depuración
     window.onerror = function(message, source, lineno, colno, error) {
       if (message.includes('invariant=31') || message.includes('Objects are not valid')) {
-        console.group('%c🚨 REACT ERROR #31 DETECTADO', 'background: #7f1d1d; color: #fff; padding: 10px; font-weight: bold;');
+        console.group('%c🚨 REACT ERROR #31', 'background: #7f1d1d; color: #fff; padding: 10px; font-weight: bold;');
         console.error('Mensaje:', message);
-        if (error) console.error('Stack:', error.stack);
         console.groupEnd();
       }
       return false;
