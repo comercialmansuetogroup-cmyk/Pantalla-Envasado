@@ -12,48 +12,60 @@ const CUSTOM_DASHBOARD_TOKEN = "DASHBOARD_V3_KEY_2025";
 app.use(cors());
 app.use(bodyParser.json({ limit: '50mb' }));
 
-let latestData = null;
+// Almacén de estado global (acumulativo por zona/agente)
+let globalProductionState = {};
 
-// Servir archivos estáticos del directorio actual
+// Servir archivos estáticos
 app.use(express.static(__dirname));
 
-// Endpoint para que el Frontend obtenga los datos
+// Endpoint para obtener TODA la producción acumulada
 app.get('/api/data', (req, res) => {
-  res.json(latestData);
+  res.json({ zonas: Object.values(globalProductionState) });
 });
 
-// Endpoint Webhook para Make
+// Endpoint para resetear el dashboard (opcional)
+app.post('/api/reset', (req, res) => {
+  const authHeader = req.headers.authorization;
+  if (authHeader === `Bearer ${CUSTOM_DASHBOARD_TOKEN}`) {
+    globalProductionState = {};
+    return res.json({ status: 'reset_ok' });
+  }
+  res.status(401).json({ error: 'No autorizado' });
+});
+
+// Endpoint Webhook para Make (Acumulativo)
 app.post('/api/webhook', (req, res) => {
   const authHeader = req.headers.authorization;
   const expectedToken = `Bearer ${CUSTOM_DASHBOARD_TOKEN}`;
 
   if (!authHeader || authHeader !== expectedToken) {
-    console.warn(`[!] Intento de acceso no autorizado: ${authHeader}`);
     return res.status(401).json({ error: 'Token inválido' });
   }
 
-  if (req.body && req.body.zonas) {
-    latestData = req.body;
-    console.log(`[✓] Datos actualizados: ${req.body.zonas.length} registros.`);
-    return res.status(200).json({ status: 'ok' });
+  if (req.body && req.body.zonas && Array.isArray(req.body.zonas)) {
+    // Actualizamos el estado global zona por zona
+    req.body.zonas.forEach(nuevaZona => {
+      // Usamos el código de agente o el nombre como ID único para actualizar
+      const id = nuevaZona.codigo_agente || nuevaZona.nombre || 'sin-id';
+      globalProductionState[id] = nuevaZona;
+    });
+    
+    console.log(`[✓] Estado actualizado. Clientes totales en dashboard: ${Object.keys(globalProductionState).length}`);
+    return res.status(200).json({ status: 'ok', activeClients: Object.keys(globalProductionState).length });
   }
   
   res.status(400).json({ error: 'Formato de datos incorrecto' });
 });
 
-// Evitar servir index.html para archivos que deberían existir
 app.get('*', (req, res) => {
   const ext = path.extname(req.url);
-  if (ext && ext !== '.html') {
-    return res.status(404).send('Not found');
-  }
+  if (ext && ext !== '.html') return res.status(404).send('Not found');
   res.sendFile(path.join(__dirname, 'index.html'));
 });
 
 app.listen(PORT, () => {
   console.log(`-----------------------------------------`);
-  console.log(`🚀 FACTORYFLOW V3 - PRODUCTION READY`);
-  console.log(`📍 URL: http://localhost:${PORT}`);
-  console.log(`🔑 WEBHOOK TOKEN: Bearer ${CUSTOM_DASHBOARD_TOKEN}`);
+  console.log(`🚀 SERVIDOR ACUMULATIVO V3 ACTIVO`);
+  console.log(`🔑 TOKEN: Bearer ${CUSTOM_DASHBOARD_TOKEN}`);
   console.log(`-----------------------------------------`);
 });
