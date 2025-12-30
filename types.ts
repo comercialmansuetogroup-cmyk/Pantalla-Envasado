@@ -1,38 +1,57 @@
-export interface ProductItem {
-  codigo: string;
-  cantidad: number;
+export interface Product {
+  name: string;
+  code: string;
+  qty: number;
+  stock: number;
+  toProduce: number;
+  rowId: string;
+  trend: number;
 }
 
-export interface IncomingZoneData {
-  nombre: string;
-  codigo_agente: string;
-  nombre_agente?: string;
-  productos: ProductItem[];
+export interface ClientData {
+  name: string;
+  products: Map<string, any> | Product[];
+  productsArray: Product[];
+  total: number;
+  totalTrend: number;
+  clientId?: string;
+}
+
+export interface ClientGroup extends ClientData {
+  products: Product[];
 }
 
 export interface IncomingDataPayload {
-  zonas: IncomingZoneData[];
-}
-
-export interface AggregatedProduct {
-  name: string;
-  totalQuantity: number;
-}
-
-export interface ClientGroup {
-  clientId: string;
-  clientName: string;
-  products: AggregatedProduct[];
-  grandTotal: number;
+  zonas: any[];
 }
 
 export type TimeFilter = 'week' | 'month' | 'quarter' | 'year';
 
-export interface AppSettings {
-  webhookUrl: string;
-  apiKey: string;      // This can be the Webhook ID or the Make API Token
-  region: string;      // eu1, us1, etc.
-  refreshRate: number;
-  useMockData: boolean;
-  useProxy: boolean;   // Added to solve CORS issues in frontend-only environments
+export interface VisualSettings {
+  logoLight: string | null;
+  logoDark: string | null;
+  displayMode: 'name' | 'code' | 'both';
+  maxRowsPerCol: number;
+  nameFontSize: number;      
+  codeFontSize: number;      
+  clientNameFontSize: number; 
+  tableHeaderFontSize: number; 
+  trendFontSize: number;     
 }
+
+export const CLIENT_MAPPING: Record<string, string> = {
+  '24': 'FILIPPO', '26': 'PINGÜINO', '23': 'LA PALMA', '15': 'TENERIFE NORTE',
+  '10': 'GRAN CANARIA', '14': 'GRAN CANARIA', '5': 'GRAN CANARIA', '0': 'GRAN CANARIA'
+};
+
+export const DEFAULT_SETTINGS: VisualSettings = {
+  logoLight: null,
+  logoDark: null,
+  displayMode: 'name',
+  maxRowsPerCol: 22,      
+  nameFontSize: 15,       
+  codeFontSize: 18,       
+  clientNameFontSize: 30, 
+  tableHeaderFontSize: 10, 
+  trendFontSize: 15,      
+};

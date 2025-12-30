@@ -23,8 +23,8 @@ export const StatsDashboard: React.FC<StatsDashboardProps> = ({ data, darkMode, 
   // Prepare Chart Data (Aggregated by Client)
   const clientChartData = useMemo(() => {
     return data.map(client => ({
-      name: client.clientName,
-      total: client.grandTotal
+      name: client.name,
+      total: client.total
     }));
   }, [data]);
 
@@ -32,9 +32,18 @@ export const StatsDashboard: React.FC<StatsDashboardProps> = ({ data, darkMode, 
   const productChartData = useMemo(() => {
     const productMap = new Map<string, number>();
     data.forEach(client => {
+      // products is Product[] in ClientGroup
       client.products.forEach(prod => {
+        // In utils.ts: productsWithTrend = client.productsArray.map... so prod has name property
+        // But type Product has 'name'.
+        // However, in utils.ts logic: "productsWithTrend = ... { ...p, trend }"
+        // And p comes from visibleProducts values.
+        // It should have 'qty' or 'totalQuantity'?
+        // Product interface has 'qty'.
+        // services/dataProcessor.ts used 'totalQuantity'.
+        // utils.ts (used by App) uses 'qty'.
         const current = productMap.get(prod.name) || 0;
-        productMap.set(prod.name, current + prod.totalQuantity);
+        productMap.set(prod.name, current + prod.qty);
       });
     });
     
@@ -92,7 +101,7 @@ export const StatsDashboard: React.FC<StatsDashboardProps> = ({ data, darkMode, 
             <div>
               <p className={`text-sm font-medium ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>Total Unidades</p>
               <h3 className={`text-3xl font-bold ${darkMode ? 'text-white' : 'text-gray-900'}`}>
-                {data.reduce((acc, c) => acc + c.grandTotal, 0).toLocaleString()}
+                {data.reduce((acc, c) => acc + c.total, 0).toLocaleString()}
               </h3>
             </div>
           </div>

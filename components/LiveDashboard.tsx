@@ -1,13 +1,15 @@
 import React from 'react';
-import { ClientGroup } from '../types.ts';
-import { ClientColumn } from './ClientColumn.tsx';
+import { ClientGroup, VisualSettings } from '../types';
+import { ClientColumn } from './ClientColumn';
 
 interface LiveDashboardProps {
   data: ClientGroup[];
   darkMode: boolean;
+  settings: VisualSettings;
+  highlightedCode: string | null;
 }
 
-export const LiveDashboard: React.FC<LiveDashboardProps> = ({ data, darkMode }) => {
+export const LiveDashboard: React.FC<LiveDashboardProps> = ({ data, darkMode, settings, highlightedCode }) => {
   return (
     <div className="h-full">
       <div className={`
@@ -20,9 +22,11 @@ export const LiveDashboard: React.FC<LiveDashboardProps> = ({ data, darkMode }) 
       `}>
         {data.map((clientGroup) => (
           <ClientColumn 
-            key={clientGroup.clientId} 
+            key={clientGroup.clientId || clientGroup.name} 
             data={clientGroup} 
-            darkMode={darkMode} 
+            darkMode={darkMode}
+            settings={settings}
+            highlightedCode={highlightedCode}
           />
         ))}
       </div>

@@ -1,73 +1,81 @@
 import React from 'react';
-import { ClientGroup } from '../types';
-import { Package } from 'lucide-react';
+import { VisualSettings, ClientData } from '../types';
+import { TrendBadge } from './TrendBadge';
+import { ProductRow } from './ProductRow';
+import { roundSafe } from '../utils';
 
 interface ClientColumnProps {
-  data: ClientGroup;
-  darkMode: boolean;
+    data: ClientData;
+    darkMode: boolean;
+    settings: VisualSettings;
+    highlightedCode: string | null;
 }
 
-export const ClientColumn: React.FC<ClientColumnProps> = ({ data, darkMode }) => {
+export const ClientColumn: React.FC<ClientColumnProps> = ({ data, darkMode, settings, highlightedCode }) => {
+  const productCount = data.productsArray.length; // Use the processed array, not the map
+  const maxRows = settings.maxRowsPerCol;
+  const numCols = Math.ceil(productCount / maxRows) || 1;
+  const columns = [];
+  
+  for (let i = 0; i < numCols; i++) {
+      columns.push(data.productsArray.slice(i * maxRows, (i + 1) * maxRows));
+  }
+
+  // ANCHO FIJO: Forzamos un ancho que el navegador no pueda reducir
+  const SINGLE_COL_WIDTH = 450;
+  const columnWidth = numCols * SINGLE_COL_WIDTH;
+
   return (
-    <div className={`
-      flex flex-col h-full rounded-xl overflow-hidden shadow-lg border transition-all duration-300
-      ${darkMode ? 'bg-slate-800 border-slate-700' : 'bg-white border-gray-200'}
-    `}>
-      {/* Header */}
-      <div className={`
-        px-6 py-4 border-b flex justify-between items-center
-        ${darkMode ? 'bg-slate-900/50 border-slate-700' : 'bg-gray-50 border-gray-100'}
-      `}>
-        <h3 className={`text-xl font-bold truncate ${darkMode ? 'text-white' : 'text-gray-800'}`}>
-          {data.clientName}
-        </h3>
-        <span className={`px-2 py-1 text-xs rounded font-mono ${darkMode ? 'bg-slate-700 text-slate-300' : 'bg-gray-200 text-gray-600'}`}>
-          ID: {data.clientId.substring(0, 3).toUpperCase()}
-        </span>
+    <div 
+        style={{ width: `${columnWidth}px`, minWidth: `${columnWidth}px` }} 
+        className={`flex-none flex flex-col h-full border-r last:border-r-0 transition-all ${darkMode ? 'bg-slate-950 border-white/5' : 'bg-white border-gray-200'}`}
+    >
+      <div className={`px-4 py-4 border-b-2 ${darkMode ? 'bg-white/[0.01] border-white/10' : 'bg-gray-50 border-gray-200'}`}>
+        <div className="flex items-center justify-between mb-2">
+            <div className="flex items-center gap-4 overflow-hidden">
+                <h3 className={`font-black uppercase tracking-tighter truncate leading-none ${darkMode ? 'text-white' : 'text-gray-900'}`} style={{ fontSize: `${settings.clientNameFontSize}px` }}>
+                {data.name}
+                </h3>
+                <TrendBadge value={data.totalTrend} darkMode={darkMode} fontSize={settings.trendFontSize + 2} />
+            </div>
+        </div>
+        <div className="flex w-full">
+             {Array.from({ length: numCols }).map((_, idx) => (
+                <div key={idx} style={{ width: `${100/numCols}%` }} className={`flex justify-between items-center px-4 mt-2 opacity-50 font-black uppercase tracking-wider ${idx > 0 ? 'border-l border-white/[0.05]' : ''}`}>
+                    <span className="flex-1" style={{ fontSize: `${settings.tableHeaderFontSize}px` }}>Referencia</span>
+                    <div className="grid grid-cols-3 gap-2 w-[180px] xl:w-[220px] text-right" style={{ fontSize: `${settings.tableHeaderFontSize}px` }}>
+                        <span>Stock</span>
+                        <span>Faltante</span>
+                        <span>Total</span>
+                    </div>
+                </div>
+             ))}
+        </div>
       </div>
-
-      {/* Product List */}
-      <div className="flex-1 overflow-y-auto p-4 space-y-2">
-        {data.products.length === 0 ? (
-          <div className="h-full flex flex-col items-center justify-center text-gray-400 opacity-50">
-            <Package size={48} strokeWidth={1} />
-            <span className="mt-2 text-sm">Sin productos</span>
+      <div className="flex-1 flex overflow-hidden">
+        {columns.map((colProducts, colIdx) => (
+          <div key={colIdx} style={{ width: `${100/numCols}%` }} className={`flex flex-col p-1 ${colIdx > 0 ? 'border-l border-white/[0.05]' : ''}`}>
+            {colProducts.map((p: any) => (
+                <ProductRow 
+                    key={p.rowId} 
+                    p={p} 
+                    settings={settings} 
+                    darkMode={darkMode} 
+                    isHighlighted={highlightedCode ? p.code === highlightedCode : false}
+                />
+            ))}
+            {/* Relleno para mantener alineación vertical si la columna no está llena */}
+            {colProducts.length < maxRows && Array.from({ length: maxRows - colProducts.length }).map((_, emptyIdx) => (
+              <div key={`empty-${emptyIdx}`} className="py-2.5 px-3 border-b border-transparent opacity-0">.</div>
+            ))}
           </div>
-        ) : (
-          <table className="w-full text-left border-collapse">
-            <thead>
-              <tr className={`text-xs uppercase tracking-wider border-b ${darkMode ? 'text-gray-500 border-slate-700' : 'text-gray-400 border-gray-100'}`}>
-                <th className="pb-2 font-medium">Producto</th>
-                <th className="pb-2 text-right font-medium">Cant.</th>
-              </tr>
-            </thead>
-            <tbody className={`divide-y ${darkMode ? 'divide-slate-700/50' : 'divide-gray-100'}`}>
-              {data.products.map((product, idx) => (
-                <tr key={`${data.clientId}-${product.name}-${idx}`} className="group">
-                  <td className={`py-3 pr-4 font-medium transition-colors ${darkMode ? 'text-slate-300 group-hover:text-white' : 'text-slate-700 group-hover:text-black'}`}>
-                    {product.name}
-                  </td>
-                  <td className={`py-3 text-right font-bold text-lg tabular-nums ${darkMode ? 'text-white' : 'text-gray-900'}`}>
-                    {product.totalQuantity}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        )}
+        ))}
       </div>
-
-      {/* Footer / Grand Total */}
-      <div className={`
-        px-6 py-5 mt-auto border-t
-        ${darkMode ? 'bg-slate-900/80 border-slate-700' : 'bg-red-50 border-red-100'}
-      `}>
-        <div className="flex justify-between items-center">
-          <span className={`text-sm font-semibold uppercase tracking-wider ${darkMode ? 'text-gray-400' : 'text-red-800/70'}`}>
-            Gran Total
-          </span>
-          <span className={`text-3xl font-black ${darkMode ? 'text-red-500' : 'text-red-600'}`}>
-            {data.grandTotal}
+      <div className={`px-8 py-6 mt-auto border-t-2 ${darkMode ? 'bg-red-600/[0.03] border-red-600/20' : 'bg-red-50 border-red-200'}`}>
+        <div className={`flex flex-col ${numCols > 1 ? 'items-center text-center' : 'items-start'}`}>
+          <span className="text-[11px] font-black uppercase text-slate-500 tracking-[0.2em] leading-none mb-2">TOTAL PEDIDOS</span>
+          <span className={`font-black text-red-600 leading-none tabular-nums tracking-tighter ${numCols > 1 ? 'text-8xl' : 'text-7xl xl:text-8xl'}`}>
+            {roundSafe(data.total).toLocaleString('es-ES')}
           </span>
         </div>
       </div>
