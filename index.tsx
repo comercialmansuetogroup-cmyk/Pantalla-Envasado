@@ -4,7 +4,7 @@ import {
   Factory, Moon, Sun, Clock, Radio, AlertTriangle, Database, Loader2, 
   TrendingUp, TrendingDown, LayoutDashboard, BarChart3, Calendar, ArrowUpRight, ArrowDownRight,
   ChevronUp, ChevronDown, Settings, Upload, Eye, Type, X, Globe, Clipboard, ArrowRight, Layout,
-  Server, Key, Info, FileSpreadsheet, Printer, Download, Filter, Percent, Minus
+  Server, Key, Info, FileSpreadsheet, Printer, Download, Filter, Percent, Minus, Package, Hammer
 } from 'lucide-react';
 import { 
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, 
@@ -233,7 +233,7 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose, visualSe
   );
 };
 
-// --- PROCESADOR DE TENDENCIAS ---
+// --- PROCESADOR DE TENDENCIAS Y STOCK ---
 const processDataWithTrends = (rawZones: any[]) => {
   if (!rawZones || rawZones.length === 0) return [];
 
@@ -257,14 +257,35 @@ const processDataWithTrends = (rawZones: any[]) => {
       const prodName = String(z.nombre || 'PRODUCTO').trim().toUpperCase();
       const prodCode = String(z.codigo_agente || 'N/A').trim();
       
-      let qty = Array.isArray(z.productos) ? z.productos.reduce((acc: number, p: any) => acc + (Number(p.cantidad) || 0), 0) : Number(z.cantidad) || 0;
+      let qty = 0;
+      let stock = 0;
+
+      if (Array.isArray(z.productos)) {
+        qty = z.productos.reduce((acc: number, p: any) => acc + (Number(p.cantidad) || 0), 0);
+        // Asumimos que el stock viene en la primera entrada del array de productos para este lote, 
+        // o tomamos el máximo si hay múltiples entradas.
+        // La lógica ideal sería por código de producto específico, pero aquí agrupamos por Nombre de Producto (prodName).
+        // Iteramos para sumar stock si fuera necesario, aunque el stock físico suele ser un valor absoluto no sumable.
+        // Tomaremos el valor del primer producto encontrado o el mayor reportado.
+        z.productos.forEach((p: any) => {
+            const s = Number(p.stock_fisico) || 0;
+            if (s > stock) stock = s;
+        });
+      } else {
+        qty = Number(z.cantidad) || 0;
+        stock = Number(z.stock_fisico) || 0;
+      }
+      
       const itemCode = (z.productos && z.productos[0]?.codigo) || prodCode;
 
       if (!c.products.has(prodName)) {
-        c.products.set(prodName, { name: prodName, code: itemCode, qty: 0 });
+        c.products.set(prodName, { name: prodName, code: itemCode, qty: 0, stock: 0 });
       }
       const p = c.products.get(prodName);
       p.qty += qty;
+      // Actualizamos stock con el último valor reportado (o el mayor encontrado en el lote)
+      if (stock > p.stock) p.stock = stock; 
+      
       c.total += qty;
     });
     return clients;
@@ -286,7 +307,11 @@ const processDataWithTrends = (rawZones: any[]) => {
       const prevProd = prevStatsForClient?.products.get(p.name);
       const prevQty = prevProd?.qty || 0;
       const trend = prevQty > 0 ? ((p.qty - prevQty) / prevQty) * 100 : 0;
-      return { ...p, trend };
+      
+      // Cálculo: A Producir = Cantidad Pedida - Stock Bodega
+      const toProduce = p.qty - p.stock;
+
+      return { ...p, trend, toProduce };
     }).sort((a: any, b: any) => b.qty - a.qty);
 
     const totalTrend = (prevStatsForClient?.total > 0) ? ((client.total - prevStatsForClient.total) / prevStatsForClient.total) * 100 : 0;
@@ -328,8 +353,9 @@ const ProductRow: React.FC<{ p: any; settings: VisualSettings; darkMode: boolean
   const showCode = settings.displayMode === 'code' || settings.displayMode === 'both';
 
   return (
-    <div className={`flex items-center justify-between py-2 px-4 border-b group transition-colors gap-x-4 ${darkMode ? 'border-white/[0.04] hover:bg-white/[0.02]' : 'border-gray-100 hover:bg-gray-50'}`}>
-      <div className="flex-1 min-w-0 flex items-center gap-4">
+    <div className={`flex items-center justify-between py-2 px-4 border-b group transition-colors gap-x-2 ${darkMode ? 'border-white/[0.04] hover:bg-white/[0.02]' : 'border-gray-100 hover:bg-gray-50'}`}>
+      {/* Sección Izquierda: Info Producto */}
+      <div className="flex-1 min-w-0 flex items-center gap-2 pr-2">
         <div className="flex flex-col min-w-0">
           {showCode && (
             <div className="flex items-center gap-2 mb-0.5">
@@ -339,7 +365,6 @@ const ProductRow: React.FC<{ p: any; settings: VisualSettings; darkMode: boolean
               >
                 #{p.code}
               </span>
-              {/* Trend Badge next to Code/Item as requested for individual line analysis */}
               <TrendBadge value={p.trend} darkMode={darkMode} size="sm" />
             </div>
           )}
@@ -354,9 +379,26 @@ const ProductRow: React.FC<{ p: any; settings: VisualSettings; darkMode: boolean
         </div>
       </div>
       
-      {/* Cantidad Total */}
-      <div className={`text-xl xl:text-3xl font-black tabular-nums group-hover:text-red-600 transition-all leading-none min-w-[80px] text-right ${darkMode ? 'text-white' : 'text-slate-900'}`}>
-        {p.qty.toLocaleString('es-ES')}
+      {/* Sección Derecha: Columnas Numéricas (Grid fijo para alineación) */}
+      <div className="grid grid-cols-3 gap-2 w-[180px] xl:w-[220px] text-right items-center">
+        {/* STOCK */}
+        <div className={`font-bold tabular-nums text-sm ${darkMode ? 'text-blue-400' : 'text-blue-600'}`}>
+           {p.stock > 0 ? p.stock.toLocaleString('es-ES') : '-'}
+        </div>
+
+        {/* A PRODUCIR (Prod.) */}
+        <div className={`font-black tabular-nums text-sm ${
+          p.toProduce > 0 
+             ? 'text-orange-500' 
+             : (darkMode ? 'text-green-500/50' : 'text-green-600/50')
+        }`}>
+           {p.toProduce.toLocaleString('es-ES')}
+        </div>
+
+        {/* TOTAL PEDIDO */}
+        <div className={`text-xl font-black tabular-nums group-hover:text-red-600 transition-all leading-none ${darkMode ? 'text-white' : 'text-slate-900'}`}>
+          {p.qty.toLocaleString('es-ES')}
+        </div>
       </div>
     </div>
   );
@@ -370,22 +412,31 @@ const ClientColumn: React.FC<{ data: any; darkMode: boolean; settings: VisualSet
   for (let i = 0; i < numCols; i++) columns.push(data.products.slice(i * maxRows, (i + 1) * maxRows));
 
   return (
-    <div style={{ flex: `${numCols} 0 0` }} className={`flex flex-col h-full border-r last:border-r-0 transition-all ${darkMode ? 'bg-slate-950 border-white/5' : 'bg-white border-gray-200'}`}>
-      <div className={`px-6 py-4 border-b-2 ${numCols > 1 ? 'text-center' : 'text-left'} ${darkMode ? 'bg-white/[0.01] border-white/10' : 'bg-gray-50 border-gray-200'}`}>
-        <div className={`flex items-center gap-4 ${numCols > 1 ? 'justify-center' : 'justify-between'}`}>
-          <div className="flex items-center gap-3 overflow-hidden">
-            <h3 className={`text-xl xl:text-2xl font-black uppercase tracking-tighter truncate ${darkMode ? 'text-white' : 'text-gray-900'}`}>
-              {data.name}
-            </h3>
-            {/* Trend Badge next to Client Name for Global Zone Trend */}
-            <TrendBadge value={data.totalTrend} darkMode={darkMode} size="md" />
-          </div>
+    <div style={{ flex: `${numCols} 0 0` }} className={`flex flex-col h-full border-r last:border-r-0 transition-all min-w-[450px] ${darkMode ? 'bg-slate-950 border-white/5' : 'bg-white border-gray-200'}`}>
+      <div className={`px-4 py-4 border-b-2 ${darkMode ? 'bg-white/[0.01] border-white/10' : 'bg-gray-50 border-gray-200'}`}>
+        <div className="flex justify-between items-center mb-2">
+            <div className="flex items-center gap-3 overflow-hidden">
+                <h3 className={`text-xl xl:text-2xl font-black uppercase tracking-tighter truncate ${darkMode ? 'text-white' : 'text-gray-900'}`}>
+                {data.name}
+                </h3>
+                <TrendBadge value={data.totalTrend} darkMode={darkMode} size="md" />
+            </div>
+        </div>
+        
+        {/* Cabecera de Columnas Internas */}
+        <div className="flex justify-between items-center px-2 mt-2 opacity-50 text-[9px] font-black uppercase tracking-wider">
+            <span className="flex-1">Referencia</span>
+            <div className="grid grid-cols-3 gap-2 w-[180px] xl:w-[220px] text-right">
+                <span>Stock</span>
+                <span>Prod.</span>
+                <span>Total</span>
+            </div>
         </div>
       </div>
       
       <div className="flex-1 flex overflow-hidden">
         {columns.map((colProducts, colIdx) => (
-          <div key={colIdx} className={`flex-1 flex flex-col p-2 ${colIdx > 0 ? 'border-l border-white/[0.05]' : ''}`}>
+          <div key={colIdx} className={`flex-1 flex flex-col p-1 ${colIdx > 0 ? 'border-l border-white/[0.05]' : ''}`}>
             {colProducts.map((p: any, i: number) => <ProductRow key={i} p={p} settings={settings} darkMode={darkMode} />)}
             {colProducts.length < maxRows && Array.from({ length: maxRows - colProducts.length }).map((_, emptyIdx) => (
               <div key={`empty-${emptyIdx}`} className="py-2.5 px-3 border-b border-transparent opacity-0">.</div>
@@ -396,7 +447,7 @@ const ClientColumn: React.FC<{ data: any; darkMode: boolean; settings: VisualSet
       
       <div className={`px-8 py-6 mt-auto border-t-2 ${darkMode ? 'bg-red-600/[0.03] border-red-600/20' : 'bg-red-50 border-red-200'}`}>
         <div className={`flex flex-col ${numCols > 1 ? 'items-center text-center' : 'items-start'}`}>
-          <span className="text-[11px] font-black uppercase text-slate-500 tracking-[0.2em] leading-none mb-2">PRODUCCIÓN ACUMULADA</span>
+          <span className="text-[11px] font-black uppercase text-slate-500 tracking-[0.2em] leading-none mb-2">TOTAL PEDIDOS</span>
           <span className={`font-black text-red-600 leading-none tabular-nums tracking-tighter ${numCols > 1 ? 'text-8xl' : 'text-7xl xl:text-8xl'}`}>
             {roundSafe(data.total).toLocaleString('es-ES')}
           </span>
@@ -423,8 +474,6 @@ const StatsDashboard: React.FC<{ rawData: any[], darkMode: boolean }> = ({ rawDa
 
       if (Array.isArray(z.productos)) {
         z.productos.forEach((p: any) => {
-           // const name = (p.nombre || z.nombre || 'ITEM').toUpperCase(); // Old Logic
-           // Adjust logic to extract name if possible, or fallback
            const name = (z.nombre || p.codigo || 'ITEM').toUpperCase();
            const q = Number(p.cantidad) || 0;
            productMap.set(name, (productMap.get(name) || 0) + q);
