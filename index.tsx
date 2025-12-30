@@ -43,6 +43,38 @@ const roundSafe = (num: any): number => {
   return isNaN(val) ? 0 : Math.round((val + Number.EPSILON) * 100) / 100;
 };
 
+// Detecta patrones de peso en el nombre (ej: "1,35 KG") y convierte el total (kg) a unidades (enteros)
+const extractUnitsFromDescription = (description: string, totalWeight: any): number => {
+  const numericWeight = Number(totalWeight) || 0;
+  if (numericWeight === 0) return 0;
+  if (!description) return Math.round(numericWeight);
+
+  // Regex para buscar patrones como: "1,35 KG", "1.5KG", "1 KG", "150 G", "500GR"
+  // Grupo 1: El número (admite coma o punto). Grupo 2: La unidad.
+  const weightRegex = /(\d+[.,]?\d*)\s*(KG|KILO|K|G|GR|GRAMOS)/i;
+  const match = description.match(weightRegex);
+
+  if (match) {
+    let unitWeight = parseFloat(match[1].replace(',', '.'));
+    const unitType = match[2].toUpperCase();
+
+    // Si detectamos gramos (G, GR), convertimos a KG (dividiendo por 1000) asumiendo que el input total viene en KG
+    // Ojo: Esto asume que 'totalWeight' siempre viene en KG si el producto es por peso.
+    if (unitType.startsWith('G')) {
+      unitWeight = unitWeight / 1000;
+    }
+
+    if (unitWeight > 0) {
+      // Cálculo: Peso Total / Peso por Unidad = Unidades
+      // Ejemplo: 2.42 kg / 1.35 kg/u = 1.79 -> Math.round -> 2 Unidades
+      return Math.round(numericWeight / unitWeight);
+    }
+  }
+
+  // Fallback: Si no hay patrón de peso, redondeamos el número tal cual (asumiendo que ya son unidades o kilos sin conversión)
+  return Math.round(numericWeight);
+};
+
 // --- COMPONENTE MODAL DE CONFIGURACIÓN ---
 interface SettingsModalProps {
   isOpen: boolean;
@@ -250,7 +282,7 @@ const processDataWithTrends = (rawZones: any[]) => {
 
   // Helper para procesar un set de datos (de una fecha específica)
   const processDataSet = (date: string) => {
-    // A. Identificar Stock Global por Producto y DEMANDA GLOBAL (NUEVO REQUISITO)
+    // A. Identificar Stock Global por Producto y DEMANDA GLOBAL
     const globalStockMap = new Map<string, number>();
     const globalDemandMap = new Map<string, number>();
     
@@ -265,14 +297,20 @@ const processDataWithTrends = (rawZones: any[]) => {
       }
       
       const c = clientsMap.get(clientName);
-      const prodCode = String(z.codigo_agente || 'N/A').trim(); 
+      const prodCode = String(z.codigo_agente || 'N/A').trim();
+      
+      // Usamos z.nombre para la extracción de unidades si está disponible, ya que suele contener la descripción completa
+      const prodDescription = String(z.nombre || '').toUpperCase();
 
       // Procesar productos dentro de la zona
       if (Array.isArray(z.productos)) {
         z.productos.forEach((p: any) => {
           const pNameKey = (z.nombre || p.codigo || 'ITEM').toUpperCase(); 
-          const qty = Number(p.cantidad) || 0;
-          const stock = Number(p.stock_fisico) || 0;
+          
+          // CONVERSIÓN DE UNIDADES (Nuevo)
+          // Usamos la descripción (z.nombre) para detectar si hay patrón de peso (ej: 1,35 KG) y convertimos la cantidad raw
+          const qty = extractUnitsFromDescription(prodDescription, p.cantidad);
+          const stock = extractUnitsFromDescription(prodDescription, p.stock_fisico);
           
           // Actualizar Stock Global si encontramos un valor mayor (fuente de verdad)
           if (stock > (globalStockMap.get(pNameKey) || 0)) {
@@ -293,8 +331,10 @@ const processDataWithTrends = (rawZones: any[]) => {
         });
       } else {
         const pNameKey = String(z.nombre || 'ITEM').toUpperCase();
-        const qty = Number(z.cantidad) || 0;
-        const stock = Number(z.stock_fisico) || 0;
+        
+        // CONVERSIÓN DE UNIDADES (Nuevo)
+        const qty = extractUnitsFromDescription(prodDescription, z.cantidad);
+        const stock = extractUnitsFromDescription(prodDescription, z.stock_fisico);
         
         if (stock > (globalStockMap.get(pNameKey) || 0)) globalStockMap.set(pNameKey, stock);
         // CALCULAR DEMANDA TOTAL GLOBAL
@@ -544,14 +584,22 @@ const StatsDashboard: React.FC<{ rawData: any[], darkMode: boolean }> = ({ rawDa
     
     rawData.forEach(z => {
       const d = z.receivedAt ? z.receivedAt.split('T')[0] : 'Legacy';
-      let qty = Array.isArray(z.productos) ? z.productos.reduce((a: any, p: any) => a + (Number(p.cantidad) || 0), 0) : Number(z.cantidad || 0);
+      // CONVERSIÓN DE UNIDADES (Nuevo) en Stats también
+      const prodDescription = String(z.nombre || '').toUpperCase();
+      
+      let qty = 0;
+      if (Array.isArray(z.productos)) {
+        qty = z.productos.reduce((a: any, p: any) => a + extractUnitsFromDescription(prodDescription, p.cantidad), 0);
+      } else {
+        qty = extractUnitsFromDescription(prodDescription, z.cantidad);
+      }
       
       map.set(d, (map.get(d) || 0) + qty);
 
       if (Array.isArray(z.productos)) {
         z.productos.forEach((p: any) => {
            const name = (z.nombre || p.codigo || 'ITEM').toUpperCase();
-           const q = Number(p.cantidad) || 0;
+           const q = extractUnitsFromDescription(prodDescription, p.cantidad);
            productMap.set(name, (productMap.get(name) || 0) + q);
         });
       } else {
