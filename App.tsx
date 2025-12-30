@@ -1,10 +1,10 @@
-import React, { useState, useEffect, useCallback, useRef } from 'react';
-import { Header } from './components/Header';
-import { LiveDashboard } from './components/LiveDashboard';
-import { StatsDashboard } from './components/StatsDashboard';
-import { SettingsModal } from './components/SettingsModal';
-import { processIncomingData } from './services/dataProcessor';
-import { ClientGroup, AppSettings } from './types';
+import React, { useState, useEffect, useRef } from 'react';
+import { Header } from './components/Header.tsx';
+import { LiveDashboard } from './components/LiveDashboard.tsx';
+import { StatsDashboard } from './components/StatsDashboard.tsx';
+import { SettingsModal } from './components/SettingsModal.tsx';
+import { processIncomingData } from './services/dataProcessor.ts';
+import { ClientGroup } from './types.ts';
 import { Server, Radio, Clock, Database, Loader2 } from 'lucide-react';
 
 const App: React.FC = () => {
@@ -16,7 +16,6 @@ const App: React.FC = () => {
   const [error, setError] = useState<string | null>(null);
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
   
-  // Ref para evitar múltiples peticiones simultáneas
   const isFetchingRef = useRef(false);
 
   const fetchData = async () => {
@@ -26,7 +25,7 @@ const App: React.FC = () => {
 
     try {
       const response = await fetch('/api/data');
-      if (!response.ok) throw new Error("Error de conexión con el servidor");
+      if (!response.ok) throw new Error("Servidor no responde");
       
       const data = await response.json();
       
@@ -36,24 +35,21 @@ const App: React.FC = () => {
         setLastUpdated(new Date());
         setError(null);
       } else {
-        // El servidor respondió pero no hay datos aún
         if (clientGroups.length === 0) {
-          setError("SISTEMA ACTIVO: Esperando primera señal de datos desde Make...");
+          setError("EN LÍNEA: Esperando primera señal de Make...");
         }
       }
     } catch (err: any) {
-      console.error("Fetch error:", err);
-      setError("ERROR DE RED: No se puede conectar con la API de Railway.");
+      setError("ERROR DE RED: Comprueba la conexión con Railway.");
     } finally {
       setLoading(false);
       isFetchingRef.current = false;
     }
   };
 
-  // Efecto de refresco automático
   useEffect(() => {
-    fetchData(); // Carga inicial
-    const timer = setInterval(fetchData, 5000); // Cada 5 segundos
+    fetchData();
+    const timer = setInterval(fetchData, 4000); 
     return () => clearInterval(timer);
   }, []);
 
@@ -68,23 +64,21 @@ const App: React.FC = () => {
       />
 
       <main className="p-8 max-w-[2400px] mx-auto w-full">
-        
-        {/* Barra de Estado Real-Time */}
         <div className="mb-8 flex flex-col md:flex-row items-center justify-between gap-4 px-8 py-4 bg-white/5 dark:bg-slate-900/40 backdrop-blur-xl rounded-[2rem] border border-white/10 shadow-2xl">
           <div className="flex items-center gap-5">
             <div className="relative flex h-4 w-4">
               <span className={`animate-ping absolute inline-flex h-full w-full rounded-full opacity-75 ${error ? 'bg-amber-500' : 'bg-green-500'}`}></span>
               <span className={`relative inline-flex rounded-full h-4 w-4 ${error ? 'bg-amber-500' : 'bg-green-500'}`}></span>
             </div>
-            <div className="flex flex-col">
+            <div className="flex flex-col text-left">
               <div className="flex items-center gap-2">
                 <Server size={14} className="text-red-600" />
                 <span className="text-sm font-black tracking-tight uppercase">
-                  {error ? 'Status: Standby' : 'Status: En Línea'}
+                  {error ? 'Status: Standby' : 'Status: Conectado'}
                 </span>
               </div>
               <span className="text-[10px] opacity-40 uppercase tracking-[0.2em] font-black">
-                Terminal de Envasado v3.1
+                PRODUCCIÓN REAL-TIME V3
               </span>
             </div>
           </div>
@@ -101,12 +95,11 @@ const App: React.FC = () => {
             )}
             <div className="flex items-center gap-3 opacity-60">
               <Database size={14} />
-              <span className="text-[11px] font-black uppercase tracking-wider">Railway Node Engine</span>
+              <span className="text-[11px] font-black uppercase tracking-wider">Railway Engine</span>
             </div>
           </div>
         </div>
 
-        {/* Pantalla de Espera / Error */}
         {clientGroups.length === 0 && (
           <div className="mt-20 flex flex-col items-center justify-center text-center space-y-8 animate-fade-in-up">
             <div className="relative">
@@ -116,23 +109,22 @@ const App: React.FC = () => {
                </div>
             </div>
             <div className="max-w-md space-y-3">
-              <h2 className="text-3xl font-black uppercase tracking-tighter">Esperando Transmisión</h2>
+              <h2 className="text-3xl font-black uppercase tracking-tighter">Esperando Datos de Make</h2>
               <p className="text-sm text-gray-500 dark:text-gray-400 leading-relaxed font-medium px-4">
-                {error || "Conexión establecida. El panel se actualizará automáticamente cuando Make envíe el primer lote de datos."}
+                {error || "Todo está listo. Lanza el escenario en Make para empezar a ver los pedidos en tiempo real."}
               </p>
               <div className="pt-6">
                 <button 
                   onClick={() => setIsSettingsOpen(true)}
                   className="px-8 py-3 bg-red-600 text-white rounded-2xl font-black uppercase tracking-widest text-xs hover:bg-red-700 transition-all shadow-lg shadow-red-600/20"
                 >
-                  Ver Guía de Conexión
+                  Configurar Make HTTP
                 </button>
               </div>
             </div>
           </div>
         )}
 
-        {/* Dashboards Principales */}
         {clientGroups.length > 0 && (
           <div className="animate-fade-in">
             {currentView === 'live' ? (

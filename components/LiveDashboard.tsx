@@ -1,6 +1,6 @@
 import React from 'react';
-import { ClientGroup } from '../types';
-import { ClientColumn } from './ClientColumn';
+import { ClientGroup } from '../types.ts';
+import { ClientColumn } from './ClientColumn.tsx';
 
 interface LiveDashboardProps {
   data: ClientGroup[];
@@ -10,13 +10,6 @@ interface LiveDashboardProps {
 export const LiveDashboard: React.FC<LiveDashboardProps> = ({ data, darkMode }) => {
   return (
     <div className="h-full">
-      {/* 
-        Dynamic Grid System:
-        - Mobile: 1 col
-        - Tablet: 2 cols
-        - Desktop: 3 cols
-        - Large Desktop (4K): 4 or 5 cols depending on count
-       */}
       <div className={`
         grid gap-6 h-full items-start
         grid-cols-1 
@@ -32,12 +25,6 @@ export const LiveDashboard: React.FC<LiveDashboardProps> = ({ data, darkMode }) 
             darkMode={darkMode} 
           />
         ))}
-        
-        {data.length === 0 && (
-          <div className="col-span-full h-96 flex items-center justify-center text-gray-500">
-            <p className="text-xl">Esperando datos en tiempo real...</p>
-          </div>
-        )}
       </div>
     </div>
   );

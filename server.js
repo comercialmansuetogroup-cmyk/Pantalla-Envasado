@@ -6,12 +6,15 @@ const bodyParser = require('body-parser');
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-// Configuración manual de tipos MIME para evitar el error "application/octet-stream"
-express.static.mime.define({
-  'application/javascript': ['ts', 'tsx']
+// Middleware para forzar MIME types antes de cualquier otra ruta
+app.use((req, res, next) => {
+  if (req.url.endsWith('.tsx') || req.url.endsWith('.ts')) {
+    res.setHeader('Content-Type', 'application/javascript');
+  }
+  next();
 });
 
-// Almacenamiento en memoria
+// Almacenamiento en memoria (Persiste en Railway hasta el próximo reinicio)
 let latestData = null;
 
 app.use(cors());
@@ -23,29 +26,34 @@ app.post('/api/webhook', (req, res) => {
   const expectedToken = `Bearer ${process.env.VITE_MAKE_API_KEY || '563027d1-1af0-4c0e-a385-74cc322f2f66'}`;
 
   if (!authHeader || authHeader !== expectedToken) {
-    console.error('[!] Error de Seguridad: Token inválido desde Make.');
+    console.error('[!] Seguridad: Token inválido.');
     return res.status(401).json({ error: 'No autorizado' });
   }
 
   if (req.body && req.body.zonas) {
     latestData = req.body;
-    console.log(`[✓] DATOS RECIBIDOS: ${req.body.zonas.length} líneas procesadas.`);
+    console.log(`[✓] OK: Recibidos datos de producción.`);
     return res.status(200).json({ status: 'success' });
   }
-  res.status(400).json({ error: 'Formato inválido' });
+  res.status(400).json({ error: 'JSON mal formado' });
 });
 
+// API para que el Dashboard lea los datos
 app.get('/api/data', (req, res) => {
   res.json(latestData);
 });
 
-// Servir estáticos con la configuración de MIME types activa
+// Servir archivos estáticos
 app.use(express.static(__dirname));
 
+// El catch-all solo debe aplicarse si NO es una petición a un archivo .tsx o .js
 app.get('*', (req, res) => {
+  if (req.url.includes('.') && !req.url.endsWith('.html')) {
+    return res.status(404).send('Not found');
+  }
   res.sendFile(path.join(__dirname, 'index.html'));
 });
 
 app.listen(PORT, () => {
-  console.log(`SERVER RUNNING ON PORT ${PORT}`);
+  console.log(`FACTORY OPS SERVER: Activo en puerto ${PORT}`);
 });
