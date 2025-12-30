@@ -167,7 +167,7 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose, visualSe
                 <p className="text-[10px] font-black uppercase text-slate-400">Logotipo Modo Claro</p>
                 <div className="flex items-center gap-4">
                   <div className="w-16 h-16 bg-white rounded-xl border border-slate-200 flex items-center justify-center overflow-hidden">
-                    {localSettings.logoLight ? <img src={localSettings.logoLight} className="w-full h-full object-contain" /> : <Factory className="text-slate-300" />}
+                    {localSettings.logoLight ? <img src={localSettings.logoLight} alt="Logo Light" className="w-full h-full object-contain" /> : <Factory className="text-slate-300" />}
                   </div>
                   <label className="flex-1 cursor-pointer py-3 px-4 bg-red-600 text-white rounded-xl text-center font-black text-xs uppercase hover:bg-red-700 transition-colors">
                     Subir Imagen
@@ -179,7 +179,7 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose, visualSe
                 <p className="text-[10px] font-black uppercase text-slate-500">Logotipo Modo Oscuro</p>
                 <div className="flex items-center gap-4">
                   <div className="w-16 h-16 bg-slate-800 rounded-xl border border-slate-700 flex items-center justify-center overflow-hidden">
-                    {localSettings.logoDark ? <img src={localSettings.logoDark} className="w-full h-full object-contain" /> : <Factory className="text-slate-600" />}
+                    {localSettings.logoDark ? <img src={localSettings.logoDark} alt="Logo Dark" className="w-full h-full object-contain" /> : <Factory className="text-slate-600" />}
                   </div>
                   <label className="flex-1 cursor-pointer py-3 px-4 bg-red-600 text-white rounded-xl text-center font-black text-xs uppercase hover:bg-red-700 transition-colors">
                     Subir Imagen
@@ -538,11 +538,13 @@ const ClientColumn: React.FC<{ data: any; darkMode: boolean; settings: VisualSet
   const columns = [];
   for (let i = 0; i < numCols; i++) columns.push(data.products.slice(i * maxRows, (i + 1) * maxRows));
 
-  const columnWidth = Math.max(450, numCols * 450);
+  const SINGLE_COL_WIDTH = 450;
+  const columnWidth = numCols * SINGLE_COL_WIDTH;
 
-  // CAMBIO IMPORTANTE: flex-shrink-0 para evitar que se comprima
+  // CAMBIO IMPORTANTE: Ancho fijo estricto para evitar compresión (width y flex-none)
+  // Añadimos ancho porcentual exacto a las columnas internas
   return (
-    <div style={{ minWidth: `${columnWidth}px` }} className={`flex-shrink-0 flex-1 flex flex-col h-full border-r last:border-r-0 transition-all ${darkMode ? 'bg-slate-950 border-white/5' : 'bg-white border-gray-200'}`}>
+    <div style={{ width: `${columnWidth}px` }} className={`flex-none flex flex-col h-full border-r last:border-r-0 transition-all ${darkMode ? 'bg-slate-950 border-white/5' : 'bg-white border-gray-200'}`}>
       <div className={`px-4 py-4 border-b-2 ${darkMode ? 'bg-white/[0.01] border-white/10' : 'bg-gray-50 border-gray-200'}`}>
         <div className="flex items-center justify-between mb-2">
             <div className="flex items-center gap-4 overflow-hidden">
@@ -554,7 +556,7 @@ const ClientColumn: React.FC<{ data: any; darkMode: boolean; settings: VisualSet
         </div>
         <div className="flex w-full">
              {Array.from({ length: numCols }).map((_, idx) => (
-                <div key={idx} className={`flex-1 flex justify-between items-center px-4 mt-2 opacity-50 font-black uppercase tracking-wider ${idx > 0 ? 'border-l border-white/[0.05]' : ''}`} style={{ fontSize: `${settings.tableHeaderFontSize}px` }}>
+                <div key={idx} style={{ width: `${100/numCols}%` }} className={`flex justify-between items-center px-4 mt-2 opacity-50 font-black uppercase tracking-wider ${idx > 0 ? 'border-l border-white/[0.05]' : ''}`} style={{ fontSize: `${settings.tableHeaderFontSize}px` }}>
                     <span className="flex-1">Referencia</span>
                     <div className="grid grid-cols-3 gap-2 w-[180px] xl:w-[220px] text-right">
                         <span>Stock Disp.</span>
@@ -567,7 +569,7 @@ const ClientColumn: React.FC<{ data: any; darkMode: boolean; settings: VisualSet
       </div>
       <div className="flex-1 flex overflow-hidden">
         {columns.map((colProducts, colIdx) => (
-          <div key={colIdx} className={`flex-1 flex flex-col p-1 ${colIdx > 0 ? 'border-l border-white/[0.05]' : ''}`}>
+          <div key={colIdx} style={{ width: `${100/numCols}%` }} className={`flex flex-col p-1 ${colIdx > 0 ? 'border-l border-white/[0.05]' : ''}`}>
             {colProducts.map((p: any) => (
                 <ProductRow 
                     key={p.rowId} 

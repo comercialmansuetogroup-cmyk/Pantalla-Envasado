@@ -119,7 +119,7 @@ app.post('/api/scan', (req, res) => {
           prod.stock_fisico = (Number(prod.stock_fisico) || 0) + qtyToAdd;
           productFound = true;
           updatedProduct = prod.nombre || prod.codigo;
-          updatedCode = pCode; // Guardamos el código real del producto actualizado
+          updatedCode = pCode;
         }
       }
     } else {
@@ -140,8 +140,7 @@ app.post('/api/scan', (req, res) => {
   if (productFound) {
     const msg = `MATCH: ${updatedProduct} (+${qtyToAdd})`;
     console.log(`✅ ${msg}`);
-    broadcastLog(msg); // Enviar log al frontend
-    // Enviamos updatedCode para que el frontend sepa EXACTAMENTE qué fila iluminar
+    broadcastLog(msg); 
     broadcastUpdate({ updatedCode }); 
     return res.json({ status: 'ok', message: 'Stock actualizado', codigo, added: qtyToAdd });
   } else {
@@ -167,7 +166,7 @@ app.post('/api/reset', (req, res) => {
 });
 
 /**
- * Webhook acumulativo
+ * Webhook REEMPLAZO (Evita duplicidad, preserva stock)
  */
 app.post('/api/webhook', (req, res) => {
   const authHeader = req.headers.authorization;
@@ -179,18 +178,58 @@ app.post('/api/webhook', (req, res) => {
 
   if (req.body && req.body.zonas && Array.isArray(req.body.zonas)) {
     const timestamp = new Date().toISOString();
+    
+    // 1. MAPEAR STOCK EXISTENTE (Para no perder lo escaneado)
+    const currentStockMap = new Map();
+    const saveStock = (list) => {
+        list.forEach(zona => {
+            if (Array.isArray(zona.productos)) {
+                zona.productos.forEach(p => {
+                    const key = String(p.codigo || p.nombre || '').trim().toUpperCase();
+                    if (p.stock_fisico > 0) currentStockMap.set(key, p.stock_fisico);
+                });
+            } else {
+                const key = String(zona.codigo_agente || zona.nombre || '').trim().toUpperCase();
+                if (zona.stock_fisico > 0) currentStockMap.set(key, zona.stock_fisico);
+            }
+        });
+    };
+    saveStock(allProductionLines);
+
+    // 2. REEMPLAZAR DATOS (Overwrite)
     const zonesWithTime = req.body.zonas.map(z => ({ 
       ...z, 
       receivedAt: timestamp 
     }));
     
-    allProductionLines = [...allProductionLines, ...zonesWithTime];
+    // Sobrescribimos completamente
+    allProductionLines = zonesWithTime;
+
+    // 3. RESTAURAR STOCK (Rehidratar)
+    let restoredCount = 0;
+    allProductionLines.forEach(zona => {
+        if (Array.isArray(zona.productos)) {
+            zona.productos.forEach(p => {
+                const key = String(p.codigo || p.nombre || '').trim().toUpperCase();
+                if (currentStockMap.has(key)) {
+                    p.stock_fisico = currentStockMap.get(key);
+                    restoredCount++;
+                }
+            });
+        } else {
+             const key = String(zona.codigo_agente || zona.nombre || '').trim().toUpperCase();
+             if (currentStockMap.has(key)) {
+                 zona.stock_fisico = currentStockMap.get(key);
+                 restoredCount++;
+             }
+        }
+    });
     
-    const msg = `📥 WEBHOOK: Recibidos ${req.body.zonas.length} registros`;
+    const msg = `📥 WEBHOOK: Reemplazo completo. ${req.body.zonas.length} zonas cargadas. Stocks restaurados: ${restoredCount}`;
     console.log(msg);
     broadcastLog(msg);
     broadcastUpdate();
-    return res.status(200).json({ status: 'ok' });
+    return res.status(200).json({ status: 'ok', mode: 'overwrite', restoredStocks: restoredCount });
   }
   
   res.status(400).json({ error: 'Formato incorrecto' });
