@@ -327,26 +327,29 @@ const processDataWithTrends = (rawZones: any[]) => {
     
     // Primera pasada: Construir estructura base, encontrar stock global y calcular demanda global
     (zonesByDate.get(date) || []).forEach(z => {
-      const clientName = CLIENT_MAPPING[z.codigo_agente] || `ZONA ${z.codigo_agente || '0'}`;
+      // Normalizamos el código de agente para buscar el cliente
+      const agentCode = String(z.codigo_agente ?? '').trim();
+      const clientName = CLIENT_MAPPING[agentCode] || `ZONA ${agentCode || '0'}`;
+      
       if (!clientsMap.has(clientName)) {
         clientsMap.set(clientName, { name: clientName, products: new Map<string, any>(), total: 0 });
       }
       
       const c = clientsMap.get(clientName);
-      const prodCode = String(z.codigo_agente || 'N/A').trim();
       
-      // Usamos z.nombre para la extracción de unidades si está disponible, ya que suele contener la descripción completa
-      const prodDescription = String(z.nombre || '').toUpperCase();
-
       // Procesar productos dentro de la zona
       if (Array.isArray(z.productos)) {
         z.productos.forEach((p: any) => {
-          const pNameKey = (z.nombre || p.codigo || 'ITEM').toUpperCase(); 
+          // CLAVE DE AGRUPACIÓN CORREGIDA: Priorizamos p.codigo o p.nombre sobre z.nombre
+          // Esto evita que todos los productos de una zona se llamen igual y se sobrescriban.
+          const prodIdentifier = p.codigo || p.nombre || z.nombre || 'ITEM';
+          const pNameKey = String(prodIdentifier).toUpperCase();
           
-          // CONVERSIÓN DE UNIDADES (Nuevo)
-          // Usamos la descripción (z.nombre) para detectar si hay patrón de peso (ej: 1,35 KG) y convertimos la cantidad raw
-          const qty = extractUnitsFromDescription(prodDescription, p.cantidad);
-          const stock = extractUnitsFromDescription(prodDescription, p.stock_fisico);
+          // CONVERSIÓN DE UNIDADES
+          // Usamos el nombre específico del producto para extraer unidades
+          const specificDesc = String(p.nombre || p.codigo || z.nombre || '').toUpperCase();
+          const qty = extractUnitsFromDescription(specificDesc, p.cantidad);
+          const stock = extractUnitsFromDescription(specificDesc, p.stock_fisico);
           
           // Actualizar Stock Global si encontramos un valor mayor (fuente de verdad)
           if (stock > (globalStockMap.get(pNameKey) || 0)) {
@@ -357,26 +360,27 @@ const processDataWithTrends = (rawZones: any[]) => {
           globalDemandMap.set(pNameKey, (globalDemandMap.get(pNameKey) || 0) + qty);
 
           // Añadir pedido al cliente
-          const itemCode = p.codigo || prodCode;
+          const itemCode = p.codigo || 'N/A';
+          const itemName = p.nombre || pNameKey; // Nombre visual
+
           if (!c.products.has(pNameKey)) {
-            c.products.set(pNameKey, { name: pNameKey, code: itemCode, qty: 0, stock: 0 }); 
+            c.products.set(pNameKey, { name: itemName, code: itemCode, qty: 0, stock: 0 }); 
           }
           const prodEntry = c.products.get(pNameKey);
           prodEntry.qty += qty;
           c.total += qty;
         });
       } else {
+        // Caso Legacy: Zona plana sin array de productos (menos común ahora)
         const pNameKey = String(z.nombre || 'ITEM').toUpperCase();
         
-        // CONVERSIÓN DE UNIDADES (Nuevo)
-        const qty = extractUnitsFromDescription(prodDescription, z.cantidad);
-        const stock = extractUnitsFromDescription(prodDescription, z.stock_fisico);
+        const qty = extractUnitsFromDescription(pNameKey, z.cantidad);
+        const stock = extractUnitsFromDescription(pNameKey, z.stock_fisico);
         
         if (stock > (globalStockMap.get(pNameKey) || 0)) globalStockMap.set(pNameKey, stock);
-        // CALCULAR DEMANDA TOTAL GLOBAL
         globalDemandMap.set(pNameKey, (globalDemandMap.get(pNameKey) || 0) + qty);
         
-        const itemCode = prodCode;
+        const itemCode = agentCode;
         if (!c.products.has(pNameKey)) c.products.set(pNameKey, { name: pNameKey, code: itemCode, qty: 0, stock: 0 });
         const prodEntry = c.products.get(pNameKey);
         prodEntry.qty += qty;
@@ -395,13 +399,11 @@ const processDataWithTrends = (rawZones: any[]) => {
     const runningStock = new Map<string, number>(globalStockMap);
 
     sortedClients.forEach(client => {
-      // IMPORTANTE: Hemos eliminado el filtro de visibilidad (stock < demanda).
-      // Ahora confiamos en que el Servidor (server.js) nos envía solo los productos con cantidad > 0.
-      // Si el servidor lo envía, el frontend lo muestra.
-
+      // IMPORTANTE: Sin filtros de visibilidad. Mostramos todo lo que envía el servidor.
+      
       // Aplicar Cascada a los productos
       client.products.forEach((p: any) => {
-        const availableStock = runningStock.get(p.name) || 0;
+        const availableStock = runningStock.get(p.name.toUpperCase()) || runningStock.get(p.code.toUpperCase()) || 0;
         
         // Asignamos stock al producto de este cliente hasta cubrir la demanda o agotar stock
         const stockAssigned = Math.min(p.qty, availableStock);
@@ -412,7 +414,10 @@ const processDataWithTrends = (rawZones: any[]) => {
         p.toProduce = Math.max(0, p.qty - stockAssigned);
         
         // Restamos del stock global para el siguiente cliente
-        runningStock.set(p.name, availableStock - stockAssigned);
+        const key = p.name.toUpperCase(); // Asegurar consistencia en la key
+        if(runningStock.has(key)) {
+             runningStock.set(key, Math.max(0, availableStock - stockAssigned));
+        }
       });
       
       // Convertimos el Map de productos a Array para renderizar
@@ -554,8 +559,15 @@ const ClientColumn: React.FC<{ data: any; darkMode: boolean; settings: VisualSet
   const columns = [];
   for (let i = 0; i < numCols; i++) columns.push(data.products.slice(i * maxRows, (i + 1) * maxRows));
 
+  // FIX: Usar width fijo y flex: none para evitar que se estire a pantalla completa
+  // Calculamos 450px por cada sub-columna interna
+  const columnWidth = Math.max(450, numCols * 450);
+
   return (
-    <div style={{ flex: `${numCols} 0 0` }} className={`flex flex-col h-full border-r last:border-r-0 transition-all min-w-[450px] ${darkMode ? 'bg-slate-950 border-white/5' : 'bg-white border-gray-200'}`}>
+    <div 
+      style={{ width: `${columnWidth}px`, flex: 'none' }} 
+      className={`flex flex-col h-full border-r last:border-r-0 transition-all ${darkMode ? 'bg-slate-950 border-white/5' : 'bg-white border-gray-200'}`}
+    >
       <div className={`px-4 py-4 border-b-2 ${darkMode ? 'bg-white/[0.01] border-white/10' : 'bg-gray-50 border-gray-200'}`}>
         
         {/* HEADER CLIENTE */}
