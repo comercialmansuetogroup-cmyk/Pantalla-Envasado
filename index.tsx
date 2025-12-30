@@ -36,12 +36,12 @@ const DEFAULT_SETTINGS: VisualSettings = {
   logoLight: null,
   logoDark: null,
   displayMode: 'name',
-  maxRowsPerCol: 20,
-  nameFontSize: 16,
-  codeFontSize: 18,
-  clientNameFontSize: 32, // Un poco más grande por defecto
-  tableHeaderFontSize: 12, // Aumentado para mejor legibilidad
-  trendFontSize: 12,
+  maxRowsPerCol: 22,      // Ajustado a 22 según captura
+  nameFontSize: 15,       // Ajustado a 15 según captura
+  codeFontSize: 18,       // Mantenido en 18 según captura
+  clientNameFontSize: 30, // Ajustado a 30 según captura
+  tableHeaderFontSize: 10, // Ajustado a 10 según captura
+  trendFontSize: 15,      // Ajustado a 15 según captura
 };
 
 // --- UTILIDADES ---
@@ -395,24 +395,11 @@ const processDataWithTrends = (rawZones: any[]) => {
     const runningStock = new Map<string, number>(globalStockMap);
 
     sortedClients.forEach(client => {
-      // FILTRO DE VISIBILIDAD: Eliminamos productos si Stock Global >= Demanda Global
-      const visibleProducts = new Map<string, any>();
+      // IMPORTANTE: Hemos eliminado el filtro de visibilidad (stock < demanda).
+      // Ahora confiamos en que el Servidor (server.js) nos envía solo los productos con cantidad > 0.
+      // Si el servidor lo envía, el frontend lo muestra.
 
-      client.products.forEach((p: any, key: string) => {
-        const totalGlobalDemand = globalDemandMap.get(p.name) || 0;
-        const totalGlobalStock = globalStockMap.get(p.name) || 0;
-
-        // REGLA: Mostrar SOLO SI el Stock Global es INFERIOR a la Demanda Total
-        // Si Stock >= Demanda, significa que está cubierto, no mostrar.
-        if (totalGlobalStock < totalGlobalDemand) {
-           visibleProducts.set(key, p);
-        }
-      });
-      
-      // Reemplazamos el mapa de productos del cliente solo con los visibles
-      client.products = visibleProducts;
-
-      // Aplicar Cascada a los productos visibles
+      // Aplicar Cascada a los productos
       client.products.forEach((p: any) => {
         const availableStock = runningStock.get(p.name) || 0;
         
