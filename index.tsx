@@ -530,23 +530,29 @@ const ClientColumn: React.FC<{ data: any; darkMode: boolean; settings: VisualSet
   return (
     <div style={{ flex: `${numCols} 0 0` }} className={`flex flex-col h-full border-r last:border-r-0 transition-all min-w-[450px] ${darkMode ? 'bg-slate-950 border-white/5' : 'bg-white border-gray-200'}`}>
       <div className={`px-4 py-4 border-b-2 ${darkMode ? 'bg-white/[0.01] border-white/10' : 'bg-gray-50 border-gray-200'}`}>
-        <div className="flex justify-between items-center mb-2">
-            <div className="flex items-center gap-3 overflow-hidden">
-                <h3 className={`text-xl xl:text-2xl font-black uppercase tracking-tighter truncate ${darkMode ? 'text-white' : 'text-gray-900'}`}>
+        
+        {/* HEADER CLIENTE */}
+        <div className={`flex items-center mb-2 ${numCols > 1 ? 'justify-center py-2' : 'justify-between'}`}>
+            <div className={`flex items-center gap-4 overflow-hidden ${numCols > 1 ? 'justify-center' : ''}`}>
+                <h3 className={`font-black uppercase tracking-tighter truncate leading-none ${numCols > 1 ? 'text-5xl xl:text-6xl text-center' : 'text-3xl xl:text-4xl'} ${darkMode ? 'text-white' : 'text-gray-900'}`}>
                 {data.name}
                 </h3>
                 <TrendBadge value={data.totalTrend} darkMode={darkMode} size="md" />
             </div>
         </div>
         
-        {/* Cabecera de Columnas Internas */}
-        <div className="flex justify-between items-center px-2 mt-2 opacity-50 text-[9px] font-black uppercase tracking-wider">
-            <span className="flex-1">Referencia</span>
-            <div className="grid grid-cols-3 gap-2 w-[180px] xl:w-[220px] text-right">
-                <span>Stock Disp.</span>
-                <span>Faltante</span>
-                <span>Pedido</span>
-            </div>
+        {/* CABECERAS DE COLUMNAS INTERNAS (Repetida para mantener alineación) */}
+        <div className="flex w-full divide-x divide-transparent">
+             {Array.from({ length: numCols }).map((_, idx) => (
+                <div key={idx} className={`flex-1 flex justify-between items-center px-2 mt-2 opacity-50 text-[9px] font-black uppercase tracking-wider ${idx > 0 ? 'pl-4' : ''}`}>
+                    <span className="flex-1">Referencia</span>
+                    <div className="grid grid-cols-3 gap-2 w-[180px] xl:w-[220px] text-right">
+                        <span>Stock Disp.</span>
+                        <span>Faltante</span>
+                        <span>Pedido</span>
+                    </div>
+                </div>
+             ))}
         </div>
       </div>
       
