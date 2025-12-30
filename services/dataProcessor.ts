@@ -1,24 +1,21 @@
-import { IncomingDataPayload, ClientGroup } from '../types';
-import { CLIENT_MAPPING } from '../constants';
+import { CLIENT_MAPPING } from '../constants.ts';
 
 /**
  * Procesa el JSON crudo de Make y agrupa los productos por Cliente.
  */
-export const processIncomingData = (data: IncomingDataPayload): ClientGroup[] => {
+export const processIncomingData = (data) => {
   if (!data || !data.zonas || !Array.isArray(data.zonas)) {
-    console.warn("dataProcessor: El JSON recibido no tiene el formato correcto.");
     return [];
   }
 
-  const clientMap = new Map<string, ClientGroup>();
+  const clientMap = new Map();
 
   data.zonas.forEach((zona) => {
-    // 1. Identificar Cliente
-    // Limpiamos el código por si viene con espacios o es un número en vez de string
+    // 1. Identificar Cliente (Agent Code Mapping)
     const agentCodeRaw = String(zona.codigo_agente || '').trim();
     
-    // El cliente es la entidad que agrupa varios códigos
-    const clientName = CLIENT_MAPPING[agentCodeRaw] || `Agente Desconocido (${agentCodeRaw})`;
+    // El cliente es la entidad que agrupa varios códigos (Ej: 10, 14, 5 -> Gran Canaria)
+    const clientName = CLIENT_MAPPING[agentCodeRaw] || `Zona ${agentCodeRaw}`;
     const mapKey = clientName;
 
     if (!clientMap.has(mapKey)) {
@@ -30,7 +27,7 @@ export const processIncomingData = (data: IncomingDataPayload): ClientGroup[] =>
       });
     }
 
-    const clientGroup = clientMap.get(mapKey)!;
+    const clientGroup = clientMap.get(mapKey);
 
     // 2. Calcular total de productos en esta línea
     let entryTotal = 0;
@@ -38,9 +35,8 @@ export const processIncomingData = (data: IncomingDataPayload): ClientGroup[] =>
       entryTotal = zona.productos.reduce((acc, p) => acc + (Number(p.cantidad) || 0), 0);
     }
 
-    // 3. Agrupar por nombre de producto dentro del cliente
-    // Usamos el nombre que viene en el JSON para el producto
-    const productName = String(zona.nombre || 'Producto sin nombre').trim();
+    // 3. Agrupar por nombre de producto
+    const productName = String(zona.nombre || 'Producto').trim();
     const existingProductIndex = clientGroup.products.findIndex(p => p.name === productName);
 
     if (existingProductIndex >= 0) {
@@ -52,10 +48,9 @@ export const processIncomingData = (data: IncomingDataPayload): ClientGroup[] =>
       });
     }
 
-    // 4. Actualizar Gran Total de la columna
+    // 4. Actualizar Gran Total
     clientGroup.grandTotal += entryTotal;
   });
 
-  // Convertir a Array y ordenar alfabéticamente por cliente
   return Array.from(clientMap.values()).sort((a, b) => a.clientName.localeCompare(b.clientName));
 };

@@ -4,17 +4,17 @@ import { LiveDashboard } from './components/LiveDashboard.tsx';
 import { StatsDashboard } from './components/StatsDashboard.tsx';
 import { SettingsModal } from './components/SettingsModal.tsx';
 import { processIncomingData } from './services/dataProcessor.ts';
-import { ClientGroup } from './types.ts';
 import { Server, Radio, Clock, Database, Loader2 } from 'lucide-react';
 
-const App: React.FC = () => {
+// Cambiamos a function declaration para evitar errores de inicialización de const en Babel Standalone
+export default function App() {
   const [darkMode, setDarkMode] = useState(true);
-  const [currentView, setCurrentView] = useState<'live' | 'stats'>('live');
-  const [clientGroups, setClientGroups] = useState<ClientGroup[]>([]);
+  const [currentView, setCurrentView] = useState('live'); // 'live' | 'stats'
+  const [clientGroups, setClientGroups] = useState([]);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
+  const [error, setError] = useState(null);
+  const [lastUpdated, setLastUpdated] = useState(null);
   
   const isFetchingRef = useRef(false);
 
@@ -29,7 +29,7 @@ const App: React.FC = () => {
       
       const data = await response.json();
       
-      if (data && data.zonas) {
+      if (data && data.zonas && data.zonas.length > 0) {
         const processed = processIncomingData(data);
         setClientGroups(processed);
         setLastUpdated(new Date());
@@ -39,8 +39,8 @@ const App: React.FC = () => {
           setError("EN LÍNEA: Esperando primera señal de Make...");
         }
       }
-    } catch (err: any) {
-      setError("ERROR DE RED: Comprueba la conexión con Railway.");
+    } catch (err) {
+      setError("ERROR DE CONEXIÓN: Verifica que Railway esté activo.");
     } finally {
       setLoading(false);
       isFetchingRef.current = false;
@@ -49,7 +49,7 @@ const App: React.FC = () => {
 
   useEffect(() => {
     fetchData();
-    const timer = setInterval(fetchData, 4000); 
+    const timer = setInterval(fetchData, 5000); 
     return () => clearInterval(timer);
   }, []);
 
@@ -67,18 +67,18 @@ const App: React.FC = () => {
         <div className="mb-8 flex flex-col md:flex-row items-center justify-between gap-4 px-8 py-4 bg-white/5 dark:bg-slate-900/40 backdrop-blur-xl rounded-[2rem] border border-white/10 shadow-2xl">
           <div className="flex items-center gap-5">
             <div className="relative flex h-4 w-4">
-              <span className={`animate-ping absolute inline-flex h-full w-full rounded-full opacity-75 ${error ? 'bg-amber-500' : 'bg-green-500'}`}></span>
-              <span className={`relative inline-flex rounded-full h-4 w-4 ${error ? 'bg-amber-500' : 'bg-green-500'}`}></span>
+              <span className={`animate-ping absolute inline-flex h-full w-full rounded-full opacity-75 ${error && clientGroups.length === 0 ? 'bg-amber-500' : 'bg-green-500'}`}></span>
+              <span className={`relative inline-flex rounded-full h-4 w-4 ${error && clientGroups.length === 0 ? 'bg-amber-500' : 'bg-green-500'}`}></span>
             </div>
             <div className="flex flex-col text-left">
               <div className="flex items-center gap-2">
                 <Server size={14} className="text-red-600" />
                 <span className="text-sm font-black tracking-tight uppercase">
-                  {error ? 'Status: Standby' : 'Status: Conectado'}
+                  {error && clientGroups.length === 0 ? 'Status: Standby' : 'Status: Conectado'}
                 </span>
               </div>
               <span className="text-[10px] opacity-40 uppercase tracking-[0.2em] font-black">
-                PRODUCCIÓN REAL-TIME V3
+                SISTEMA OPERATIVO V3.1
               </span>
             </div>
           </div>
@@ -95,7 +95,7 @@ const App: React.FC = () => {
             )}
             <div className="flex items-center gap-3 opacity-60">
               <Database size={14} />
-              <span className="text-[11px] font-black uppercase tracking-wider">Railway Engine</span>
+              <span className="text-[11px] font-black uppercase tracking-wider text-red-600">PROD-SERVER</span>
             </div>
           </div>
         </div>
@@ -111,16 +111,8 @@ const App: React.FC = () => {
             <div className="max-w-md space-y-3">
               <h2 className="text-3xl font-black uppercase tracking-tighter">Esperando Datos de Make</h2>
               <p className="text-sm text-gray-500 dark:text-gray-400 leading-relaxed font-medium px-4">
-                {error || "Todo está listo. Lanza el escenario en Make para empezar a ver los pedidos en tiempo real."}
+                {error || "El servidor está listo para recibir el POST desde Make. Lanza el escenario para ver los datos."}
               </p>
-              <div className="pt-6">
-                <button 
-                  onClick={() => setIsSettingsOpen(true)}
-                  className="px-8 py-3 bg-red-600 text-white rounded-2xl font-black uppercase tracking-widest text-xs hover:bg-red-700 transition-all shadow-lg shadow-red-600/20"
-                >
-                  Configurar Make HTTP
-                </button>
-              </div>
             </div>
           </div>
         )}
@@ -139,11 +131,7 @@ const App: React.FC = () => {
       <SettingsModal 
         isOpen={isSettingsOpen}
         onClose={() => setIsSettingsOpen(false)}
-        currentSettings={{} as any}
-        onSave={() => {}}
       />
     </div>
   );
-};
-
-export default App;
+}
