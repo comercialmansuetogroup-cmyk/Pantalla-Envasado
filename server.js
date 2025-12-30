@@ -6,46 +6,56 @@ const bodyParser = require('body-parser');
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-// Almacenamiento en memoria del último JSON recibido de Make
+// Almacenamiento en memoria (Persiste mientras el proceso esté vivo en Railway)
 let latestData = null;
 
 app.use(cors());
 app.use(bodyParser.json({ limit: '50mb' }));
 
-// ENDPOINT PARA RECIBIR DATOS DE MAKE (POST)
-// La URL completa configurada por el usuario es: https://pantalla-envasado-production.up.railway.app/api/webhook
+// WEBHOOK: Recibe datos de Make
 app.post('/api/webhook', (req, res) => {
   const authHeader = req.headers.authorization;
-  // Usamos la variable de entorno que el usuario ya tiene en Railway como secreto
   const expectedToken = `Bearer ${process.env.VITE_MAKE_API_KEY || '563027d1-1af0-4c0e-a385-74cc322f2f66'}`;
 
-  // Validación de seguridad por Token Bearer
   if (!authHeader || authHeader !== expectedToken) {
-    console.error('[WEBHOOK ERROR] Intento de conexión no autorizada.');
-    return res.status(401).json({ error: 'Autorización fallida. El Bearer token es incorrecto.' });
+    console.error('[!] Error de Seguridad: Token inválido desde Make.');
+    return res.status(401).json({ error: 'No autorizado' });
   }
 
-  console.log('[WEBHOOK SUCCESS] JSON de Producción recibido desde Make.');
-  latestData = req.body;
-  res.status(200).json({ status: 'success', message: 'Dashboard actualizado' });
+  if (req.body && req.body.zonas) {
+    latestData = req.body;
+    console.log(`[✓] DATOS RECIBIDOS: ${req.body.zonas.length} líneas de producción procesadas.`);
+    // Log para depuración manual en la consola de Railway
+    const clientes = req.body.zonas.map(z => z.codigo_agente).filter((v, i, a) => a.indexOf(v) === i);
+    console.log(`[i] Clientes detectados en el lote: ${clientes.join(', ')}`);
+    
+    return res.status(200).json({ status: 'success' });
+  }
+
+  console.warn('[!] Webhook recibido pero el JSON no tiene el formato esperado (falta "zonas").');
+  res.status(400).json({ error: 'Formato inválido' });
 });
 
-// ENDPOINT PARA QUE EL FRONTEND LEA LOS DATOS (GET)
+// API: Entrega datos al Frontend
 app.get('/api/data', (req, res) => {
+  if (!latestData) {
+    console.log('[i] Frontend solicitó datos pero el buffer está vacío (esperando a Make).');
+  }
   res.json(latestData);
 });
 
-// Servir archivos estáticos del frontend
 app.use(express.static(__dirname));
 
-// Manejo de rutas del frontend (SPA)
 app.get('*', (req, res) => {
   res.sendFile(path.join(__dirname, 'index.html'));
 });
 
 app.listen(PORT, () => {
-  console.log('----------------------------------------------------');
-  console.log(`FACTORY OPS SERVER ACTIVO EN PUERTO ${PORT}`);
-  console.log(`ENDPOINT WEBHOOK: /api/webhook`);
-  console.log('----------------------------------------------------');
+  console.log(`
+  ================================================
+  FACTORY OPS: SERVER ONLINE
+  Puerto: ${PORT}
+  Webhook: /api/webhook
+  ================================================
+  `);
 });

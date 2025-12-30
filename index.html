@@ -45,6 +45,16 @@
       }
     }
   </style>
+  <script>
+    // Sistema de diagnóstico de emergencia
+    window.onerror = function(msg, url, line, col, error) {
+      const errorDiv = document.createElement('div');
+      errorDiv.style.cssText = 'position:fixed;top:0;left:0;width:100%;background:#b91c1c;color:white;padding:20px;z-index:99999;font-family:monospace;font-size:12px;';
+      errorDiv.innerHTML = '<strong>ERROR DE CARGA:</strong> ' + msg + '<br><small>' + url + ' L:' + line + '</small>';
+      document.body.appendChild(errorDiv);
+      return false;
+    };
+  </script>
 <script type="importmap">
 {
   "imports": {
@@ -57,7 +67,9 @@
 }
 </script>
 </head>
-<body>
+<body class="bg-slate-950">
   <div id="root"></div>
+  <!-- Script para asegurar que el entry point se carga -->
+  <script type="module" src="./index.tsx"></script>
 </body>
 </html>
