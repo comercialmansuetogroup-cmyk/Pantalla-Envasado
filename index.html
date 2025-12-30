@@ -1,3 +1,4 @@
+
 <!DOCTYPE html>
 <html lang="es">
 <head>
@@ -5,33 +6,22 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>FactoryFlow Dashboard</title>
   
-  <!-- Tailwind CSS -->
   <script src="https://cdn.tailwindcss.com"></script>
-  
-  <!-- Babel Standalone -->
   <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
 
   <style>
-    ::-webkit-scrollbar { width: 8px; height: 8px; }
-    ::-webkit-scrollbar-track { background: transparent; }
-    ::-webkit-scrollbar-thumb { background: #475569; border-radius: 4px; }
-    
+    ::-webkit-scrollbar { width: 6px; }
+    ::-webkit-scrollbar-thumb { background: #dc2626; border-radius: 10px; }
+    body { margin: 0; background-color: #020617; color: white; overflow-x: hidden; }
+    .animate-fade-in { animation: fadeIn 0.4s ease-out forwards; }
     @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
-    @keyframes fadeInUp { from { opacity: 0; transform: translateY(20px); } to { opacity: 1; transform: translateY(0); } }
-    .animate-fade-in { animation: fadeIn 0.5s ease-out forwards; }
-    .animate-fade-in-up { animation: fadeInUp 0.5s ease-out forwards; }
-    
-    @media (min-width: 2000px) {
-      .3xl\:grid-cols-5 { grid-template-columns: repeat(5, minmax(0, 1fr)); }
-    }
-    body { margin: 0; padding: 0; overflow-x: hidden; }
   </style>
 
   <script type="importmap">
 {
   "imports": {
-    "react": "https://esm.sh/react@19.0.0",
-    "react-dom/client": "https://esm.sh/react-dom@19.0.0/client",
+    "react": "https://esm.sh/react@18.2.0",
+    "react-dom/client": "https://esm.sh/react-dom@18.2.0/client",
     "recharts": "https://esm.sh/recharts@2.12.7",
     "lucide-react": "https://esm.sh/lucide-react@0.408.0",
     "react-dom/": "https://esm.sh/react-dom@^19.2.3/",
@@ -40,7 +30,7 @@
 }
 </script>
 </head>
-<body class="bg-slate-950">
+<body>
   <div id="root"></div>
   
   <script 
@@ -53,10 +43,9 @@
   <script>
     window.onerror = function(msg, url, line, col, error) {
       if (msg.includes('Script error')) return;
-      console.error("Dashboard Error:", msg, "at", url, ":", line);
       const errorDiv = document.createElement('div');
-      errorDiv.style.cssText = 'position:fixed;bottom:20px;right:20px;background:#ef4444;color:white;padding:15px;border-radius:10px;z-index:9999;font-family:sans-serif;font-size:12px;';
-      errorDiv.innerHTML = '<b>Error:</b> ' + msg;
+      errorDiv.style.cssText = 'position:fixed;bottom:20px;right:20px;background:#ef4444;color:white;padding:15px;border-radius:10px;z-index:9999;font-family:sans-serif;font-size:11px;max-width:300px;box-shadow:0 10px 15px -3px rgba(0,0,0,0.5);';
+      errorDiv.innerHTML = '<b>Error de Sistema:</b><br>' + msg;
       document.body.appendChild(errorDiv);
       return false;
     };

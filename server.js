@@ -1,3 +1,4 @@
+
 const express = require('express');
 const path = require('path');
 const cors = require('cors');
@@ -6,7 +7,10 @@ const bodyParser = require('body-parser');
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-// Forzar que el navegador trate .tsx y .ts como JavaScript ejecutable
+// TOKEN PERSONALIZADO (Cópialo para Make)
+const CUSTOM_DASHBOARD_TOKEN = "DASHBOARD_V3_KEY_2025";
+
+// Middleware para asegurar que los archivos .tsx se sirvan con el tipo correcto
 app.use((req, res, next) => {
   if (req.url.endsWith('.tsx') || req.url.endsWith('.ts')) {
     res.setHeader('Content-Type', 'application/javascript');
@@ -23,40 +27,44 @@ app.use(bodyParser.json({ limit: '50mb' }));
 app.get('/favicon.ico', (req, res) => res.status(204).end());
 
 // WEBHOOK: Recibe datos de Make (POST)
-// IMPORTANTE: Make debe enviar un POST a /api/webhook
 app.post('/api/webhook', (req, res) => {
   const authHeader = req.headers.authorization;
-  const expectedToken = `Bearer ${process.env.VITE_MAKE_API_KEY || '563027d1-1af0-4c0e-a385-74cc322f2f66'}`;
+  const expectedToken = `Bearer ${CUSTOM_DASHBOARD_TOKEN}`;
 
   if (!authHeader || authHeader !== expectedToken) {
-    console.warn('[!] Intento de acceso no autorizado.');
-    return res.status(401).json({ error: 'No autorizado' });
+    console.warn(`[!] Acceso denegado. Se esperaba: ${expectedToken}`);
+    return res.status(401).json({ error: 'Token de Dashboard inválido' });
   }
 
-  // Validamos que el JSON tenga la estructura "zonas" que envía tu Make
   if (req.body && req.body.zonas) {
     latestData = req.body;
-    console.log(`[✓] DATOS RECIBIDOS: ${req.body.zonas.length} líneas desde Make.`);
+    console.log(`[✓] ÉXITO: Recibidos datos de ${req.body.zonas.length} zonas.`);
     return res.status(200).json({ status: 'success' });
   }
   
-  console.error('[!] Error: El JSON recibido no tiene el campo "zonas".');
-  res.status(400).json({ error: 'Formato inválido. Se espera { "zonas": [...] }' });
+  res.status(400).json({ error: 'JSON mal formado' });
 });
 
+// API para el Frontend
 app.get('/api/data', (req, res) => {
   res.json(latestData);
 });
 
-app.use(express.static(__dirname));
+// Servir archivos estáticos DESDE LA RAÍZ
+app.use(express.static(path.join(__dirname, '.')));
 
+// El catch-all solo para rutas de navegación (no archivos con puntos)
 app.get('*', (req, res) => {
-  if (req.url.includes('.') && !req.url.endsWith('.html')) {
-    return res.status(404).send('Not found');
+  if (req.url.includes('.')) {
+    return res.status(404).send('Archivo no encontrado');
   }
   res.sendFile(path.join(__dirname, 'index.html'));
 });
 
 app.listen(PORT, () => {
-  console.log(`SERVER READY ON PORT ${PORT}`);
+  console.log(`-----------------------------------------`);
+  console.log(`DASHBOARD ACTIVO EN PUERTO: ${PORT}`);
+  console.log(`WEBHOOK URL: /api/webhook`);
+  console.log(`TOKEN REQUERIDO: Bearer ${CUSTOM_DASHBOARD_TOKEN}`);
+  console.log(`-----------------------------------------`);
 });
