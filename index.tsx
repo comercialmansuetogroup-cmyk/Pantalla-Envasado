@@ -233,10 +233,11 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose, visualSe
   );
 };
 
-// --- PROCESADOR DE TENDENCIAS Y STOCK ---
+// --- PROCESADOR DE TENDENCIAS Y STOCK (LÓGICA CASCADA) ---
 const processDataWithTrends = (rawZones: any[]) => {
   if (!rawZones || rawZones.length === 0) return [];
 
+  // 1. Agrupar datos por fecha (para tendencias) y obtener el set más reciente
   const zonesByDate = new Map<string, any[]>();
   rawZones.forEach(z => {
     const date = z.receivedAt ? z.receivedAt.split('T')[0] : 'legacy';
@@ -247,77 +248,139 @@ const processDataWithTrends = (rawZones: any[]) => {
   const allDatesSorted = Array.from(zonesByDate.keys()).sort();
   const latestDate = allDatesSorted[allDatesSorted.length - 1];
 
-  const getStatsForDate = (date: string) => {
-    const clients = new Map<string, any>();
+  // Helper para procesar un set de datos (de una fecha específica)
+  const processDataSet = (date: string) => {
+    // A. Identificar Stock Global por Producto (Máximo reportado en cualquier línea para ese código)
+    // Asumimos que Make envía el mismo 'stock_fisico' para el producto en todas las líneas donde aparece, 
+    // o tomamos el mayor valor encontrado como el "Stock Real en Bodega".
+    const globalStockMap = new Map<string, number>();
+    
+    // B. Estructura temporal de Clientes
+    const clientsMap = new Map<string, any>();
+    
+    // Primera pasada: Construir estructura base y encontrar stock global
     (zonesByDate.get(date) || []).forEach(z => {
       const clientName = CLIENT_MAPPING[z.codigo_agente] || `ZONA ${z.codigo_agente || '0'}`;
-      if (!clients.has(clientName)) clients.set(clientName, { name: clientName, products: new Map<string, any>(), total: 0 });
+      if (!clientsMap.has(clientName)) {
+        clientsMap.set(clientName, { name: clientName, products: new Map<string, any>(), total: 0 });
+      }
       
-      const c = clients.get(clientName);
+      const c = clientsMap.get(clientName);
+      // Normalización de nombre y código
       const prodName = String(z.nombre || 'PRODUCTO').trim().toUpperCase();
-      const prodCode = String(z.codigo_agente || 'N/A').trim();
-      
-      let qty = 0;
-      let stock = 0;
+      const prodCode = String(z.codigo_agente || 'N/A').trim(); // Fallback si no hay array productos
 
+      // Procesar productos dentro de la zona
       if (Array.isArray(z.productos)) {
-        qty = z.productos.reduce((acc: number, p: any) => acc + (Number(p.cantidad) || 0), 0);
-        // Asumimos que el stock viene en la primera entrada del array de productos para este lote, 
-        // o tomamos el máximo si hay múltiples entradas.
-        // La lógica ideal sería por código de producto específico, pero aquí agrupamos por Nombre de Producto (prodName).
-        // Iteramos para sumar stock si fuera necesario, aunque el stock físico suele ser un valor absoluto no sumable.
-        // Tomaremos el valor del primer producto encontrado o el mayor reportado.
         z.productos.forEach((p: any) => {
-            const s = Number(p.stock_fisico) || 0;
-            if (s > stock) stock = s;
+          // Identificador único del producto para el mapa global de stock (usamos nombre para simplificar agrupación visual)
+          // Idealmente usaríamos p.codigo, pero para visualización agrupamos por nombre.
+          const pNameKey = (z.nombre || p.codigo || 'ITEM').toUpperCase(); 
+          const qty = Number(p.cantidad) || 0;
+          const stock = Number(p.stock_fisico) || 0;
+          
+          // Actualizar Stock Global si encontramos un valor mayor (fuente de verdad)
+          if (stock > (globalStockMap.get(pNameKey) || 0)) {
+            globalStockMap.set(pNameKey, stock);
+          }
+
+          // Añadir pedido al cliente
+          const itemCode = p.codigo || prodCode;
+          if (!c.products.has(pNameKey)) {
+            c.products.set(pNameKey, { name: pNameKey, code: itemCode, qty: 0, stock: 0 }); // Stock se calculará después
+          }
+          const prodEntry = c.products.get(pNameKey);
+          prodEntry.qty += qty;
+          c.total += qty;
         });
       } else {
-        qty = Number(z.cantidad) || 0;
-        stock = Number(z.stock_fisico) || 0;
+        // Fallback para estructura antigua
+        const pNameKey = String(z.nombre || 'ITEM').toUpperCase();
+        const qty = Number(z.cantidad) || 0;
+        const stock = Number(z.stock_fisico) || 0;
+        
+        if (stock > (globalStockMap.get(pNameKey) || 0)) globalStockMap.set(pNameKey, stock);
+        
+        const itemCode = prodCode;
+        if (!c.products.has(pNameKey)) c.products.set(pNameKey, { name: pNameKey, code: itemCode, qty: 0, stock: 0 });
+        const prodEntry = c.products.get(pNameKey);
+        prodEntry.qty += qty;
+        c.total += qty;
       }
-      
-      const itemCode = (z.productos && z.productos[0]?.codigo) || prodCode;
-
-      if (!c.products.has(prodName)) {
-        c.products.set(prodName, { name: prodName, code: itemCode, qty: 0, stock: 0 });
-      }
-      const p = c.products.get(prodName);
-      p.qty += qty;
-      // Actualizamos stock con el último valor reportado (o el mayor encontrado en el lote)
-      if (stock > p.stock) p.stock = stock; 
-      
-      c.total += qty;
     });
-    return clients;
+
+    // C. Convertir a Array y ORDENAR POR PRIORIDAD (Gran Canaria Primero)
+    // Esto es crucial para la lógica de cascada.
+    const sortedClients = Array.from(clientsMap.values()).sort((a, b) => {
+      if (a.name === 'GRAN CANARIA') return -1;
+      if (b.name === 'GRAN CANARIA') return 1;
+      return a.name.localeCompare(b.name);
+    });
+
+    // D. Aplicar Lógica de Cascada (Waterfall)
+    // Creamos una copia del stock global para ir "consumiéndolo"
+    const runningStock = new Map<string, number>(globalStockMap);
+
+    sortedClients.forEach(client => {
+      client.products.forEach((p: any) => {
+        const availableStock = runningStock.get(p.name) || 0;
+        
+        // Asignamos stock al producto de este cliente hasta cubrir la demanda o agotar stock
+        const stockAssigned = Math.min(p.qty, availableStock);
+        
+        // Guardamos cuánto stock se usó para este pedido específico (para mostrar en la columna Stock)
+        p.stock = availableStock; // Mostramos el stock disponible ANTES de descontar este pedido (opcional, o mostrar stockAssigned)
+        // Corrección visual: La columna "Stock" suele mostrar lo que hay disponible. 
+        // Si mostramos stockAssigned, el usuario ve cuánto se cubre.
+        // Si mostramos availableStock, ve cuánto había al llegar a este cliente.
+        // Vamos a mostrar availableStock para que se vea que a los últimos les llega 0.
+        
+        // Cálculo A PRODUCIR: Lo que falta
+        p.toProduce = Math.max(0, p.qty - stockAssigned);
+        
+        // Restamos del stock global para el siguiente cliente
+        runningStock.set(p.name, availableStock - stockAssigned);
+      });
+      
+      // Convertimos el Map de productos a Array para renderizar
+      client.productsArray = Array.from(client.products.values()).sort((a: any, b: any) => b.qty - a.qty);
+    });
+
+    return { clients: sortedClients, productMap: clientsMap }; // Devolvemos clients ya procesados
   };
 
-  const currentStats = getStatsForDate(latestDate);
+  // Procesar datos actuales y anteriores para tendencias
+  const currentData = processDataSet(latestDate);
   
-  return Array.from(currentStats.values()).map(client => {
-    let prevStatsForClient = null;
-    for (let i = allDatesSorted.length - 2; i >= 0; i--) {
-      const stats = getStatsForDate(allDatesSorted[i]);
-      if (stats.has(client.name)) {
-        prevStatsForClient = stats.get(client.name);
-        break;
-      }
-    }
+  // Para tendencias, necesitamos los datos del día anterior (sin lógica de cascada compleja, solo totales)
+  let prevProductTotals = new Map<string, number>(); // Map<ClientName+ProdName, Qty>
+  let prevClientTotals = new Map<string, number>();
 
-    const products = Array.from(client.products.values()).map((p: any) => {
-      const prevProd = prevStatsForClient?.products.get(p.name);
-      const prevQty = prevProd?.qty || 0;
-      const trend = prevQty > 0 ? ((p.qty - prevQty) / prevQty) * 100 : 0;
-      
-      // Cálculo: A Producir = Cantidad Pedida - Stock Bodega
-      const toProduce = p.qty - p.stock;
-
-      return { ...p, trend, toProduce };
-    }).sort((a: any, b: any) => b.qty - a.qty);
-
-    const totalTrend = (prevStatsForClient?.total > 0) ? ((client.total - prevStatsForClient.total) / prevStatsForClient.total) * 100 : 0;
+  if (allDatesSorted.length >= 2) {
+    const prevDate = allDatesSorted[allDatesSorted.length - 2];
+    const prevRawMap = processDataSet(prevDate).productMap; // Reutilizamos lógica básica
     
-    return { ...client, products, totalTrend };
-  }).sort((a, b) => a.name === 'GRAN CANARIA' ? -1 : (b.name === 'GRAN CANARIA' ? 1 : a.name.localeCompare(b.name)));
+    prevRawMap.forEach((c: any) => {
+        prevClientTotals.set(c.name, c.total);
+        c.products.forEach((p: any) => {
+            prevProductTotals.set(`${c.name}_${p.name}`, p.qty);
+        });
+    });
+  }
+
+  // E. Combinar todo: Datos actuales + Tendencias
+  return currentData.clients.map(client => {
+    const prevClientTotal = prevClientTotals.get(client.name) || 0;
+    const totalTrend = prevClientTotal > 0 ? ((client.total - prevClientTotal) / prevClientTotal) * 100 : 0;
+
+    const productsWithTrend = client.productsArray.map((p: any) => {
+        const prevQty = prevProductTotals.get(`${client.name}_${p.name}`) || 0;
+        const trend = prevQty > 0 ? ((p.qty - prevQty) / prevQty) * 100 : 0;
+        return { ...p, trend };
+    });
+
+    return { ...client, products: productsWithTrend, totalTrend };
+  });
 };
 
 // --- COMPONENTES UI DASHBOARD ---
@@ -352,6 +415,9 @@ const ProductRow: React.FC<{ p: any; settings: VisualSettings; darkMode: boolean
   const showName = settings.displayMode === 'name' || settings.displayMode === 'both';
   const showCode = settings.displayMode === 'code' || settings.displayMode === 'both';
 
+  // Lógica visual para Stock: Si es 0, mostrar en rojo o gris oscuro
+  const stockClass = p.stock > 0 ? (darkMode ? 'text-blue-400' : 'text-blue-600') : 'text-slate-600 dark:text-slate-600';
+
   return (
     <div className={`flex items-center justify-between py-2 px-4 border-b group transition-colors gap-x-2 ${darkMode ? 'border-white/[0.04] hover:bg-white/[0.02]' : 'border-gray-100 hover:bg-gray-50'}`}>
       {/* Sección Izquierda: Info Producto */}
@@ -381,12 +447,12 @@ const ProductRow: React.FC<{ p: any; settings: VisualSettings; darkMode: boolean
       
       {/* Sección Derecha: Columnas Numéricas (Grid fijo para alineación) */}
       <div className="grid grid-cols-3 gap-2 w-[180px] xl:w-[220px] text-right items-center">
-        {/* STOCK */}
-        <div className={`font-bold tabular-nums text-sm ${darkMode ? 'text-blue-400' : 'text-blue-600'}`}>
-           {p.stock > 0 ? p.stock.toLocaleString('es-ES') : '-'}
+        {/* STOCK (Disponible al llegar a este cliente) */}
+        <div className={`font-bold tabular-nums text-sm ${stockClass}`}>
+           {p.stock.toLocaleString('es-ES')}
         </div>
 
-        {/* A PRODUCIR (Prod.) */}
+        {/* A PRODUCIR (Déficit Real) */}
         <div className={`font-black tabular-nums text-sm ${
           p.toProduce > 0 
              ? 'text-orange-500' 
@@ -427,9 +493,9 @@ const ClientColumn: React.FC<{ data: any; darkMode: boolean; settings: VisualSet
         <div className="flex justify-between items-center px-2 mt-2 opacity-50 text-[9px] font-black uppercase tracking-wider">
             <span className="flex-1">Referencia</span>
             <div className="grid grid-cols-3 gap-2 w-[180px] xl:w-[220px] text-right">
-                <span>Stock</span>
-                <span>Prod.</span>
-                <span>Total</span>
+                <span>Stock Disp.</span>
+                <span>Faltante</span>
+                <span>Pedido</span>
             </div>
         </div>
       </div>
