@@ -556,7 +556,7 @@ const ClientColumn: React.FC<{ data: any; darkMode: boolean; settings: VisualSet
         </div>
         <div className="flex w-full">
              {Array.from({ length: numCols }).map((_, idx) => (
-                <div key={idx} style={{ width: `${100/numCols}%` }} className={`flex justify-between items-center px-4 mt-2 opacity-50 font-black uppercase tracking-wider ${idx > 0 ? 'border-l border-white/[0.05]' : ''}`} style={{ fontSize: `${settings.tableHeaderFontSize}px` }}>
+                <div key={idx} style={{ width: `${100/numCols}%`, fontSize: `${settings.tableHeaderFontSize}px` }} className={`flex justify-between items-center px-4 mt-2 opacity-50 font-black uppercase tracking-wider ${idx > 0 ? 'border-l border-white/[0.05]' : ''}`}>
                     <span className="flex-1">Referencia</span>
                     <div className="grid grid-cols-3 gap-2 w-[180px] xl:w-[220px] text-right">
                         <span>Stock Disp.</span>
