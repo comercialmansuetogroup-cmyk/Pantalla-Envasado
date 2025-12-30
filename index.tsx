@@ -24,8 +24,12 @@ interface VisualSettings {
   logoDark: string | null;
   displayMode: 'name' | 'code' | 'both';
   maxRowsPerCol: number;
-  nameFontSize: number;
-  codeFontSize: number;
+  // Tipografías
+  nameFontSize: number;      // Producto Nombre
+  codeFontSize: number;      // Producto Código
+  clientNameFontSize: number; // Cliente Título (NUEVO)
+  tableHeaderFontSize: number; // Cabeceras Referencia/Stock (NUEVO)
+  trendFontSize: number;     // Porcentajes (NUEVO)
 }
 
 const DEFAULT_SETTINGS: VisualSettings = {
@@ -35,6 +39,9 @@ const DEFAULT_SETTINGS: VisualSettings = {
   maxRowsPerCol: 20,
   nameFontSize: 16,
   codeFontSize: 18,
+  clientNameFontSize: 30, // Default ajustado
+  tableHeaderFontSize: 11, // Default un poco más grande
+  trendFontSize: 11,
 };
 
 // --- UTILIDADES ---
@@ -167,6 +174,35 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose, visualSe
 
           <section className="space-y-6">
             <h3 className="text-xs font-black uppercase text-slate-400 tracking-[0.4em] flex items-center gap-2">
+              <Type size={16} className="text-red-600" /> Tipografía Avanzada
+            </h3>
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+               <div className="p-6 bg-slate-50 dark:bg-slate-800/30 rounded-3xl border border-slate-100 dark:border-slate-800 space-y-4">
+                <p className="text-[10px] font-black uppercase text-slate-400">Nombre Cliente (PX)</p>
+                <div className="flex items-center gap-3">
+                    <input type="number" value={localSettings.clientNameFontSize} onChange={(e) => updateSetting('clientNameFontSize', parseInt(e.target.value))} className="w-16 bg-slate-200 dark:bg-slate-900 border-none rounded-lg p-2 text-xs font-black" />
+                    <div className="h-1 bg-slate-200 dark:bg-slate-800 flex-1 rounded-full"><div className="h-full bg-red-600 rounded-full" style={{ width: `${(localSettings.clientNameFontSize/80)*100}%` }} /></div>
+                </div>
+              </div>
+              <div className="p-6 bg-slate-50 dark:bg-slate-800/30 rounded-3xl border border-slate-100 dark:border-slate-800 space-y-4">
+                <p className="text-[10px] font-black uppercase text-slate-400">Cabecera Tabla (PX)</p>
+                <div className="flex items-center gap-3">
+                    <input type="number" value={localSettings.tableHeaderFontSize} onChange={(e) => updateSetting('tableHeaderFontSize', parseInt(e.target.value))} className="w-16 bg-slate-200 dark:bg-slate-900 border-none rounded-lg p-2 text-xs font-black" />
+                    <div className="h-1 bg-slate-200 dark:bg-slate-800 flex-1 rounded-full"><div className="h-full bg-red-600 rounded-full" style={{ width: `${(localSettings.tableHeaderFontSize/30)*100}%` }} /></div>
+                </div>
+              </div>
+               <div className="p-6 bg-slate-50 dark:bg-slate-800/30 rounded-3xl border border-slate-100 dark:border-slate-800 space-y-4">
+                <p className="text-[10px] font-black uppercase text-slate-400">Porcentajes (PX)</p>
+                <div className="flex items-center gap-3">
+                    <input type="number" value={localSettings.trendFontSize} onChange={(e) => updateSetting('trendFontSize', parseInt(e.target.value))} className="w-16 bg-slate-200 dark:bg-slate-900 border-none rounded-lg p-2 text-xs font-black" />
+                    <div className="h-1 bg-slate-200 dark:bg-slate-800 flex-1 rounded-full"><div className="h-full bg-red-600 rounded-full" style={{ width: `${(localSettings.trendFontSize/30)*100}%` }} /></div>
+                </div>
+              </div>
+            </div>
+          </section>
+
+          <section className="space-y-6">
+            <h3 className="text-xs font-black uppercase text-slate-400 tracking-[0.4em] flex items-center gap-2">
               <Layout size={16} className="text-red-600" /> Estructura de Datos
             </h3>
             <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
@@ -200,7 +236,7 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose, visualSe
                 </div>
               </div>
               <div className="p-6 bg-slate-50 dark:bg-slate-800/30 rounded-3xl border border-slate-100 dark:border-slate-800 space-y-4">
-                <p className="text-[10px] font-black uppercase text-slate-400">Tamaño Tipografía (PX)</p>
+                <p className="text-[10px] font-black uppercase text-slate-400">Producto (PX)</p>
                 <div className="space-y-4">
                   <div className="space-y-1">
                     <span className="text-[8px] font-black text-slate-400 uppercase">Nombre</span>
@@ -435,11 +471,14 @@ const processDataWithTrends = (rawZones: any[]) => {
 
 // --- COMPONENTES UI DASHBOARD ---
 
-const TrendBadge: React.FC<{ value: number; darkMode: boolean; size?: 'sm' | 'md' }> = ({ value, darkMode, size = 'sm' }) => {
+const TrendBadge: React.FC<{ value: number; darkMode: boolean; fontSize: number }> = ({ value, darkMode, fontSize }) => {
   if (Math.abs(value) < 0.1) {
     return (
-      <div className={`flex items-center justify-center font-bold text-slate-400 opacity-50 ${size === 'md' ? 'px-2 py-1 text-xs' : 'text-[9px]'}`}>
-        <Minus size={size === 'md' ? 14 : 10} />
+      <div 
+        className="flex items-center justify-center font-bold text-slate-400 opacity-50 px-2 py-1"
+        style={{ fontSize: `${fontSize}px` }}
+      >
+        <Minus size={fontSize + 2} />
         0%
       </div>
     );
@@ -448,14 +487,15 @@ const TrendBadge: React.FC<{ value: number; darkMode: boolean; size?: 'sm' | 'md
   const isUp = value > 0;
   
   return (
-    <div className={`flex items-center gap-0.5 font-black leading-none rounded-md whitespace-nowrap ${
-      size === 'md' ? 'text-xs px-2 py-1' : 'text-[9px] px-1 py-0.5'
-    } ${
-      isUp 
-        ? (darkMode ? 'text-green-400 bg-green-500/10' : 'text-green-700 bg-green-100')
-        : (darkMode ? 'text-red-400 bg-red-500/10' : 'text-red-700 bg-red-100')
-    }`}>
-      {isUp ? <ArrowUpRight size={size === 'md' ? 14 : 10} strokeWidth={3} /> : <ArrowDownRight size={size === 'md' ? 14 : 10} strokeWidth={3} />}
+    <div 
+      className={`flex items-center gap-0.5 font-black leading-none rounded-md whitespace-nowrap px-1 py-0.5 ${
+        isUp 
+          ? (darkMode ? 'text-green-400 bg-green-500/10' : 'text-green-700 bg-green-100')
+          : (darkMode ? 'text-red-400 bg-red-500/10' : 'text-red-700 bg-red-100')
+      }`}
+      style={{ fontSize: `${fontSize}px` }}
+    >
+      {isUp ? <ArrowUpRight size={fontSize + 2} strokeWidth={3} /> : <ArrowDownRight size={fontSize + 2} strokeWidth={3} />}
       {Math.abs(Math.round(value))}%
     </div>
   );
@@ -481,7 +521,7 @@ const ProductRow: React.FC<{ p: any; settings: VisualSettings; darkMode: boolean
               >
                 #{p.code}
               </span>
-              <TrendBadge value={p.trend} darkMode={darkMode} size="sm" />
+              <TrendBadge value={p.trend} darkMode={darkMode} fontSize={settings.trendFontSize} />
             </div>
           )}
           {showName && (
@@ -534,17 +574,20 @@ const ClientColumn: React.FC<{ data: any; darkMode: boolean; settings: VisualSet
         {/* HEADER CLIENTE */}
         <div className={`flex items-center mb-2 ${numCols > 1 ? 'justify-center py-2' : 'justify-between'}`}>
             <div className={`flex items-center gap-4 overflow-hidden ${numCols > 1 ? 'justify-center' : ''}`}>
-                <h3 className={`font-black uppercase tracking-tighter truncate leading-none ${numCols > 1 ? 'text-5xl xl:text-6xl text-center' : 'text-3xl xl:text-4xl'} ${darkMode ? 'text-white' : 'text-gray-900'}`}>
+                <h3 
+                  className={`font-black uppercase tracking-tighter truncate leading-none ${numCols > 1 ? 'text-center' : ''} ${darkMode ? 'text-white' : 'text-gray-900'}`}
+                  style={{ fontSize: `${settings.clientNameFontSize}px` }}
+                >
                 {data.name}
                 </h3>
-                <TrendBadge value={data.totalTrend} darkMode={darkMode} size="md" />
+                <TrendBadge value={data.totalTrend} darkMode={darkMode} fontSize={settings.trendFontSize + 2} />
             </div>
         </div>
         
         {/* CABECERAS DE COLUMNAS INTERNAS (Repetida para mantener alineación) */}
         <div className="flex w-full divide-x divide-transparent">
              {Array.from({ length: numCols }).map((_, idx) => (
-                <div key={idx} className={`flex-1 flex justify-between items-center px-2 mt-2 opacity-50 text-[9px] font-black uppercase tracking-wider ${idx > 0 ? 'pl-4' : ''}`}>
+                <div key={idx} className={`flex-1 flex justify-between items-center px-2 mt-2 opacity-50 font-black uppercase tracking-wider ${idx > 0 ? 'pl-4' : ''}`} style={{ fontSize: `${settings.tableHeaderFontSize}px` }}>
                     <span className="flex-1">Referencia</span>
                     <div className="grid grid-cols-3 gap-2 w-[180px] xl:w-[220px] text-right">
                         <span>Stock Disp.</span>
