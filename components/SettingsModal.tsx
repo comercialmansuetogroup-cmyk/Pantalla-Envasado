@@ -1,5 +1,5 @@
 import React from 'react';
-import { X, Server, Key, Globe, Clipboard, CheckCircle, Info, ExternalLink } from 'lucide-react';
+import { X, Server, Key, Globe, Clipboard, CheckCircle, Info, ArrowRight } from 'lucide-react';
 import { AppSettings } from '../types';
 
 interface SettingsModalProps {
@@ -12,133 +12,118 @@ interface SettingsModalProps {
 export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose }) => {
   if (!isOpen) return null;
 
-  // Obtenemos la URL actual del navegador para construir la ruta del webhook
-  const currentHostname = window.location.origin;
-  const webhookUrl = `${currentHostname}/api/webhook`;
+  // URL de Railway proporcionada por el usuario
+  const railwayBaseUrl = 'https://pantalla-envasado-production.up.railway.app';
+  const webhookUrl = `${railwayBaseUrl}/api/webhook`;
   
-  // El token que el usuario ya configuró en Railway
-  const authToken = (import.meta as any).env?.VITE_MAKE_API_KEY || 'TOKEN_NO_CONFIGURADO';
+  // El token que el usuario ya tiene en las variables de Railway
+  const authToken = (import.meta as any).env?.VITE_MAKE_API_KEY || '563027d1-1af0-4c0e-a385-74cc322f2f66';
 
   const copyToClipboard = (text: string) => {
     navigator.clipboard.writeText(text);
-    // Podríamos añadir un toast aquí, pero por simplicidad usamos la interacción del botón
   };
 
   return (
-    <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/80 backdrop-blur-xl animate-fade-in">
-      <div className="bg-white dark:bg-slate-900 rounded-[2.5rem] shadow-2xl w-full max-w-2xl border border-gray-200 dark:border-slate-800 overflow-hidden flex flex-col">
+    <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/90 backdrop-blur-md animate-fade-in">
+      <div className="bg-white dark:bg-slate-900 rounded-[3rem] shadow-2xl w-full max-w-3xl border border-gray-200 dark:border-slate-800 overflow-hidden flex flex-col transition-all">
         
-        {/* Header */}
-        <div className="px-8 py-6 border-b border-gray-100 dark:border-slate-800 flex justify-between items-center bg-gray-50/50 dark:bg-slate-800/30">
-          <div className="flex items-center gap-3">
-            <div className="bg-red-600 p-2.5 rounded-2xl shadow-lg shadow-red-600/30 text-white">
-              <Server size={24} />
+        {/* Header con estilo corporativo Rojo/Blanco */}
+        <div className="px-10 py-8 border-b border-gray-100 dark:border-slate-800 flex justify-between items-center bg-red-600">
+          <div className="flex items-center gap-4 text-white">
+            <div className="bg-white/20 p-3 rounded-2xl backdrop-blur-md">
+              <Server size={32} />
             </div>
             <div>
-              <h2 className="text-xl font-black tracking-tight text-gray-900 dark:text-white uppercase">Enlace con Make</h2>
-              <p className="text-xs font-bold text-red-600 uppercase tracking-tighter">Configuración del Módulo HTTP</p>
+              <h2 className="text-2xl font-black tracking-tight uppercase">Configuración de Enlace</h2>
+              <p className="text-xs font-bold uppercase opacity-80 tracking-widest">Integración Make → Railway</p>
             </div>
           </div>
-          <button onClick={onClose} className="p-2 hover:bg-gray-200 dark:hover:bg-slate-700 rounded-full transition-colors text-gray-400">
-            <X size={20} />
+          <button onClick={onClose} className="p-3 bg-white/10 hover:bg-white/20 rounded-full transition-colors text-white">
+            <X size={24} />
           </button>
         </div>
 
-        {/* Content */}
-        <div className="p-8 space-y-8 overflow-y-auto max-h-[75vh]">
+        {/* Cuerpo de la Guía */}
+        <div className="p-10 space-y-8 overflow-y-auto max-h-[70vh]">
           
-          <div className="flex items-start gap-4 p-5 bg-blue-50 dark:bg-blue-900/10 border border-blue-100 dark:border-blue-900/30 rounded-3xl">
-            <Info className="text-blue-600 dark:text-blue-400 shrink-0" size={24} />
-            <div className="space-y-1">
-              <p className="text-sm font-bold text-blue-900 dark:text-blue-100">¿Cómo conectar Make con este Dashboard?</p>
-              <p className="text-xs text-blue-800/70 dark:text-blue-300/70 leading-relaxed">
-                Usa el módulo <b>"HTTP > Make a request"</b> en tu escenario de Make. Este dashboard actuará como el receptor de tu JSON.
-              </p>
-            </div>
-          </div>
-
-          <div className="space-y-6">
-            {/* Paso 1: URL */}
-            <div className="space-y-3">
-              <div className="flex items-center justify-between">
-                <label className="text-[10px] font-black text-gray-400 dark:text-gray-500 uppercase tracking-widest flex items-center gap-2">
-                  <Globe size={12} /> URL para el Módulo HTTP
-                </label>
-                <span className="text-[10px] font-bold text-red-600 bg-red-50 dark:bg-red-900/20 px-2 py-0.5 rounded-full">PASO 1</span>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <div className="p-6 bg-gray-50 dark:bg-slate-800/50 rounded-[2rem] border border-gray-100 dark:border-slate-700 space-y-3">
+              <div className="flex items-center gap-2 text-red-600 dark:text-red-500 font-black text-xs uppercase tracking-widest">
+                <Globe size={14} /> 1. URL de Conexión
               </div>
+              <p className="text-[11px] text-gray-500 leading-relaxed font-medium">
+                Esta es la dirección pública de tu dashboard en Railway. Pégala en el campo <b>URL</b> de Make.
+              </p>
               <div className="flex gap-2">
-                <div className="flex-1 px-4 py-4 bg-gray-50 dark:bg-slate-800/50 border border-gray-200 dark:border-slate-700 rounded-2xl font-mono text-xs text-red-600 break-all">
+                <code className="flex-1 px-4 py-3 bg-white dark:bg-slate-900 border border-gray-200 dark:border-slate-700 rounded-xl font-mono text-[10px] text-red-600 truncate font-bold">
                   {webhookUrl}
-                </div>
-                <button 
-                  onClick={() => copyToClipboard(webhookUrl)}
-                  className="p-4 bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-700 rounded-2xl hover:bg-red-600 hover:text-white dark:hover:bg-red-600 transition-all shadow-sm active:scale-95"
-                  title="Copiar URL"
-                >
-                  <Clipboard size={18} />
+                </code>
+                <button onClick={() => copyToClipboard(webhookUrl)} className="p-3 bg-red-600 text-white rounded-xl hover:bg-red-700 active:scale-90 transition-all">
+                  <Clipboard size={16} />
                 </button>
               </div>
             </div>
 
-            {/* Paso 2: Método y Headers */}
-            <div className="grid grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Método</label>
-                <div className="px-4 py-4 bg-gray-100 dark:bg-slate-800/30 rounded-2xl text-xs font-bold text-gray-900 dark:text-white border border-transparent">
-                  POST
-                </div>
+            <div className="p-6 bg-gray-50 dark:bg-slate-800/50 rounded-[2rem] border border-gray-100 dark:border-slate-700 space-y-3">
+              <div className="flex items-center gap-2 text-red-600 dark:text-red-500 font-black text-xs uppercase tracking-widest">
+                <Key size={14} /> 2. Autorización (Bearer)
               </div>
-              <div className="space-y-2">
-                <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Body Type</label>
-                <div className="px-4 py-4 bg-gray-100 dark:bg-slate-800/30 rounded-2xl text-xs font-bold text-gray-900 dark:text-white border border-transparent">
-                  Raw (JSON)
-                </div>
-              </div>
-            </div>
-
-            {/* Paso 3: Autorización */}
-            <div className="space-y-3">
-              <div className="flex items-center justify-between">
-                <label className="text-[10px] font-black text-gray-400 dark:text-gray-500 uppercase tracking-widest flex items-center gap-2">
-                  <Key size={12} /> Header: Authorization
-                </label>
-                <span className="text-[10px] font-bold text-red-600 bg-red-50 dark:bg-red-900/20 px-2 py-0.5 rounded-full">PASO 2</span>
-              </div>
-              <div className="flex gap-2">
-                <div className="flex-1 px-4 py-4 bg-gray-50 dark:bg-slate-800/50 border border-gray-200 dark:border-slate-700 rounded-2xl font-mono text-xs text-gray-600 dark:text-gray-400">
-                  <span className="text-red-600 font-bold">Bearer</span> {authToken}
-                </div>
-                <button 
-                  onClick={() => copyToClipboard(`Bearer ${authToken}`)}
-                  className="p-4 bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-700 rounded-2xl hover:bg-red-600 hover:text-white dark:hover:bg-red-600 transition-all shadow-sm active:scale-95"
-                  title="Copiar Header completo"
-                >
-                  <Clipboard size={18} />
-                </button>
-              </div>
-              <p className="text-[10px] text-gray-400 italic">
-                * Este es el código secreto que Railway usa para validar que la petición viene de tu cuenta de Make.
+              <p className="text-[11px] text-gray-500 leading-relaxed font-medium">
+                Esta es tu "llave" secreta. En Make, añade un Header llamado <b>Authorization</b> con este valor.
               </p>
+              <div className="flex gap-2">
+                <code className="flex-1 px-4 py-3 bg-white dark:bg-slate-900 border border-gray-200 dark:border-slate-700 rounded-xl font-mono text-[10px] text-gray-600 dark:text-gray-400 truncate font-bold">
+                  Bearer {authToken}
+                </code>
+                <button onClick={() => copyToClipboard(`Bearer ${authToken}`)} className="p-3 bg-red-600 text-white rounded-xl hover:bg-red-700 active:scale-90 transition-all">
+                  <Clipboard size={16} />
+                </button>
+              </div>
             </div>
           </div>
 
-          <div className="p-6 bg-gray-50 dark:bg-slate-800/50 rounded-3xl border border-gray-100 dark:border-slate-700 space-y-3">
-            <h4 className="text-xs font-black uppercase text-gray-900 dark:text-white flex items-center gap-2">
-              <CheckCircle size={14} className="text-green-500" /> Seguridad de Conexión
-            </h4>
-            <p className="text-[11px] text-gray-500 dark:text-gray-400 leading-relaxed">
-              El servidor del dashboard rechazará cualquier petición que no incluya el token correcto. Tu conexión está blindada. Una vez configurado en Make, pulsa "Run Once" en tu escenario para ver los datos aparecer aquí.
-            </p>
+          <div className="space-y-4">
+             <h3 className="text-xs font-black uppercase text-gray-400 tracking-[0.2em] flex items-center gap-2">
+               <ArrowRight size={14} className="text-red-600" /> Configuración en el módulo HTTP de Make
+             </h3>
+             <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                <div className="p-4 bg-gray-50 dark:bg-slate-800/30 rounded-2xl border border-gray-100 dark:border-slate-800">
+                  <p className="text-[10px] font-black text-gray-400 uppercase mb-1">Method</p>
+                  <p className="text-sm font-bold text-gray-900 dark:text-white">POST</p>
+                </div>
+                <div className="p-4 bg-gray-50 dark:bg-slate-800/30 rounded-2xl border border-gray-100 dark:border-slate-800">
+                  <p className="text-[10px] font-black text-gray-400 uppercase mb-1">Body type</p>
+                  <p className="text-sm font-bold text-gray-900 dark:text-white">Raw</p>
+                </div>
+                <div className="p-4 bg-gray-50 dark:bg-slate-800/30 rounded-2xl border border-gray-100 dark:border-slate-800">
+                  <p className="text-[10px] font-black text-gray-400 uppercase mb-1">Content type</p>
+                  <p className="text-sm font-bold text-gray-900 dark:text-white">JSON</p>
+                </div>
+                <div className="p-4 bg-gray-50 dark:bg-slate-800/30 rounded-2xl border border-gray-100 dark:border-slate-800">
+                  <p className="text-[10px] font-black text-gray-400 uppercase mb-1">API Key</p>
+                  <p className="text-sm font-bold text-red-600">Activa</p>
+                </div>
+             </div>
+          </div>
+
+          <div className="flex items-start gap-4 p-6 bg-red-50 dark:bg-red-900/10 border border-red-100 dark:border-red-900/20 rounded-3xl">
+            <Info className="text-red-600 shrink-0" size={20} />
+            <div className="space-y-1">
+              <p className="text-xs font-bold text-red-900 dark:text-red-100 uppercase tracking-tight">Nota de Seguridad</p>
+              <p className="text-[11px] text-red-800/70 dark:text-red-300/70 leading-relaxed font-medium">
+                No necesitas crear nada nuevo. Al configurar estos datos en Make, tu escenario podrá enviar el JSON directamente a este panel de control de forma segura.
+              </p>
+            </div>
           </div>
         </div>
 
-        {/* Footer Actions */}
-        <div className="p-8 border-t border-gray-100 dark:border-slate-800 bg-gray-50/50 dark:bg-slate-800/20">
+        {/* Footer */}
+        <div className="p-10 border-t border-gray-100 dark:border-slate-800 bg-gray-50/50 dark:bg-slate-800/20">
           <button
             onClick={onClose}
-            className="w-full py-5 bg-red-600 hover:bg-red-700 text-white rounded-3xl font-black text-sm uppercase tracking-widest shadow-xl shadow-red-600/30 transition-all transform active:scale-95 flex items-center justify-center gap-3"
+            className="w-full py-6 bg-gray-900 dark:bg-white text-white dark:text-gray-900 rounded-[2rem] font-black text-sm uppercase tracking-widest shadow-2xl transition-all transform hover:scale-[1.02] active:scale-95"
           >
-            Cerrar Guía y Volver al Panel
+            He terminado la configuración
           </button>
         </div>
       </div>
