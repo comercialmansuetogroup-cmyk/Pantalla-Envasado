@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>FactoryFlow 4K - Debugging Mode</title>
+  <title>FactoryFlow 4K - Stable Mode</title>
   
   <script src="https://cdn.tailwindcss.com"></script>
   <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
@@ -25,13 +25,15 @@
   </style>
 
   <script>
-    // Monitor global de errores para capturar la traza antes de que React se rompa
+    // Capturador de errores crítico para detectar el origen de objetos inválidos
     window.onerror = function(message, source, lineno, colno, error) {
-      console.group('%c🚨 SISTEMA DE CAPTURA DE ERRORES', 'background: #7f1d1d; color: #fff; padding: 10px; font-weight: bold;');
-      console.error('ERROR:', message);
-      console.error('UBICACIÓN:', source, 'Línea:', lineno);
-      if (error && error.stack) console.error('STACK:', error.stack);
-      console.groupEnd();
+      if (message.includes('invariant=31') || message.includes('Objects are not valid')) {
+        console.group('%c🚨 REACT ERROR #31 DETECTADO', 'background: #7f1d1d; color: #fff; padding: 10px; font-weight: bold;');
+        console.error('Mensaje:', message);
+        console.error('Causa probable: Colisión de versiones de React o renderizado de objeto ilegal.');
+        if (error) console.error('Stack:', error.stack);
+        console.groupEnd();
+      }
       return false;
     };
   </script>
