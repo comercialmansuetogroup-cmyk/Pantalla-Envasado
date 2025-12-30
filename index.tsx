@@ -314,17 +314,17 @@ const TrendBadge: React.FC<{ value: number }> = ({ value }) => {
   );
 };
 
-const ProductRow: React.FC<{ p: any; settings: VisualSettings }> = ({ p, settings }) => {
+const ProductRow: React.FC<{ p: any; settings: VisualSettings; darkMode: boolean }> = ({ p, settings, darkMode }) => {
   const showName = settings.displayMode === 'name' || settings.displayMode === 'both';
   const showCode = settings.displayMode === 'code' || settings.displayMode === 'both';
 
   return (
-    <div className="flex items-center justify-between py-2 px-4 border-b border-white/[0.04] group hover:bg-white/[0.02] transition-colors gap-x-8">
+    <div className={`flex items-center justify-between py-2 px-4 border-b group transition-colors gap-x-8 ${darkMode ? 'border-white/[0.04] hover:bg-white/[0.02]' : 'border-gray-100 hover:bg-gray-50'}`}>
       <div className="flex-1 min-w-0 flex items-center gap-4">
         <div className="flex flex-col min-w-0">
           {showCode && (
             <span 
-              className="font-black text-white leading-none mb-1 truncate"
+              className={`font-black leading-none mb-1 truncate ${darkMode ? 'text-white' : 'text-slate-900'}`}
               style={{ fontSize: `${settings.codeFontSize}px` }}
             >
               #{p.code}
@@ -332,7 +332,7 @@ const ProductRow: React.FC<{ p: any; settings: VisualSettings }> = ({ p, setting
           )}
           {showName && (
             <span 
-              className={`font-bold transition-colors uppercase truncate leading-none ${settings.displayMode === 'both' ? 'text-slate-500 group-hover:text-red-400' : 'text-slate-400 group-hover:text-red-500'}`}
+              className={`font-bold transition-colors uppercase truncate leading-none ${settings.displayMode === 'both' ? 'text-slate-500 group-hover:text-red-400' : (darkMode ? 'text-slate-400' : 'text-slate-500') + ' group-hover:text-red-500'}`}
               style={{ fontSize: `${settings.nameFontSize}px` }}
             >
               {p.name}
@@ -341,7 +341,7 @@ const ProductRow: React.FC<{ p: any; settings: VisualSettings }> = ({ p, setting
         </div>
         <TrendBadge value={p.trend} />
       </div>
-      <div className="text-xl xl:text-3xl font-black tabular-nums text-white group-hover:text-red-600 transition-all leading-none min-w-[100px] text-right">
+      <div className={`text-xl xl:text-3xl font-black tabular-nums group-hover:text-red-600 transition-all leading-none min-w-[100px] text-right ${darkMode ? 'text-white' : 'text-slate-900'}`}>
         {p.qty.toLocaleString('es-ES')}
       </div>
     </div>
@@ -372,7 +372,7 @@ const ClientColumn: React.FC<{ data: any; darkMode: boolean; settings: VisualSet
       <div className="flex-1 flex overflow-hidden">
         {columns.map((colProducts, colIdx) => (
           <div key={colIdx} className={`flex-1 flex flex-col p-2 ${colIdx > 0 ? 'border-l border-white/[0.05]' : ''}`}>
-            {colProducts.map((p: any, i: number) => <ProductRow key={i} p={p} settings={settings} />)}
+            {colProducts.map((p: any, i: number) => <ProductRow key={i} p={p} settings={settings} darkMode={darkMode} />)}
             {colProducts.length < maxRows && Array.from({ length: maxRows - colProducts.length }).map((_, emptyIdx) => (
               <div key={`empty-${emptyIdx}`} className="py-2.5 px-3 border-b border-transparent opacity-0">.</div>
             ))}
@@ -540,18 +540,21 @@ function App() {
     <div className={`flex flex-col h-screen w-screen overflow-hidden ${darkMode ? 'bg-slate-950 text-slate-100' : 'bg-slate-50 text-slate-900'}`}>
       <header className={`flex-none w-full px-10 py-3 border-b-2 ${darkMode ? 'bg-slate-950 border-white/10' : 'bg-white border-gray-300'}`}>
         <div className="flex justify-between items-center w-full">
+          {/* LOGO SECTION - REPLACED ENTIRELY IF LOGO EXISTS */}
           <div className="flex items-center gap-6">
-            <div className="bg-red-600 p-2.5 rounded-xl shadow-lg shadow-red-600/20">
-              {currentLogo ? (
-                <img src={currentLogo} alt="Logo" className="w-8 h-8 object-contain" />
-              ) : (
-                <Factory size={26} className="text-white" />
-              )}
-            </div>
-            <div>
-              <h2 className="text-2xl font-black tracking-tighter uppercase leading-none">Factory<span className="text-red-600">Flow</span></h2>
-              <p className="text-[9px] font-black text-slate-500 uppercase tracking-[0.5em] mt-1 italic">Producción de Pedidos en Vivo</p>
-            </div>
+            {currentLogo ? (
+               <img src={currentLogo} alt="Logo" className="h-16 w-auto object-contain max-w-[300px]" />
+            ) : (
+              <>
+                <div className="bg-red-600 p-2.5 rounded-xl shadow-lg shadow-red-600/20">
+                  <Factory size={26} className="text-white" />
+                </div>
+                <div>
+                  <h2 className={`text-2xl font-black tracking-tighter uppercase leading-none ${darkMode ? 'text-white' : 'text-slate-900'}`}>Factory<span className="text-red-600">Flow</span></h2>
+                  <p className="text-[9px] font-black text-slate-500 uppercase tracking-[0.5em] mt-1 italic">Producción de Pedidos en Vivo</p>
+                </div>
+              </>
+            )}
           </div>
           
           <div className="flex items-center gap-8">
