@@ -25,12 +25,10 @@
   </style>
 
   <script>
-    // Capturador de errores crítico para detectar el origen de objetos inválidos
     window.onerror = function(message, source, lineno, colno, error) {
       if (message.includes('invariant=31') || message.includes('Objects are not valid')) {
         console.group('%c🚨 REACT ERROR #31 DETECTADO', 'background: #7f1d1d; color: #fff; padding: 10px; font-weight: bold;');
         console.error('Mensaje:', message);
-        console.error('Causa probable: Colisión de versiones de React o renderizado de objeto ilegal.');
         if (error) console.error('Stack:', error.stack);
         console.groupEnd();
       }
