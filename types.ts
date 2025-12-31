@@ -26,7 +26,11 @@ export interface VisualSettings {
   nameFontSize: number;      
   codeFontSize: number;      
   clientNameFontSize: number; 
-  trendFontSize: number;     
+  
+  // Nuevos campos para control de %
+  trendFontSize: number;       // Para productos
+  clientTrendFontSize: number; // Para cabecera de cliente
+  
   headerFontSize: number;
 }
 
@@ -67,5 +71,6 @@ export const DEFAULT_SETTINGS: VisualSettings = {
   codeFontSize: 20,       
   clientNameFontSize: 48, 
   trendFontSize: 14,
+  clientTrendFontSize: 18, // Valor por defecto
   headerFontSize: 16
 };

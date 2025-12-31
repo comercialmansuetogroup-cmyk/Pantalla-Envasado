@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect } from 'react';
-import { X, Upload, Settings as SettingsIcon, Type, Layout, TrendingUp } from 'lucide-react';
+import { X, Upload, Settings as SettingsIcon, Type, Layout, TrendingUp, Image } from 'lucide-react';
 import { VisualSettings } from '../types';
 
 interface SettingsModalProps {
@@ -19,9 +19,14 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose, v
 
   if (!isOpen) return null;
 
+  // SOLICITUD 2: Logos PNG/JPG para versión blanca y oscura
   const handleLogoUpload = (e: React.ChangeEvent<HTMLInputElement>, mode: 'light' | 'dark') => {
     const file = e.target.files?.[0];
     if (file) {
+      if (!['image/jpeg', 'image/png', 'image/jpg', 'image/webp'].includes(file.type)) {
+        alert('Formato no válido. Utilice PNG o JPG.');
+        return;
+      }
       const reader = new FileReader();
       reader.onloadend = () => {
         const newSettings = { ...localSettings, [mode === 'light' ? 'logoLight' : 'logoDark']: reader.result as string };
@@ -39,83 +44,132 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose, v
   };
 
   return (
-    <div className="fixed inset-0 z-[200] flex items-center justify-end bg-black/95 backdrop-blur-xl animate-fade-in">
-      <div className="bg-[#12151c] w-[600px] h-full shadow-2xl border-l border-white/10 flex flex-col p-16 animate-slide-in">
-        <div className="flex justify-between items-center mb-16">
-          <div className="flex items-center gap-6">
-            <SettingsIcon size={40} className="text-red-600" />
-            <h2 className="text-4xl font-black uppercase italic tracking-tighter text-white">Configuración Industrial</h2>
+    <div className="fixed inset-0 z-[200] flex items-center justify-end bg-black/80 backdrop-blur-sm animate-fade-in">
+      <div className="bg-[#12151c] w-[600px] h-full shadow-2xl border-l border-white/10 flex flex-col p-10 animate-slide-in overflow-hidden">
+        
+        <div className="flex justify-between items-center mb-8 flex-none border-b border-white/10 pb-6">
+          <div className="flex items-center gap-4">
+            <SettingsIcon size={28} className="text-red-600" />
+            <h2 className="text-2xl font-black uppercase italic tracking-tighter text-white">Configuración Visual</h2>
           </div>
-          <button onClick={onClose} className="text-6xl font-bold opacity-20 hover:opacity-100 transition-all text-white">&times;</button>
+          <button onClick={onClose} className="text-white hover:text-red-500 transition-colors">
+             <X size={32} />
+          </button>
         </div>
 
-        <div className="flex-1 overflow-y-auto space-y-16 pr-8 custom-scroll">
-          {/* SECCIÓN LOGOS DUALES */}
-          <section className="space-y-8">
-            <label className="text-[12px] font-black opacity-40 uppercase tracking-[0.4em] flex items-center gap-3">
-              <Upload size={18} /> IDENTIDAD CORPORATIVA (LOGO ANCHO)
-            </label>
-            <div className="grid grid-cols-1 gap-8">
-              <div className="space-y-4">
-                <p className="text-[10px] font-bold opacity-50 uppercase tracking-widest">VERSIÓN MODO CLARO (FONDO OSCURO)</p>
-                <div className="relative group h-40 bg-white/5 border border-white/10 flex items-center justify-center p-8 hover:border-red-600 transition-colors">
-                  {localSettings.logoLight ? <img src={localSettings.logoLight} className="max-h-full max-w-full object-contain" /> : <Upload size={32} className="opacity-10" />}
-                  <input type="file" className="absolute inset-0 opacity-0 cursor-pointer" onChange={(e) => handleLogoUpload(e, 'light')} />
-                </div>
+        <div className="flex-1 overflow-y-auto space-y-10 pr-4 custom-scroll">
+          
+          {/* LOGOS DUALES */}
+          <section className="space-y-4">
+            <div className="flex items-center gap-2 text-white/80">
+              <Upload size={18} className="text-red-500" />
+              <h3 className="text-xs font-black uppercase tracking-widest">Logotipos (PNG/JPG)</h3>
+            </div>
+            
+            <div className="grid grid-cols-2 gap-4">
+              {/* Logo Light Mode */}
+              <div className="bg-white p-4 rounded-lg border border-slate-200 hover:border-red-500 transition-colors">
+                <p className="text-[10px] font-bold text-slate-400 uppercase mb-3 text-center">Para Fondo Blanco</p>
+                <label className="cursor-pointer block">
+                  <div className="h-24 bg-white border border-dashed border-slate-300 flex items-center justify-center overflow-hidden relative group">
+                     {localSettings.logoLight ? (
+                        <img src={localSettings.logoLight} className="w-full h-full object-contain p-2" />
+                     ) : (
+                        <div className="text-center text-slate-300">
+                           <Image className="mx-auto mb-1" size={20} />
+                           <span className="text-[9px] font-bold">SUBIR</span>
+                        </div>
+                     )}
+                     <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 flex items-center justify-center transition-opacity text-white font-bold text-[10px]">CAMBIAR</div>
+                  </div>
+                  <input type="file" accept="image/png, image/jpeg, image/jpg" className="hidden" onChange={(e) => handleLogoUpload(e, 'light')} />
+                </label>
               </div>
-              <div className="space-y-4">
-                <p className="text-[10px] font-bold opacity-50 uppercase tracking-widest">VERSIÓN MODO OSCURO (FONDO CLARO)</p>
-                <div className="relative group h-40 bg-white/5 border border-white/10 flex items-center justify-center p-8 hover:border-red-600 transition-colors">
-                  {localSettings.logoDark ? <img src={localSettings.logoDark} className="max-h-full max-w-full object-contain" /> : <Upload size={32} className="opacity-10" />}
-                  <input type="file" className="absolute inset-0 opacity-0 cursor-pointer" onChange={(e) => handleLogoUpload(e, 'dark')} />
-                </div>
+
+              {/* Logo Dark Mode */}
+              <div className="bg-[#080a0f] p-4 rounded-lg border border-white/10 hover:border-red-500 transition-colors">
+                <p className="text-[10px] font-bold text-white/40 uppercase mb-3 text-center">Para Fondo Oscuro</p>
+                <label className="cursor-pointer block">
+                  <div className="h-24 bg-black/20 border border-dashed border-white/20 flex items-center justify-center overflow-hidden relative group">
+                     {localSettings.logoDark ? (
+                        <img src={localSettings.logoDark} className="w-full h-full object-contain p-2" />
+                     ) : (
+                        <div className="text-center text-white/20">
+                           <Image className="mx-auto mb-1" size={20} />
+                           <span className="text-[9px] font-bold">SUBIR</span>
+                        </div>
+                     )}
+                     <div className="absolute inset-0 bg-white/10 opacity-0 group-hover:opacity-100 flex items-center justify-center transition-opacity text-white font-bold text-[10px]">CAMBIAR</div>
+                  </div>
+                  <input type="file" accept="image/png, image/jpeg, image/jpg" className="hidden" onChange={(e) => handleLogoUpload(e, 'dark')} />
+                </label>
               </div>
             </div>
           </section>
 
           {/* FUENTES Y TENDENCIAS */}
-          <section className="space-y-12 pt-12 border-t border-white/5">
-            <label className="text-[12px] font-black opacity-40 uppercase tracking-[0.4em] flex items-center gap-3">
-              <Type size={18} /> CONTROL DE TIPOGRAFÍA (PX)
-            </label>
-            <div className="grid grid-cols-2 gap-12">
-              {[
-                { label: 'Título Cliente', key: 'clientNameFontSize' },
-                { label: 'Código Ref.', key: 'codeFontSize' },
-                { label: 'Nombre Producto', key: 'nameFontSize' },
-                { label: 'Tendencias (%)', key: 'trendFontSize' }
-              ].map(f => (
-                <div key={f.key} className="space-y-4">
-                  <p className="text-[11px] font-black opacity-40 uppercase tracking-widest flex items-center gap-2">
-                    {f.key === 'trendFontSize' && <TrendingUp size={14} className="text-green-500" />} {f.label}
-                  </p>
-                  <input 
-                    type="number" 
-                    value={localSettings[f.key as keyof VisualSettings] as number} 
-                    onChange={(e) => updateSetting(f.key as keyof VisualSettings, parseInt(e.target.value))} 
-                    className="w-full bg-black/50 p-6 text-3xl font-black text-center border border-white/10 text-white focus:border-red-600 focus:bg-red-600/5 transition-all outline-none" 
-                  />
-                </div>
-              ))}
+          <section className="space-y-6">
+             <div className="flex items-center gap-2 text-white/80 border-t border-white/5 pt-6">
+              <Type size={18} className="text-red-500" />
+              <h3 className="text-xs font-black uppercase tracking-widest">Tamaños de Fuente (PX)</h3>
+            </div>
+
+            <div className="grid grid-cols-2 gap-x-6 gap-y-6">
+                 {/* Controles Básicos */}
+                 <div className="space-y-2">
+                    <label className="text-[10px] font-bold text-white/50 uppercase block">Título Cliente</label>
+                    <input type="number" value={localSettings.clientNameFontSize} onChange={(e) => updateSetting('clientNameFontSize', Number(e.target.value))} className="w-full bg-black/20 border border-white/10 rounded p-2 text-white text-center font-bold focus:border-red-500 outline-none" />
+                 </div>
+                 <div className="space-y-2">
+                    <label className="text-[10px] font-bold text-white/50 uppercase block">Código Producto</label>
+                    <input type="number" value={localSettings.codeFontSize} onChange={(e) => updateSetting('codeFontSize', Number(e.target.value))} className="w-full bg-black/20 border border-white/10 rounded p-2 text-white text-center font-bold focus:border-red-500 outline-none" />
+                 </div>
+                 <div className="space-y-2">
+                    <label className="text-[10px] font-bold text-white/50 uppercase block">Nombre Producto</label>
+                    <input type="number" value={localSettings.nameFontSize} onChange={(e) => updateSetting('nameFontSize', Number(e.target.value))} className="w-full bg-black/20 border border-white/10 rounded p-2 text-white text-center font-bold focus:border-red-500 outline-none" />
+                 </div>
+                 
+                 {/* SOLICITUD 3: Modificar tamaño % Clientes y Productos */}
+                 <div className="col-span-2 grid grid-cols-2 gap-6 pt-4 border-t border-white/5">
+                    <div className="space-y-2">
+                        <label className="text-[10px] font-bold text-white/50 uppercase block flex items-center gap-2"><TrendingUp size={12}/> % Global Cliente</label>
+                        <input type="number" value={localSettings.clientTrendFontSize || 18} onChange={(e) => updateSetting('clientTrendFontSize', Number(e.target.value))} className="w-full bg-black/20 border border-white/10 rounded p-2 text-white text-center font-bold focus:border-red-500 outline-none" />
+                    </div>
+                    <div className="space-y-2">
+                        <label className="text-[10px] font-bold text-white/50 uppercase block flex items-center gap-2"><TrendingUp size={12}/> % Por Producto</label>
+                        <input type="number" value={localSettings.trendFontSize} onChange={(e) => updateSetting('trendFontSize', Number(e.target.value))} className="w-full bg-black/20 border border-white/10 rounded p-2 text-white text-center font-bold focus:border-red-500 outline-none" />
+                    </div>
+                 </div>
             </div>
           </section>
 
-          <section className="space-y-8 pt-8 border-t border-white/5">
-            <label className="text-[12px] font-black opacity-40 uppercase tracking-[0.4em] flex items-center gap-3">
-              <Layout size={18} /> ESTRUCTURA DE PANTALLA
-            </label>
-            <div className="space-y-6">
-              <div className="flex justify-between text-[12px] font-black"><span>MÁX. FILAS POR COLUMNA</span> <span className="text-red-600 text-xl">{localSettings.maxRowsPerCol}</span></div>
-              <input type="range" min="5" max="50" value={localSettings.maxRowsPerCol} onChange={(e) => updateSetting('maxRowsPerCol', parseInt(e.target.value))} className="w-full accent-red-600 h-2 bg-white/10" />
+          {/* DENSIDAD */}
+          <section className="space-y-4 pt-6 border-t border-white/5">
+             <div className="flex items-center gap-2 text-white/80">
+              <Layout size={18} className="text-red-500" />
+              <h3 className="text-xs font-black uppercase tracking-widest">Estructura</h3>
+            </div>
+            <div className="bg-white/5 p-4 rounded-lg">
+               <div className="flex justify-between text-[10px] font-bold text-white/50 mb-2">
+                 <span>Filas por Columna</span>
+                 <span className="text-white text-lg">{localSettings.maxRowsPerCol}</span>
+               </div>
+               <input type="range" min="5" max="50" value={localSettings.maxRowsPerCol} onChange={(e) => updateSetting('maxRowsPerCol', parseInt(e.target.value))} className="w-full accent-red-600 h-2 bg-white/10 rounded-full cursor-pointer" />
             </div>
           </section>
 
-          <div className="pt-12">
-             <button onClick={() => { if(confirm('¿Reiniciar base de datos temporal?')) fetch('/api/reset', {method:'POST'}) }} className="w-full py-6 bg-red-600/10 text-red-500 border border-red-500/20 text-[12px] font-black uppercase hover:bg-red-600 hover:text-white transition-all shadow-xl">Limpiar Datos del Día</button>
+          <div className="pt-4">
+             <button onClick={() => { if(confirm('¿Reiniciar todo?')) { localStorage.clear(); location.reload(); } }} className="w-full py-3 bg-white/5 text-white/30 border border-white/5 text-[10px] font-black uppercase hover:bg-red-600 hover:text-white transition-all rounded-md">
+                Resetear Fábrica
+             </button>
           </div>
         </div>
 
-        <button onClick={onClose} className="mt-16 w-full py-8 bg-red-600 text-white text-md font-black uppercase tracking-[0.5em] hover:bg-white hover:text-red-600 transition-all shadow-[0_0_50px_rgba(220,38,38,0.3)]">Guardar Configuración</button>
+        <div className="mt-8 flex-none pt-6 border-t border-white/10">
+           <button onClick={onClose} className="w-full py-5 bg-red-600 text-white text-xs font-black uppercase tracking-[0.3em] hover:bg-white hover:text-red-600 transition-all shadow-lg rounded-sm">
+             Guardar Configuración
+           </button>
+        </div>
       </div>
     </div>
   );
