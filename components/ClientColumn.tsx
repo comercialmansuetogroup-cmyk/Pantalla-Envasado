@@ -36,7 +36,7 @@ export const ClientColumn: React.FC<ClientColumnProps> = ({ group, darkMode, set
   const isMultiCol = columns.length > 1;
   
   // Seleccionamos el ancho configurado según el tipo de columna
-  // Si no está definido (versión antigua), usamos defaults seguros (340 y 520)
+  // Este valor actuará como "Basis" (peso) y como "Min-Width" (tope inferior)
   const calculatedWidth = isMultiCol 
       ? (settings.colWidthMulti || 520) 
       : (settings.colWidthSingle || 340);
@@ -53,11 +53,13 @@ export const ClientColumn: React.FC<ClientColumnProps> = ({ group, darkMode, set
 
   return (
     <section 
-        // CAMBIO CRÍTICO: 'flex-none' evita que la columna se estire sola.
-        // Ahora respetará estrictamente el ancho calculado por los hijos o el estilo inline.
-        className={`flex-none h-full flex flex-col border-r transition-colors duration-300 ${darkMode ? 'border-white/5 bg-[#0c0e14]' : 'border-slate-300 bg-white'}`}
-        // Aplicamos minWidth al contenedor para asegurar estructura base
-        style={{ minWidth: isMultiCol ? 'auto' : `${calculatedWidth}px` }}
+        // CAMBIO: Quitamos 'flex-none' para permitir que crezca.
+        // Usamos styles inline para controlar el flex-grow y flex-basis con precisión matemática.
+        className={`h-full flex flex-col border-r transition-colors duration-300 ${darkMode ? 'border-white/5 bg-[#0c0e14]' : 'border-slate-300 bg-white'}`}
+        style={{ 
+            minWidth: `${calculatedWidth}px`,  // Nunca ser más pequeño que lo configurado (para scroll si hace falta)
+            flex: `1 1 ${calculatedWidth}px`   // Grow: 1 (ocupa todo el espacio), Shrink: 1, Basis: [Tu Valor] (define la proporción)
+        }}
     >
       
       {/* Header Cliente: CENTRADO Y UNIFICADO */}
@@ -82,8 +84,7 @@ export const ClientColumn: React.FC<ClientColumnProps> = ({ group, darkMode, set
       {/* Contenedor de Columnas */}
       <div className="flex-1 flex overflow-x-auto custom-scroll">
         {columns.length === 0 ? (
-           // En caso de estar vacío, forzamos el ancho estricto para que el slider funcione visualmente incluso sin productos
-           <div className="flex-1 flex items-center justify-center flex-col opacity-20 w-full" style={{ width: `${calculatedWidth}px` }}>
+           <div className="flex-1 flex items-center justify-center flex-col opacity-20 w-full">
               <span className="text-6xl font-black text-slate-500">OK</span>
               <span className="text-sm font-bold uppercase tracking-widest mt-2 text-slate-500">Zona Completada</span>
            </div>
@@ -91,9 +92,8 @@ export const ClientColumn: React.FC<ClientColumnProps> = ({ group, darkMode, set
           columns.map((colProducts, colIdx) => (
             <div 
                 key={colIdx} 
+                // Las columnas internas se reparten el espacio del contenedor padre equitativamente
                 className={`flex-1 border-r last:border-r-0 flex flex-col ${darkMode ? 'border-white/5' : 'border-slate-200'}`} 
-                // AQUI ESTÁ LA CLAVE: Forzamos width y minWidth para que sea exacto al slider
-                style={{ width: `${calculatedWidth}px`, minWidth: `${calculatedWidth}px` }}
             >
               
               {/* Cabecera Tabla */}
