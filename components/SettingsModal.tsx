@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect } from 'react';
-import { X, Upload, Layout, Type, Trash2, Clipboard, Globe, Settings as SettingsIcon } from 'lucide-react';
+import { X, Upload, Settings as SettingsIcon, Type, Layout } from 'lucide-react';
 import { VisualSettings } from '../types';
 
 interface SettingsModalProps {
@@ -24,7 +24,9 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose, v
     if (file) {
       const reader = new FileReader();
       reader.onloadend = () => {
-        updateSetting(mode === 'light' ? 'logoLight' : 'logoDark', reader.result as string);
+        const newSettings = { ...localSettings, [mode === 'light' ? 'logoLight' : 'logoDark']: reader.result as string };
+        setLocalSettings(newSettings);
+        onSaveSettings(newSettings);
       };
       reader.readAsDataURL(file);
     }
@@ -37,78 +39,79 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose, v
   };
 
   return (
-    <div className="fixed inset-0 z-[200] flex items-center justify-end bg-black/80 backdrop-blur-sm">
-      <div className="bg-[#1a1d26] w-[500px] h-full shadow-2xl border-l border-white/10 flex flex-col p-10 animate-slide-in">
-        <div className="flex justify-between items-center mb-10">
-          <div className="flex items-center gap-3">
-            <SettingsIcon size={24} className="text-red-600" />
-            <h2 className="text-2xl font-black uppercase italic tracking-tighter">System Configuration</h2>
+    <div className="fixed inset-0 z-[200] flex items-center justify-end bg-black/90 backdrop-blur-sm">
+      <div className="bg-[#1a1d26] w-[550px] h-full shadow-2xl border-l border-white/10 flex flex-col p-12 animate-slide-in">
+        <div className="flex justify-between items-center mb-12">
+          <div className="flex items-center gap-4">
+            <SettingsIcon size={28} className="text-red-600" />
+            <h2 className="text-3xl font-black uppercase italic tracking-tighter text-white">Configuración Industrial</h2>
           </div>
-          <button onClick={onClose} className="text-4xl font-bold opacity-30 hover:opacity-100 transition-all">&times;</button>
+          <button onClick={onClose} className="text-5xl font-bold opacity-20 hover:opacity-100 transition-all text-white">&times;</button>
         </div>
 
-        <div className="flex-1 overflow-y-auto space-y-10 pr-4 custom-scroll">
-          {/* LOGOS */}
-          <section className="space-y-4">
-            <label className="text-[10px] font-black opacity-40 uppercase tracking-widest">Identidad Visual (Logos)</label>
-            <div className="grid grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <p className="text-[8px] font-bold opacity-50 uppercase">Logo Claro (Light)</p>
-                <div className="relative group h-24 bg-white/5 border border-white/10 flex items-center justify-center p-4">
-                  {localSettings.logoLight ? <img src={localSettings.logoLight} className="max-h-full" /> : <Upload size={20} className="opacity-20" />}
+        <div className="flex-1 overflow-y-auto space-y-12 pr-6 custom-scroll">
+          <section className="space-y-6">
+            <label className="text-[11px] font-black opacity-40 uppercase tracking-[0.3em] flex items-center gap-2">
+              <Upload size={14} /> IDENTIDAD VISUAL (LOGOS)
+            </label>
+            <div className="grid grid-cols-2 gap-6">
+              <div className="space-y-3">
+                <p className="text-[9px] font-bold opacity-50 uppercase tracking-widest">VERSIÓN CLARA</p>
+                <div className="relative group h-28 bg-white/5 border border-white/10 flex items-center justify-center p-6">
+                  {localSettings.logoLight ? <img src={localSettings.logoLight} className="max-h-full" /> : <Upload size={24} className="opacity-10" />}
                   <input type="file" className="absolute inset-0 opacity-0 cursor-pointer" onChange={(e) => handleLogoUpload(e, 'light')} />
                 </div>
               </div>
-              <div className="space-y-2">
-                <p className="text-[8px] font-bold opacity-50 uppercase">Logo Oscuro (Dark)</p>
-                <div className="relative group h-24 bg-white/5 border border-white/10 flex items-center justify-center p-4">
-                  {localSettings.logoDark ? <img src={localSettings.logoDark} className="max-h-full" /> : <Upload size={20} className="opacity-20" />}
+              <div className="space-y-3">
+                <p className="text-[9px] font-bold opacity-50 uppercase tracking-widest">VERSIÓN OSCURA</p>
+                <div className="relative group h-28 bg-white/5 border border-white/10 flex items-center justify-center p-6">
+                  {localSettings.logoDark ? <img src={localSettings.logoDark} className="max-h-full" /> : <Upload size={24} className="opacity-10" />}
                   <input type="file" className="absolute inset-0 opacity-0 cursor-pointer" onChange={(e) => handleLogoUpload(e, 'dark')} />
                 </div>
               </div>
             </div>
-            <button onClick={() => {updateSetting('logoLight', null); updateSetting('logoDark', null)}} className="w-full py-2 bg-red-600/10 text-red-500 text-[10px] font-black uppercase border border-red-600/20">Reiniciar Logos</button>
           </section>
 
-          {/* DENSIDAD */}
-          <section className="space-y-4">
-            <label className="text-[10px] font-black opacity-40 uppercase tracking-widest">Estructura y Columnas</label>
+          <section className="space-y-8">
+            <label className="text-[11px] font-black opacity-40 uppercase tracking-[0.3em] flex items-center gap-2">
+              <Layout size={14} /> ESTRUCTURA DE PANTALLA
+            </label>
             <div className="space-y-4">
-              <div className="flex justify-between text-[10px] font-bold"><span>FILAS POR COLUMNA</span> <span className="text-red-500">{localSettings.maxRowsPerCol}</span></div>
+              <div className="flex justify-between text-[11px] font-black"><span>PRODUCTOS POR COLUMNA</span> <span className="text-red-600">{localSettings.maxRowsPerCol}</span></div>
               <input type="range" min="5" max="50" value={localSettings.maxRowsPerCol} onChange={(e) => updateSetting('maxRowsPerCol', parseInt(e.target.value))} className="w-full accent-red-600" />
             </div>
           </section>
 
-          {/* FUENTES */}
-          <section className="space-y-6 pt-6 border-t border-white/5">
-            <label className="text-[10px] font-black opacity-40 uppercase tracking-widest">Tipografías y Tamaños (PX)</label>
-            <div className="grid grid-cols-2 gap-x-8 gap-y-6">
-              <div className="space-y-2">
-                <p className="text-[9px] font-bold opacity-50 uppercase">Nombre Cliente</p>
-                <input type="number" value={localSettings.clientNameFontSize} onChange={(e) => updateSetting('clientNameFontSize', parseInt(e.target.value))} className="w-full bg-black/40 p-3 text-sm font-black text-center border border-white/5" />
-              </div>
-              <div className="space-y-2">
-                <p className="text-[9px] font-bold opacity-50 uppercase">Referencia</p>
-                <input type="number" value={localSettings.codeFontSize} onChange={(e) => updateSetting('codeFontSize', parseInt(e.target.value))} className="w-full bg-black/40 p-3 text-sm font-black text-center border border-white/5" />
-              </div>
-              <div className="space-y-2">
-                <p className="text-[9px] font-bold opacity-50 uppercase">Nombre Producto</p>
-                <input type="number" value={localSettings.nameFontSize} onChange={(e) => updateSetting('nameFontSize', parseInt(e.target.value))} className="w-full bg-black/40 p-3 text-sm font-black text-center border border-white/5" />
-              </div>
-              <div className="space-y-2">
-                <p className="text-[9px] font-bold opacity-50 uppercase">Tendencia (%)</p>
-                <input type="number" value={localSettings.trendFontSize} onChange={(e) => updateSetting('trendFontSize', parseInt(e.target.value))} className="w-full bg-black/40 p-3 text-sm font-black text-center border border-white/5" />
-              </div>
+          <section className="space-y-10 pt-10 border-t border-white/5">
+            <label className="text-[11px] font-black opacity-40 uppercase tracking-[0.3em] flex items-center gap-2">
+              <Type size={14} /> TIPOGRAFÍAS Y DIMENSIONES (PX)
+            </label>
+            <div className="grid grid-cols-2 gap-x-10 gap-y-8">
+              {[
+                { label: 'Nombre Cliente', key: 'clientNameFontSize' },
+                { label: 'Referencia/Código', key: 'codeFontSize' },
+                { label: 'Nombre Producto', key: 'nameFontSize' },
+                { label: 'Tendencias (%)', key: 'trendFontSize' }
+              ].map(f => (
+                <div key={f.key} className="space-y-3">
+                  <p className="text-[10px] font-black opacity-40 uppercase tracking-widest">{f.label}</p>
+                  <input 
+                    type="number" 
+                    value={localSettings[f.key as keyof VisualSettings] as number} 
+                    onChange={(e) => updateSetting(f.key as keyof VisualSettings, parseInt(e.target.value))} 
+                    className="w-full bg-black/40 p-4 text-xl font-black text-center border border-white/5 text-white focus:border-red-600 transition-colors" 
+                  />
+                </div>
+              ))}
             </div>
           </section>
 
-          {/* RESET DATA */}
-          <section className="pt-10 border-t border-white/5">
-             <button onClick={() => { if(confirm('¿Reiniciar producción de hoy?')) fetch('/api/reset', {method:'POST'}) }} className="w-full py-4 bg-red-600/10 text-red-500 border border-red-500/20 text-[10px] font-black uppercase hover:bg-red-600 hover:text-white transition-all">Limpiar Base de Datos (Hoy)</button>
+          <section className="pt-12 border-t border-white/5">
+             <button onClick={() => { if(confirm('¿Reiniciar todo el sistema?')) fetch('/api/reset', {method:'POST'}) }} className="w-full py-5 bg-red-600/10 text-red-500 border border-red-500/20 text-[11px] font-black uppercase hover:bg-red-600 hover:text-white transition-all">Limpiar Histórico del Día</button>
           </section>
         </div>
 
-        <button onClick={onClose} className="mt-10 w-full py-5 bg-white text-black text-xs font-black uppercase tracking-[0.3em] hover:bg-red-600 hover:text-white transition-all">Aplicar Cambios</button>
+        <button onClick={onClose} className="mt-12 w-full py-6 bg-white text-black text-sm font-black uppercase tracking-[0.4em] hover:bg-red-600 hover:text-white transition-all shadow-2xl">Aplicar y Guardar</button>
       </div>
     </div>
   );

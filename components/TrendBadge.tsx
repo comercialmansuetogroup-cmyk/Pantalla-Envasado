@@ -1,6 +1,6 @@
 
 import React from 'react';
-import { Minus, ArrowUp, ArrowDown } from 'lucide-react';
+import { ArrowUp, ArrowDown, Minus } from 'lucide-react';
 
 interface TrendBadgeProps {
     value: number;
@@ -11,8 +11,8 @@ interface TrendBadgeProps {
 export const TrendBadge: React.FC<TrendBadgeProps> = ({ value, darkMode, fontSize }) => {
   if (Math.abs(value) < 0.1) {
     return (
-      <div className="flex items-center gap-1 font-bold text-slate-500/40" style={{ fontSize: `${fontSize}px` }}>
-        <Minus size={fontSize} /> 0%
+      <div className="flex items-center gap-1 font-bold text-slate-500/30" style={{ fontSize: `${fontSize}px` }}>
+        <Minus size={fontSize} strokeWidth={4} /> 0%
       </div>
     );
   }

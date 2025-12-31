@@ -1,19 +1,5 @@
 
-// TimeFilter type for production analysis
 export type TimeFilter = 'week' | 'month' | 'quarter' | 'year';
-
-// IncomingDataPayload interface for webhook data handling
-export interface IncomingDataPayload {
-  zonas: Array<{
-    nombre: string;
-    codigo_agente: string;
-    nombre_agente: string;
-    productos: Array<{
-      codigo: string;
-      cantidad: number;
-    }>;
-  }>;
-}
 
 export interface Product {
   name: string;
@@ -25,7 +11,6 @@ export interface Product {
   trend: number;
 }
 
-// ClientGroup used for dashboard columns
 export interface ClientGroup {
   name: string;
   products: Product[];
@@ -33,25 +18,37 @@ export interface ClientGroup {
   code?: string;
 }
 
-export interface ClientData {
-  name: string;
-  products: Product[];
-  total: number;
-  totalTrend: number;
-  clientId?: string;
-  code?: string;
+// Added missing interface for product payloads in webhooks
+export interface ProductPayload {
+  codigo: string;
+  cantidad: number;
+  stock_fisico?: number;
+}
+
+// Added missing interface for zone payloads in webhooks
+export interface ZonaPayload {
+  nombre: string;
+  codigo_agente: string;
+  nombre_agente: string;
+  productos?: ProductPayload[];
+}
+
+// Fix for: Error in file constants.ts on line 1: Module '"./types"' has no exported member 'IncomingDataPayload'.
+export interface IncomingDataPayload {
+  zonas: ZonaPayload[];
 }
 
 export interface VisualSettings {
   logoLight: string | null;
   logoDark: string | null;
+  // Fix for: Property 'displayMode' does not exist on type 'VisualSettings' in ProductRow.tsx
   displayMode: 'name' | 'code' | 'both';
   maxRowsPerCol: number;
   nameFontSize: number;      
   codeFontSize: number;      
   clientNameFontSize: number; 
-  tableHeaderFontSize: number; 
   trendFontSize: number;     
+  headerFontSize: number;
 }
 
 export const CLIENT_MAPPING: Record<string, string> = {
@@ -69,11 +66,12 @@ export const CLIENT_MAPPING: Record<string, string> = {
 export const DEFAULT_SETTINGS: VisualSettings = {
   logoLight: null,
   logoDark: null,
+  // Added default value for missing displayMode property
   displayMode: 'both',
   maxRowsPerCol: 22,      
   nameFontSize: 11,       
-  codeFontSize: 14,       
-  clientNameFontSize: 28, 
-  tableHeaderFontSize: 9, 
-  trendFontSize: 10,      
+  codeFontSize: 15,       
+  clientNameFontSize: 32, 
+  trendFontSize: 11,
+  headerFontSize: 10
 };
