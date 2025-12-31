@@ -12,19 +12,23 @@ export default function App() {
   const [data, setData] = useState<any[]>([]);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [highlightedCode, setHighlightedCode] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
   
   const [settings, setSettings] = useState<any>(() => {
-    const saved = localStorage.getItem('factory_settings_v14');
-    return saved ? JSON.parse(saved) : DEFAULT_SETTINGS;
+    try {
+      const saved = localStorage.getItem('factory_settings_v16');
+      return saved ? JSON.parse(saved) : DEFAULT_SETTINGS;
+    } catch {
+      return DEFAULT_SETTINGS;
+    }
   });
 
   const fetchData = useCallback(async () => {
     try {
       const res = await fetch('/api/data');
-      if (!res.ok) { setData([]); return; }
+      if (!res.ok) throw new Error('Network error');
       const raw = await res.json();
       
-      // Transform raw DB data to grouped client data
       const groups: Record<string, any> = {};
       raw.forEach((row: any) => {
         const clientName = CLIENT_MAPPING[row.agent_code] || row.agent_name || `ZONA ${row.agent_code}`;
@@ -36,34 +40,49 @@ export default function App() {
           name: row.product_name,
           qty: Number(row.total_qty),
           stock: Number(row.stock),
-          trend: 0 // In a real app, this comes from a comparision with yesterday's data
+          trend: 0 
         });
       });
 
       setData(Object.values(groups).sort((a,b) => {
         if(a.name === 'GRAN CANARIA') return -1;
+        if(b.name === 'GRAN CANARIA') return 1;
         return a.name.localeCompare(b.name);
       }));
+      setError(null);
     } catch (e) { 
-      console.error(e);
-      setData([]);
+      console.warn('Fetch error:', e);
+      setError('Error conectando con el servidor. Reintentando...');
     }
   }, []);
 
   useEffect(() => {
     fetchData();
     const es = new EventSource('/api/events');
+    
     es.onmessage = (e) => {
-      fetchData();
+      if (!e.data) return;
       try {
         const msg = JSON.parse(e.data);
+        fetchData();
         if (msg.code) {
           setHighlightedCode(msg.code);
-          setTimeout(() => setHighlightedCode(null), 3000);
+          setTimeout(() => setHighlightedCode(null), 4000);
         }
-      } catch(err) {}
+      } catch(err) {
+        // Silently skip malformed JSON from stream
+      }
     };
-    return () => es.close();
+
+    es.onerror = () => {
+      console.log('SSE Reconnecting...');
+    };
+
+    const interval = setInterval(fetchData, 10000);
+    return () => {
+      es.close();
+      clearInterval(interval);
+    };
   }, [fetchData]);
 
   const globalTotal = useMemo(() => {
@@ -71,7 +90,7 @@ export default function App() {
   }, [data]);
 
   return (
-    <div className={`flex flex-col h-screen w-screen overflow-hidden ${darkMode ? 'bg-[#0a0c10] text-white' : 'bg-slate-50 text-slate-900'}`}>
+    <div className={`flex flex-col h-screen w-screen overflow-hidden ${darkMode ? 'bg-[#080a0f] text-white' : 'bg-slate-100 text-slate-900'}`}>
       <Header 
         darkMode={darkMode} 
         setDarkMode={setDarkMode} 
@@ -82,11 +101,20 @@ export default function App() {
         settings={settings}
       />
 
+      {error && (
+        <div className="absolute top-36 left-1/2 -translate-x-1/2 bg-red-600/90 text-white px-8 py-2 rounded-full text-[10px] font-black uppercase tracking-widest z-[150] shadow-xl">
+          {error}
+        </div>
+      )}
+
       <main className="flex-1 relative overflow-hidden">
         {view === 'live' ? (
           <div className="absolute inset-0 flex overflow-x-auto items-start custom-scroll">
             {data.length === 0 ? (
-              <div className="w-full h-full flex items-center justify-center opacity-10 font-black text-4xl uppercase tracking-[1em]">Sin Datos Activos</div>
+              <div className="w-full h-full flex flex-col items-center justify-center opacity-10 font-black">
+                <p className="text-6xl uppercase tracking-[1em] italic">Esperando Datos</p>
+                <p className="text-xs tracking-[0.5em] mt-8 uppercase">Sincronización de Planta v16</p>
+              </div>
             ) : (
               data.map((client) => (
                 <ClientColumn 
@@ -110,7 +138,7 @@ export default function App() {
         visualSettings={settings}
         onSaveSettings={(s) => {
           setSettings(s);
-          localStorage.setItem('factory_settings_v14', JSON.stringify(s));
+          localStorage.setItem('factory_settings_v16', JSON.stringify(s));
         }}
       />
     </div>

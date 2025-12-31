@@ -18,14 +18,12 @@ export interface ClientGroup {
   code?: string;
 }
 
-// Added missing interface for product payloads in webhooks
 export interface ProductPayload {
   codigo: string;
   cantidad: number;
   stock_fisico?: number;
 }
 
-// Added missing interface for zone payloads in webhooks
 export interface ZonaPayload {
   nombre: string;
   codigo_agente: string;
@@ -33,7 +31,6 @@ export interface ZonaPayload {
   productos?: ProductPayload[];
 }
 
-// Fix for: Error in file constants.ts on line 1: Module '"./types"' has no exported member 'IncomingDataPayload'.
 export interface IncomingDataPayload {
   zonas: ZonaPayload[];
 }
@@ -41,7 +38,6 @@ export interface IncomingDataPayload {
 export interface VisualSettings {
   logoLight: string | null;
   logoDark: string | null;
-  // Fix for: Property 'displayMode' does not exist on type 'VisualSettings' in ProductRow.tsx
   displayMode: 'name' | 'code' | 'both';
   maxRowsPerCol: number;
   nameFontSize: number;      
@@ -60,18 +56,17 @@ export const CLIENT_MAPPING: Record<string, string> = {
   '14': 'GRAN CANARIA', 
   '5': 'GRAN CANARIA', 
   '0': 'GRAN CANARIA',
-  '8': 'GRAN CANARIA'
+  '8': 'GRAN CANARIA' // Agregado código 8 solicitado
 };
 
 export const DEFAULT_SETTINGS: VisualSettings = {
   logoLight: null,
   logoDark: null,
-  // Added default value for missing displayMode property
   displayMode: 'both',
   maxRowsPerCol: 22,      
   nameFontSize: 11,       
-  codeFontSize: 15,       
-  clientNameFontSize: 32, 
+  codeFontSize: 16,       
+  clientNameFontSize: 36, 
   trendFontSize: 11,
-  headerFontSize: 10
+  headerFontSize: 12
 };
