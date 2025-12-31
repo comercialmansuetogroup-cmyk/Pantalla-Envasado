@@ -82,6 +82,9 @@ const notifyClients = (updatedCode, type = 'update') => {
 // --- API ENDPOINTS ---
 
 // 1. WEBHOOK: Entrada de NUEVOS PEDIDOS (Make)
+// LÓGICA CORREGIDA V4: UPSERT QUIRÚRGICO
+// Estrategia: "Busca y Actualiza o Inserta". NO BORRA NADA.
+// Esto permite recibir cargas parciales de Make sin destruir datos previos.
 app.post('/api/webhook', async (req, res) => {
   const { zonas } = req.body;
   
@@ -100,12 +103,13 @@ app.post('/api/webhook', async (req, res) => {
     await client.query('BEGIN');
     
     let lastCode = null;
-    let count = 0;
-    let updatedCount = 0;
+    let countInsert = 0;
+    let countUpdate = 0;
 
     for (const z of zonas) {
       const code = String(z.codigo_agente || '0').trim();
       const name = z.nombre_agente || 'DESCONOCIDO';
+      // Make a veces envía estructura plana o anidada, intentamos normalizar
       const topLevelProductName = z.nombre || 'PRODUCTO';
 
       if (z.productos && Array.isArray(z.productos)) {
@@ -115,6 +119,7 @@ app.post('/api/webhook', async (req, res) => {
           const finalProductName = p.nombre || topLevelProductName;
 
           if (qty > 0) {
+            // 1. Verificar si YA EXISTE este producto para este cliente HOY
             const checkRes = await client.query(
               `SELECT id FROM orders 
                WHERE agent_code = $1 
@@ -124,20 +129,23 @@ app.post('/api/webhook', async (req, res) => {
             );
 
             if (checkRes.rows.length > 0) {
+              // 2A. ACTUALIZAR (Sustituir valor, NO sumar)
+              // Esto corrige el error de duplicados si Make se ejecuta dos veces
               await client.query(
                 `UPDATE orders 
                  SET quantity = $1, product_name = $2, agent_name = $3
                  WHERE id = $4`,
                 [qty, finalProductName, name, checkRes.rows[0].id]
               );
-              updatedCount++;
+              countUpdate++;
             } else {
+              // 2B. INSERTAR NUEVO
               await client.query(
                 `INSERT INTO orders (agent_code, agent_name, product_code, product_name, quantity) 
                  VALUES ($1, $2, $3, $4, $5)`,
                 [code, name, lastCode, finalProductName, qty]
               );
-              count++;
+              countInsert++;
             }
           }
         }
@@ -145,9 +153,9 @@ app.post('/api/webhook', async (req, res) => {
     }
 
     await client.query('COMMIT');
-    console.log(`✅ [WEBHOOK] Procesado. Insertados: ${count}, Actualizados: ${updatedCount}.`);
+    console.log(`✅ [WEBHOOK] Sync OK. Inserts: ${countInsert}, Updates: ${countUpdate}`);
     notifyClients(lastCode, 'order');
-    res.json({ ok: true, inserted: count, updated: updatedCount });
+    res.json({ ok: true, inserted: countInsert, updated: countUpdate });
 
   } catch (err) {
     await client.query('ROLLBACK');
@@ -200,11 +208,11 @@ app.post('/api/scan', async (req, res) => {
   }
 });
 
-// 3. GET DATA: Modificado para devolver TOTAL HOY y TOTAL AYER
+// 3. GET DATA: Devuelve TOTAL HOY y TOTAL AYER para comparar
 app.get('/api/data', async (req, res) => {
   if (!process.env.DATABASE_URL) return res.json([]);
   try {
-    // Obtenemos datos de HOY y de AYER en la misma consulta usando CASE WHEN
+    // Obtenemos datos de HOY y de AYER en la misma consulta
     const result = await pool.query(`
       SELECT 
         o.agent_code, 
