@@ -3,7 +3,7 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, BarChart, Bar } from 'recharts';
 import { Download, TrendingUp, Package, Calendar, Users, FileText, Share2, BarChart3 } from 'lucide-react';
 import { TimeFilter, ClientGroup } from '../types';
-import * as XLSX from 'xlsx';
+import ExcelJS from 'exceljs';
 import { saveAs } from 'file-saver';
 
 interface StatsDashboardProps {
@@ -45,7 +45,7 @@ export const StatsDashboard: React.FC<StatsDashboardProps> = ({ darkMode, data }
     return Array.from(allProducts.entries())
       .map(([name, qty]) => ({ name, qty }))
       .sort((a, b) => b.qty - a.qty)
-      .slice(0, 10); // Top 10
+      .slice(0, 15); // Top 15 para el Excel
   }, [data]);
 
   // 3. Obtener Historial Real del Servidor
@@ -70,72 +70,200 @@ export const StatsDashboard: React.FC<StatsDashboardProps> = ({ darkMode, data }
     fetchHistory();
   }, [filter]);
 
-  // --- LÓGICA DE EXPORTACIÓN EXCEL (.XLSX) ---
-  const downloadXLSX = () => {
-    // Hoja 1: DASHBOARD RESUMEN
-    const summaryData = [
-      ["REPORTE EJECUTIVO DE PRODUCCIÓN - ANSUETO"],
-      ["Generado el:", new Date().toLocaleString()],
-      ["Filtro:", filter.toUpperCase()],
-      [""], // Espacio
-      ["KPIs PRINCIPALES"],
-      ["Indicador", "Valor", "Detalle"],
-      ["Unidades Producidas", totalProduction, "Volumen total en periodo"],
-      ["Eficiencia Global", `${efficiency}%`, "Ratio Producción/Stock"],
-      ["Regiones Activas", activeZones, "Zonas con actividad"],
-      ["Promedio por Zona", averagePerZone, "Media unitaria"],
-      [""],
-      ["TOP 10 PRODUCTOS (Volumen)"],
-      ["Ranking", "Producto", "Cantidad Total"]
-    ];
+  // --- LÓGICA DE EXPORTACIÓN EXCEL PROFESIONAL (ExcelJS) ---
+  const downloadExcel = async () => {
+    // @ts-ignore
+    const workbook = new ExcelJS.Workbook();
+    workbook.creator = 'Ansueto Analytics';
+    workbook.created = new Date();
 
-    topItems.forEach((item, index) => {
-      summaryData.push([String(index + 1), item.name, String(item.qty)]);
+    // ---------------------------------------------------------
+    // HOJA 1: DASHBOARD VISUAL
+    // ---------------------------------------------------------
+    const sheetDash = workbook.addWorksheet('DASHBOARD', {
+      views: [{ showGridLines: false }]
     });
 
-    // Hoja 2: DATA SOURCE (Datos Crudos para Tablas Dinámicas)
-    const rawDataHeader = [["Fecha Reporte", "Cliente/Zona", "Código Producto", "Producto", "Cantidad", "Stock Actual", "Pendiente"]];
-    const rawDataRows: any[] = [];
-    
-    const todayStr = new Date().toLocaleDateString();
+    // Colores corporativos
+    const RED_COLOR = 'FFDC2626';
+    const DARK_BG = 'FF1E293B';
+    const WHITE_TEXT = 'FFFFFFFF';
+    const GRAY_TEXT = 'FF64748B';
 
+    // 1. Título Header
+    sheetDash.mergeCells('B2:K3');
+    const titleCell = sheetDash.getCell('B2');
+    titleCell.value = 'ANSUETO ANALYTICS - REPORTE EJECUTIVO';
+    titleCell.font = { name: 'Arial Black', size: 20, color: { argb: WHITE_TEXT }, bold: true, italic: true };
+    titleCell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: RED_COLOR } };
+    titleCell.alignment = { vertical: 'middle', horizontal: 'center' };
+
+    sheetDash.mergeCells('B4:K4');
+    const subTitle = sheetDash.getCell('B4');
+    subTitle.value = `GENERADO: ${new Date().toLocaleString().toUpperCase()} | FILTRO: ${filter.toUpperCase()}`;
+    subTitle.font = { name: 'Arial', size: 10, color: { argb: GRAY_TEXT }, bold: true };
+    subTitle.alignment = { horizontal: 'right' };
+
+    // 2. KPIs Cards (Simuladas con celdas)
+    const kpis = [
+      { label: 'PRODUCCIÓN TOTAL', val: totalProduction, cell: 'B6' },
+      { label: 'EFICIENCIA', val: `${efficiency}%`, cell: 'E6' },
+      { label: 'ZONAS ACTIVAS', val: activeZones, cell: 'H6' }
+    ];
+
+    kpis.forEach(k => {
+       const startCol = k.cell.replace(/[0-9]/g, ''); // B, E, H
+       const endCol = String.fromCharCode(startCol.charCodeAt(0) + 2); // D, G, J
+       
+       // Caja Valor
+       sheetDash.mergeCells(`${startCol}7:${endCol}8`);
+       const valCell = sheetDash.getCell(`${startCol}7`);
+       valCell.value = k.val;
+       valCell.font = { name: 'Arial Black', size: 24, bold: true, color: { argb: 'FF000000' } };
+       valCell.alignment = { horizontal: 'center', vertical: 'middle' };
+       valCell.border = { top: { style: 'thick', color: { argb: RED_COLOR } }, bottom: {style:'thin'}, left:{style:'thin'}, right:{style:'thin'} };
+
+       // Caja Label
+       sheetDash.mergeCells(`${startCol}6:${endCol}6`);
+       const labelCell = sheetDash.getCell(`${startCol}6`);
+       labelCell.value = k.label;
+       labelCell.font = { name: 'Arial', size: 9, bold: true, color: { argb: GRAY_TEXT } };
+       labelCell.alignment = { horizontal: 'center' };
+    });
+
+    // 3. SECCIÓN GRÁFICA: TOP PRODUCTOS
+    // Vamos a simular un gráfico de barras usando colores de fondo en las celdas
+    sheetDash.getCell('B11').value = 'TOP PRODUCTOS (VOLUMEN)';
+    sheetDash.getCell('B11').font = { name: 'Arial Black', size: 12, bold: true, color: { argb: RED_COLOR } };
+    
+    // Cabeceras Tabla Visual
+    sheetDash.getCell('B13').value = 'PRODUCTO';
+    sheetDash.getCell('F13').value = 'VOLUMEN (GRÁFICA)';
+    sheetDash.getCell('K13').value = 'CANTIDAD';
+    ['B13', 'F13', 'K13'].forEach(c => {
+       const cell = sheetDash.getCell(c);
+       cell.font = { bold: true, color: { argb: WHITE_TEXT } };
+       cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: DARK_BG } };
+       cell.alignment = { horizontal: 'center' };
+    });
+    
+    // Unir cabeceras visuales
+    sheetDash.mergeCells('B13:E13'); // Nombre
+    sheetDash.mergeCells('F13:J13'); // Barra Gráfica
+
+    // Datos
+    const maxQty = topItems.length > 0 ? topItems[0].qty : 1;
+    let currentRow = 14;
+
+    topItems.forEach((item, idx) => {
+       // Nombre
+       sheetDash.mergeCells(`B${currentRow}:E${currentRow}`);
+       const nameCell = sheetDash.getCell(`B${currentRow}`);
+       nameCell.value = item.name;
+       nameCell.font = { size: 10, bold: true };
+       nameCell.border = { bottom: { style: 'dotted', color: { argb: 'FFCCCCCC' } } };
+
+       // Cantidad numérica
+       const qtyCell = sheetDash.getCell(`K${currentRow}`);
+       qtyCell.value = item.qty;
+       qtyCell.font = { bold: true, color: { argb: RED_COLOR } };
+       qtyCell.alignment = { horizontal: 'center' };
+       qtyCell.border = { bottom: { style: 'dotted', color: { argb: 'FFCCCCCC' } } };
+
+       // BARRA GRÁFICA SIMULADA
+       // Usamos celdas F a J (5 columnas) para representar la barra
+       // Calculamos qué porcentaje del maximo representa este item
+       const pct = item.qty / maxQty;
+       // ExcelJS no permite barras de datos nativas fácilmente, así que usaremos Gradient Fill para simularlo
+       // Ojo: Como el gradient fill es complejo de controlar exactamente el stop en todas las versiones,
+       // usaremos una aproximación simple: Llenar celdas F, G, H, I, J según el %
+       
+       const totalBarCells = 5; // F, G, H, I, J
+       const cellsToFill = Math.ceil(pct * totalBarCells);
+       
+       // Columnas F(6) a J(10)
+       for (let i = 0; i < totalBarCells; i++) {
+         const colParams = ['F','G','H','I','J'];
+         const barCell = sheetDash.getCell(`${colParams[i]}${currentRow}`);
+         barCell.border = { bottom: { style: 'dotted', color: { argb: 'FFCCCCCC' } } };
+         
+         if (i < cellsToFill) {
+            // Celda rellena (Barra)
+            barCell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: i === cellsToFill - 1 ? 'FFEF4444' : RED_COLOR } };
+         }
+       }
+
+       currentRow++;
+    });
+
+    // Ajustar anchos
+    sheetDash.getColumn('A').width = 2; // Margen
+    sheetDash.getColumn('B').width = 15;
+    sheetDash.getColumn('C').width = 15;
+    sheetDash.getColumn('D').width = 15;
+    sheetDash.getColumn('E').width = 15;
+    sheetDash.getColumn('F').width = 8;
+    sheetDash.getColumn('G').width = 8;
+    sheetDash.getColumn('H').width = 8;
+    sheetDash.getColumn('I').width = 8;
+    sheetDash.getColumn('J').width = 8;
+    sheetDash.getColumn('K').width = 15;
+
+
+    // ---------------------------------------------------------
+    // HOJA 2: BASE DE DATOS CRUDA (Para Tablas Dinámicas)
+    // ---------------------------------------------------------
+    const sheetData = workbook.addWorksheet('DATA_SOURCE');
+    
+    // Cabeceras
+    sheetData.columns = [
+      { header: 'FECHA', key: 'date', width: 15 },
+      { header: 'CLIENTE/ZONA', key: 'client', width: 25 },
+      { header: 'CODIGO', key: 'code', width: 15 },
+      { header: 'PRODUCTO', key: 'product', width: 35 },
+      { header: 'CANTIDAD', key: 'qty', width: 12 },
+      { header: 'STOCK', key: 'stock', width: 12 },
+      { header: 'PENDIENTE', key: 'pending', width: 12 },
+    ];
+
+    // Estilo Cabecera Data
+    const headerRow = sheetData.getRow(1);
+    headerRow.font = { bold: true, color: { argb: WHITE_TEXT } };
+    headerRow.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: DARK_BG } };
+    headerRow.commit();
+
+    // Rellenar filas
+    const todayStr = new Date().toLocaleDateString();
     data.forEach(client => {
       client.products.forEach(p => {
-        rawDataRows.push([
-          todayStr,
-          client.name,
-          p.code,
-          p.name,
-          p.qty,
-          p.stock,
-          Math.max(0, p.qty - p.stock)
-        ]);
+        sheetData.addRow({
+          date: todayStr,
+          client: client.name,
+          code: p.code,
+          product: p.name,
+          qty: p.qty,
+          stock: p.stock,
+          pending: Math.max(0, p.qty - p.stock)
+        });
       });
     });
 
-    // Crear Workbook y Hojas
-    const wb = XLSX.utils.book_new();
-    
-    // Crear hoja Resumen
-    const wsSummary = XLSX.utils.aoa_to_sheet(summaryData);
-    // Ajustar anchos de columna hoja 1
-    wsSummary['!cols'] = [{ wch: 25 }, { wch: 20 }, { wch: 30 }];
-    XLSX.utils.book_append_sheet(wb, wsSummary, "Dashboard Resumen");
+    // Activar Autofiltro para facilitar uso
+    sheetData.autoFilter = {
+      from: 'A1',
+      to: { row: 1, column: 7 }
+    };
 
-    // Crear hoja Datos
-    const wsData = XLSX.utils.aoa_to_sheet([...rawDataHeader, ...rawDataRows]);
-    wsData['!cols'] = [{ wch: 15 }, { wch: 25 }, { wch: 15 }, { wch: 35 }, { wch: 10 }, { wch: 10 }, { wch: 10 }];
-    XLSX.utils.book_append_sheet(wb, wsData, "Base de Datos");
 
-    // Generar archivo
-    const wbout = XLSX.write(wb, { bookType: 'xlsx', type: 'array' });
-    const fileName = `Reporte_Ansueto_${filter}_${new Date().toISOString().slice(0,10)}.xlsx`;
-    saveAs(new Blob([wbout], { type: "application/octet-stream" }), fileName);
+    // GENERAR Y DESCARGAR
+    const buffer = await workbook.xlsx.writeBuffer();
+    const fileName = `Reporte_Visual_Ansueto_${filter}_${new Date().toISOString().slice(0,10)}.xlsx`;
+    saveAs(new Blob([buffer], { type: "application/octet-stream" }), fileName);
   };
 
   const exportData = (type: 'csv' | 'pdf') => {
     if (type === 'csv') {
-      downloadXLSX();
+      downloadExcel();
     } else {
       window.print();
     }
