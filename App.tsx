@@ -1,5 +1,5 @@
 
-import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { Header } from './components/Header.tsx';
 import { ClientColumn } from './components/ClientColumn.tsx';
 import { StatsDashboard } from './components/StatsDashboard.tsx';
@@ -43,14 +43,9 @@ export default function App() {
     return () => es.close();
   }, [fetchData]);
 
-  useEffect(() => {
-    localStorage.setItem('factory_settings', JSON.stringify(settings));
-  }, [settings]);
-
-  const globalTotal = useMemo(() => 
-    data.reduce((acc, client) => 
-      acc + client.products.reduce((pAcc, p) => pAcc + Number(p.cantidad), 0), 0
-    ), [data]);
+  const globalTotal = data.reduce((acc, client) => 
+    acc + client.products.reduce((pAcc, p) => pAcc + Number(p.cantidad), 0), 0
+  );
 
   return (
     <div className={`flex flex-col h-screen w-screen overflow-hidden ${darkMode ? 'bg-[#020617] text-white' : 'bg-slate-50 text-slate-900'}`}>
@@ -65,18 +60,18 @@ export default function App() {
 
       <main className="flex-1 relative overflow-hidden">
         {view === 'live' ? (
-          <div className="absolute inset-0 flex overflow-x-auto p-10 gap-10 items-start custom-scroll-horizontal">
+          <div className="absolute inset-0 flex overflow-x-auto p-8 gap-8 items-start custom-scroll-horizontal">
             {data.length === 0 ? (
-              <div className="w-full h-full flex items-center justify-center opacity-10 font-black text-4xl uppercase tracking-[1em]">
+              <div className="w-full h-full flex items-center justify-center opacity-20 font-black text-4xl uppercase tracking-[1em]">
                 Sin Pedidos Activos
               </div>
             ) : (
               data.map((client) => (
                 <ClientColumn 
-                  key={client.code} 
+                  key={client.agent_code} 
                   group={{
-                    name: client.name,
-                    code: client.code,
+                    name: client.client_name,
+                    code: client.agent_code,
                     products: client.products
                   }} 
                   darkMode={darkMode} 
@@ -95,17 +90,28 @@ export default function App() {
         isOpen={isSettingsOpen} 
         onClose={() => setIsSettingsOpen(false)}
         visualSettings={settings}
-        onSaveSettings={setSettings}
+        onSaveSettings={(s) => {
+          setSettings(s);
+          localStorage.setItem('factory_settings', JSON.stringify(s));
+        }}
       />
 
       <style>{`
-        .custom-scroll-horizontal { scroll-behavior: smooth; }
-        .custom-scroll-horizontal::-webkit-scrollbar { height: 10px; }
-        .custom-scroll-horizontal::-webkit-scrollbar-track { background: rgba(0,0,0,0.1); border-radius: 10px; }
-        .custom-scroll-horizontal::-webkit-scrollbar-thumb { background: #dc2626; border-radius: 10px; border: 2px solid #020617; }
-        .custom-scroll { scrollbar-width: thin; scrollbar-color: #dc2626 transparent; }
-        .custom-scroll::-webkit-scrollbar { width: 6px; }
-        .custom-scroll::-webkit-scrollbar-thumb { background: #dc2626; border-radius: 10px; }
+        .custom-scroll-horizontal {
+          scroll-behavior: smooth;
+        }
+        .custom-scroll-horizontal::-webkit-scrollbar {
+          height: 12px;
+        }
+        .custom-scroll-horizontal::-webkit-scrollbar-track {
+          background: rgba(0,0,0,0.1);
+          border-radius: 10px;
+        }
+        .custom-scroll-horizontal::-webkit-scrollbar-thumb {
+          background: #dc2626;
+          border-radius: 10px;
+          border: 3px solid #020617;
+        }
       `}</style>
     </div>
   );
