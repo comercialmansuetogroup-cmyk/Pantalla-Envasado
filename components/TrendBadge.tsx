@@ -1,5 +1,6 @@
+
 import React from 'react';
-import { Minus, ArrowUpRight, ArrowDownRight } from 'lucide-react';
+import { Minus, ArrowUp, ArrowDown } from 'lucide-react';
 
 interface TrendBadgeProps {
     value: number;
@@ -10,15 +11,21 @@ interface TrendBadgeProps {
 export const TrendBadge: React.FC<TrendBadgeProps> = ({ value, darkMode, fontSize }) => {
   if (Math.abs(value) < 0.1) {
     return (
-      <div className="flex items-center justify-center font-bold text-slate-400 opacity-50 px-2 py-1" style={{ fontSize: `${fontSize}px` }}>
-        <Minus size={fontSize + 2} /> 0%
+      <div className="flex items-center gap-1 font-bold text-slate-500/40" style={{ fontSize: `${fontSize}px` }}>
+        <Minus size={fontSize} /> 0%
       </div>
     );
   }
+  
   const isUp = value > 0;
+  
   return (
-    <div className={`flex items-center gap-0.5 font-black leading-none rounded-md whitespace-nowrap px-1 py-0.5 ${isUp ? (darkMode ? 'text-green-400 bg-green-500/10' : 'text-green-700 bg-green-100') : (darkMode ? 'text-red-400 bg-red-500/10' : 'text-red-700 bg-red-100')}`} style={{ fontSize: `${fontSize}px` }}>
-      {isUp ? <ArrowUpRight size={fontSize + 2} strokeWidth={3} /> : <ArrowDownRight size={fontSize + 2} strokeWidth={3} />}
+    <div className={`flex items-center gap-0.5 font-black px-1.5 py-0.5 rounded-sm ${
+      isUp 
+        ? 'text-green-500 bg-green-500/10 border border-green-500/20' 
+        : 'text-red-500 bg-red-500/10 border border-red-500/20'
+    }`} style={{ fontSize: `${fontSize}px` }}>
+      {isUp ? <ArrowUp size={fontSize} strokeWidth={4} /> : <ArrowDown size={fontSize} strokeWidth={4} />}
       {Math.abs(Math.round(value))}%
     </div>
   );
