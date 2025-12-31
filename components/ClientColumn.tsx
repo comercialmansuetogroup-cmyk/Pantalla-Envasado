@@ -49,7 +49,7 @@ export const ClientColumn: React.FC<ClientColumnProps> = ({ group, darkMode, set
               <span className={`text-[10px] font-black opacity-40 tracking-[0.2em] uppercase ${darkMode ? 'text-white' : 'text-slate-600'}`}>Referencia</span>
               <span className={`text-right text-[10px] font-black opacity-40 tracking-[0.2em] uppercase ${darkMode ? 'text-white' : 'text-slate-600'}`}>Stock</span>
               <span className={`text-right text-[10px] font-black opacity-40 tracking-[0.2em] uppercase ${darkMode ? 'text-white' : 'text-slate-600'}`}>Producción</span>
-              <span className="text-right text-[10px] font-black opacity-40 tracking-[0.2em] uppercase text-red-600">Pedido</span>
+              <span className="text-right text-[10px] font-black tracking-[0.2em] uppercase text-red-600">Pedido</span>
             </div>
             
             <div className={`flex-1 overflow-y-auto custom-scroll ${darkMode ? 'bg-black/10' : 'bg-white'}`}>
