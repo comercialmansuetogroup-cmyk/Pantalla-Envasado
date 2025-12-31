@@ -3,6 +3,7 @@ const express = require('express');
 const cors = require('cors');
 const bodyParser = require('body-parser');
 const { Pool } = require('pg');
+const path = require('path');
 
 const app = express();
 const PORT = process.env.PORT || 8080;
@@ -10,14 +11,19 @@ const PORT = process.env.PORT || 8080;
 // Configuración de conexión DB
 const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
-  ssl: { rejectUnauthorized: false },
+  ssl: process.env.DATABASE_URL ? { rejectUnauthorized: false } : false,
   connectionTimeoutMillis: 5000,
 });
 
 app.use(cors());
 app.use(bodyParser.json({ limit: '50mb' }));
 
+// Inicialización DB
 const initDB = async () => {
+  if (!process.env.DATABASE_URL) {
+    console.log('⚠️ Running without Database Connection (Memory Mode)');
+    return;
+  }
   try {
     const client = await pool.connect();
     try {
@@ -36,14 +42,6 @@ const initDB = async () => {
           stock_qty NUMERIC DEFAULT 0
         );
       `);
-      // Migración defensiva
-      await client.query(`
-        DO $$ BEGIN 
-          IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='orders' AND column_name='client_name') THEN
-            ALTER TABLE orders RENAME COLUMN client_name TO agent_name;
-          END IF;
-        END $$;
-      `);
       console.log('✅ DB Connected & Synced');
     } finally {
       client.release();
@@ -59,13 +57,12 @@ app.get('/api/events', (req, res) => {
   res.setHeader('Content-Type', 'text/event-stream');
   res.setHeader('Cache-Control', 'no-cache');
   res.setHeader('Connection', 'keep-alive');
-  res.flushHeaders(); // Ensure headers are sent immediately
+  res.flushHeaders(); 
 
   const clientId = Date.now();
   const newClient = { id: clientId, res };
   clients.push(newClient);
 
-  // Send initial ping to confirm connection
   res.write(': connected\n\n');
 
   req.on('close', () => {
@@ -73,7 +70,6 @@ app.get('/api/events', (req, res) => {
   });
 });
 
-// Heartbeat to keep connection alive and prevent "Unexpected end of stream" errors
 setInterval(() => {
   clients.forEach(c => c.res.write(': keepalive\n\n'));
 }, 30000);
@@ -87,6 +83,12 @@ const notifyClients = (updatedCode) => {
 app.post('/api/webhook', async (req, res) => {
   const { zonas } = req.body;
   if (!zonas || !Array.isArray(zonas)) return res.status(400).json({ error: 'Invalid data format' });
+
+  // Modo sin DB para pruebas
+  if (!process.env.DATABASE_URL) {
+    notifyClients('TEST-CODE');
+    return res.json({ ok: true, mode: 'no-db' });
+  }
 
   const client = await pool.connect();
   try {
@@ -118,6 +120,7 @@ app.post('/api/webhook', async (req, res) => {
 });
 
 app.get('/api/data', async (req, res) => {
+  if (!process.env.DATABASE_URL) return res.json([]);
   try {
     const result = await pool.query(`
       SELECT 
@@ -129,13 +132,12 @@ app.get('/api/data', async (req, res) => {
     `);
     res.json(result.rows);
   } catch (err) {
-    console.error('Data Fetch Error:', err.message);
-    // Return JSON error, not HTML 500 page
     res.status(500).json({ error: 'Database query failed', details: err.message });
   }
 });
 
 app.post('/api/reset', async (req, res) => {
+  if (!process.env.DATABASE_URL) return res.json({ ok: true });
   try {
     await pool.query('DELETE FROM orders');
     notifyClients('RESET');
@@ -145,5 +147,13 @@ app.post('/api/reset', async (req, res) => {
   }
 });
 
-app.use(express.static(__dirname));
+// IMPORTANTE: En producción servimos la carpeta dist construida por Vite
+// En desarrollo, Vite se encarga del frontend en otro puerto
+if (process.env.NODE_ENV === 'production') {
+  app.use(express.static(path.join(__dirname, 'dist')));
+  app.get('*', (req, res) => {
+    res.sendFile(path.join(__dirname, 'dist', 'index.html'));
+  });
+}
+
 app.listen(PORT, () => console.log(`🚀 Server running on port ${PORT}`));
