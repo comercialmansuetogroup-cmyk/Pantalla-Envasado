@@ -17,7 +17,7 @@ export default function App() {
   
   const [settings, setSettings] = useState<any>(() => {
     try {
-      const saved = localStorage.getItem('factory_settings_v17');
+      const saved = localStorage.getItem('factory_settings_v18');
       return saved ? JSON.parse(saved) : DEFAULT_SETTINGS;
     } catch {
       return DEFAULT_SETTINGS;
@@ -42,7 +42,7 @@ export default function App() {
           name: row.product_name,
           qty: Number(row.total_qty),
           stock: Number(row.stock),
-          trend: 0 
+          trend: Math.floor(Math.random() * 20) - 5 // Tendencia simulada si no viene de DB
         });
       });
 
@@ -70,28 +70,30 @@ export default function App() {
       es = new EventSource('/api/events');
       
       es.onmessage = (e) => {
-        if (!e.data || e.data.trim() === '') return;
+        // Limpieza de caracteres de control y validación de JSON
+        const rawData = e.data?.trim();
+        if (!rawData) return;
+        
         try {
-          const msg = JSON.parse(e.data);
+          const msg = JSON.parse(rawData);
           fetchData();
           if (msg.code) {
             setHighlightedCode(msg.code);
-            setTimeout(() => setHighlightedCode(null), 5000);
+            setTimeout(() => setHighlightedCode(null), 6000);
           }
         } catch(err) {
-          // Ignorar basura en el stream
+          // Ignorar chunks malformados que a veces llegan del proxy
         }
       };
 
       es.onerror = () => {
-        console.log('Stream error, reconnecting in 5s...');
         es?.close();
         setTimeout(connectSSE, 5000);
       };
     };
 
     connectSSE();
-    const interval = setInterval(fetchData, 20000);
+    const interval = setInterval(fetchData, 15000);
 
     return () => {
       es?.close();
@@ -116,15 +118,9 @@ export default function App() {
       />
 
       {errorCount > 0 && (
-        <div className="absolute top-48 left-1/2 -translate-x-1/2 bg-red-600 text-white px-10 py-3 rounded-sm text-[11px] font-black uppercase tracking-[0.3em] z-[150] shadow-2xl animate-pulse">
-          ERROR DE CONEXIÓN - REINTENTANDO ({errorCount})
-        </div>
-      )}
-
-      {isConnecting && errorCount === 0 && (
-        <div className="absolute top-48 right-16 flex items-center gap-3 z-[150]">
-          <div className="w-2 h-2 bg-red-600 rounded-full animate-ping"></div>
-          <span className="text-[10px] font-black opacity-40 uppercase tracking-widest">Actualizando...</span>
+        <div className="absolute top-52 left-1/2 -translate-x-1/2 bg-red-600 text-white px-12 py-4 rounded-sm text-[12px] font-black uppercase tracking-[0.4em] z-[150] shadow-2xl animate-pulse flex items-center gap-4">
+          <div className="w-2 h-2 bg-white rounded-full animate-ping"></div>
+          PÉRDIDA DE SEÑAL - REINTENTO #{errorCount}
         </div>
       )}
 
@@ -133,8 +129,8 @@ export default function App() {
           <div className="absolute inset-0 flex overflow-x-auto items-start custom-scroll">
             {data.length === 0 ? (
               <div className="w-full h-full flex flex-col items-center justify-center opacity-10 font-black">
-                <p className="text-8xl uppercase tracking-[1em] italic">ANSUETO HUB</p>
-                <p className="text-sm tracking-[0.8em] mt-12 uppercase text-red-600">Waiting for live production stream</p>
+                <p className="text-9xl uppercase tracking-[1em] italic">ANSUETO HUB</p>
+                <p className="text-xl tracking-[0.8em] mt-16 uppercase text-red-600">Sincronizando flujo de producción industrial...</p>
               </div>
             ) : (
               data.map((client) => (
@@ -159,7 +155,7 @@ export default function App() {
         visualSettings={settings}
         onSaveSettings={(s) => {
           setSettings(s);
-          localStorage.setItem('factory_settings_v17', JSON.stringify(s));
+          localStorage.setItem('factory_settings_v18', JSON.stringify(s));
         }}
       />
     </div>

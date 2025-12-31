@@ -30,7 +30,6 @@ export interface VisualSettings {
   headerFontSize: number;
 }
 
-/* Fix: Added missing IncomingDataPayload and related interfaces for the mock data generator */
 export interface IncomingProduct {
   codigo: string;
   cantidad: number;
@@ -63,10 +62,10 @@ export const DEFAULT_SETTINGS: VisualSettings = {
   logoLight: null,
   logoDark: null,
   displayMode: 'both',
-  maxRowsPerCol: 20,      
-  nameFontSize: 12,       
-  codeFontSize: 18,       
-  clientNameFontSize: 42, 
-  trendFontSize: 12,
-  headerFontSize: 14
+  maxRowsPerCol: 18,      
+  nameFontSize: 13,       
+  codeFontSize: 20,       
+  clientNameFontSize: 48, 
+  trendFontSize: 14,
+  headerFontSize: 16
 };

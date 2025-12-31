@@ -20,10 +20,10 @@ export const TrendBadge: React.FC<TrendBadgeProps> = ({ value, darkMode, fontSiz
   const isUp = value > 0;
   
   return (
-    <div className={`flex items-center gap-0.5 font-black px-1.5 py-0.5 rounded-sm ${
+    <div className={`flex items-center gap-1 font-black px-2 py-1 rounded-sm border ${
       isUp 
-        ? 'text-green-500 bg-green-500/10 border border-green-500/20' 
-        : 'text-red-500 bg-red-500/10 border border-red-500/20'
+        ? 'text-green-500 bg-green-500/10 border-green-500/20' 
+        : 'text-red-500 bg-red-500/10 border-red-500/20'
     }`} style={{ fontSize: `${fontSize}px` }}>
       {isUp ? <ArrowUp size={fontSize} strokeWidth={4} /> : <ArrowDown size={fontSize} strokeWidth={4} />}
       {Math.abs(Math.round(value))}%
