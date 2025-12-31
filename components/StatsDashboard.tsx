@@ -3,6 +3,8 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, BarChart, Bar } from 'recharts';
 import { Download, TrendingUp, Package, Calendar, Users, FileText, Share2, BarChart3 } from 'lucide-react';
 import { TimeFilter, ClientGroup } from '../types';
+import * as XLSX from 'xlsx';
+import { saveAs } from 'file-saver';
 
 interface StatsDashboardProps {
   darkMode: boolean;
@@ -43,7 +45,7 @@ export const StatsDashboard: React.FC<StatsDashboardProps> = ({ darkMode, data }
     return Array.from(allProducts.entries())
       .map(([name, qty]) => ({ name, qty }))
       .sort((a, b) => b.qty - a.qty)
-      .slice(0, 10);
+      .slice(0, 10); // Top 10
   }, [data]);
 
   // 3. Obtener Historial Real del Servidor
@@ -68,57 +70,73 @@ export const StatsDashboard: React.FC<StatsDashboardProps> = ({ darkMode, data }
     fetchHistory();
   }, [filter]);
 
-  // --- LÓGICA DE EXPORTACIÓN ---
-  const downloadCSV = () => {
-    // BOM para que Excel reconozca UTF-8 correctamente
-    const BOM = "\uFEFF"; 
-    let csvContent = BOM;
+  // --- LÓGICA DE EXPORTACIÓN EXCEL (.XLSX) ---
+  const downloadXLSX = () => {
+    // Hoja 1: DASHBOARD RESUMEN
+    const summaryData = [
+      ["REPORTE EJECUTIVO DE PRODUCCIÓN - ANSUETO"],
+      ["Generado el:", new Date().toLocaleString()],
+      ["Filtro:", filter.toUpperCase()],
+      [""], // Espacio
+      ["KPIs PRINCIPALES"],
+      ["Indicador", "Valor", "Detalle"],
+      ["Unidades Producidas", totalProduction, "Volumen total en periodo"],
+      ["Eficiencia Global", `${efficiency}%`, "Ratio Producción/Stock"],
+      ["Regiones Activas", activeZones, "Zonas con actividad"],
+      ["Promedio por Zona", averagePerZone, "Media unitaria"],
+      [""],
+      ["TOP 10 PRODUCTOS (Volumen)"],
+      ["Ranking", "Producto", "Cantidad Total"]
+    ];
+
+    topItems.forEach((item, index) => {
+      summaryData.push([String(index + 1), item.name, String(item.qty)]);
+    });
+
+    // Hoja 2: DATA SOURCE (Datos Crudos para Tablas Dinámicas)
+    const rawDataHeader = [["Fecha Reporte", "Cliente/Zona", "Código Producto", "Producto", "Cantidad", "Stock Actual", "Pendiente"]];
+    const rawDataRows: any[] = [];
     
-    // Encabezado
-    csvContent += `REPORTE DE ANALITICA INDUSTRIAL - ANSUETO\n`;
-    csvContent += `Fecha Generacion;${new Date().toLocaleString()}\n`;
-    csvContent += `Filtro Temporal;${filter.toUpperCase()}\n\n`;
+    const todayStr = new Date().toLocaleDateString();
 
-    // Sección KPIs
-    csvContent += "RESUMEN EJECUTIVO\n";
-    csvContent += "Indicador;Valor\n";
-    csvContent += `Unidades Producidas;${totalProduction}\n`;
-    csvContent += `Eficiencia Global;${efficiency}%\n`;
-    csvContent += `Regiones Activas;${activeZones}\n`;
-    csvContent += `Promedio por Zona;${averagePerZone}\n\n`;
-
-    // Sección Histórico
-    csvContent += `HISTORICO DE PRODUCCION (${filter.toUpperCase()})\n`;
-    csvContent += "Periodo;Produccion\n";
-    historyData.forEach(row => {
-      csvContent += `${row.date} (${row.fullDate ? row.fullDate.split('T')[0] : ''});${row.produccion}\n`;
-    });
-    csvContent += "\n";
-
-    // Sección Top Productos
-    csvContent += "TOP 10 PRODUCTOS\n";
-    csvContent += "Producto;Cantidad Total\n";
-    topItems.forEach(item => {
-      csvContent += `${item.name};${item.qty}\n`;
+    data.forEach(client => {
+      client.products.forEach(p => {
+        rawDataRows.push([
+          todayStr,
+          client.name,
+          p.code,
+          p.name,
+          p.qty,
+          p.stock,
+          Math.max(0, p.qty - p.stock)
+        ]);
+      });
     });
 
-    // Crear Blob y descargar
-    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement('a');
-    link.href = url;
-    link.setAttribute('download', `Reporte_Ansueto_${filter}_${new Date().toISOString().slice(0,10)}.csv`);
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
+    // Crear Workbook y Hojas
+    const wb = XLSX.utils.book_new();
+    
+    // Crear hoja Resumen
+    const wsSummary = XLSX.utils.aoa_to_sheet(summaryData);
+    // Ajustar anchos de columna hoja 1
+    wsSummary['!cols'] = [{ wch: 25 }, { wch: 20 }, { wch: 30 }];
+    XLSX.utils.book_append_sheet(wb, wsSummary, "Dashboard Resumen");
+
+    // Crear hoja Datos
+    const wsData = XLSX.utils.aoa_to_sheet([...rawDataHeader, ...rawDataRows]);
+    wsData['!cols'] = [{ wch: 15 }, { wch: 25 }, { wch: 15 }, { wch: 35 }, { wch: 10 }, { wch: 10 }, { wch: 10 }];
+    XLSX.utils.book_append_sheet(wb, wsData, "Base de Datos");
+
+    // Generar archivo
+    const wbout = XLSX.write(wb, { bookType: 'xlsx', type: 'array' });
+    const fileName = `Reporte_Ansueto_${filter}_${new Date().toISOString().slice(0,10)}.xlsx`;
+    saveAs(new Blob([wbout], { type: "application/octet-stream" }), fileName);
   };
 
   const exportData = (type: 'csv' | 'pdf') => {
     if (type === 'csv') {
-      downloadCSV();
+      downloadXLSX();
     } else {
-      // Para PDF, invocamos la impresión del navegador.
-      // Los estilos CSS en index.html (@media print) se encargarán de ocultar botones y dejarlo limpio.
       window.print();
     }
   };
@@ -139,7 +157,8 @@ export const StatsDashboard: React.FC<StatsDashboardProps> = ({ darkMode, data }
                    : 'Histórico Anual';
 
   return (
-    <div className={`p-16 h-full overflow-y-auto space-y-16 custom-scroll transition-colors duration-300 ${bgClass} print:p-0 print:overflow-visible print:bg-white print:h-auto`}>
+    // CAMBIO IMPORTANTE: Eliminado h-full y overflow-y-auto en modo impresión para que se vea todo el contenido
+    <div className={`p-16 h-full overflow-y-auto space-y-16 custom-scroll transition-colors duration-300 ${bgClass} print:p-0 print:h-auto print:overflow-visible print:bg-white`}>
       {/* Header Analítica */}
       <div className={`flex justify-between items-end border-b pb-10 transition-colors ${darkMode ? 'border-white/5' : 'border-slate-200'} print:border-slate-900`}>
         <div>
@@ -170,14 +189,14 @@ export const StatsDashboard: React.FC<StatsDashboardProps> = ({ darkMode, data }
       </div>
 
       {/* KPI Cards */}
-      <div className="grid grid-cols-4 gap-8">
+      <div className="grid grid-cols-4 gap-8 print:grid-cols-2 print:gap-4 page-break-avoid">
         {[
           { label: 'Unidades Producidas', val: totalProduction.toLocaleString(), icon: Package, color: 'text-red-600', trend: '+12.4%', trendUp: true },
           { label: 'Eficiencia Global', val: `${efficiency}%`, icon: TrendingUp, color: 'text-green-500', trend: '+2.1%', trendUp: true },
           { label: 'Regiones Activas', val: `${activeZones}`, icon: Users, color: 'text-blue-500', trend: 'Estable', trendUp: null },
           { label: 'Media Por Zona', val: averagePerZone.toLocaleString(), icon: Calendar, color: 'text-orange-500', trend: '-1.5%', trendUp: false }
         ].map((kpi, i) => (
-          <div key={i} className={`p-12 border flex flex-col gap-6 group transition-all duration-300 ${cardBgClass} ${darkMode ? 'hover:bg-white/5' : 'hover:shadow-md'} print:border-slate-300 print:bg-white print:break-inside-avoid`}>
+          <div key={i} className={`p-12 border flex flex-col gap-6 group transition-all duration-300 ${cardBgClass} ${darkMode ? 'hover:bg-white/5' : 'hover:shadow-md'} print:border-slate-300 print:bg-white print:p-6 print:shadow-none`}>
             <div className="flex justify-between items-start">
               <kpi.icon className={kpi.color} size={40} />
               <span className={`text-3xl font-black tracking-tight ${
@@ -198,8 +217,10 @@ export const StatsDashboard: React.FC<StatsDashboardProps> = ({ darkMode, data }
 
       {/* Gráfica Histórica y Top */}
       <div className="grid grid-cols-3 gap-10 print:block print:space-y-10">
-        <div className={`col-span-2 p-12 border h-[650px] flex flex-col ${cardBgClass} print:border-slate-300 print:bg-white print:h-[500px] print:mb-8 print:break-inside-avoid`}>
-          <div className="flex justify-between items-center mb-12">
+        
+        {/* Gráfica - Evitar salto de página dentro de la gráfica */}
+        <div className={`col-span-2 p-12 border h-[650px] flex flex-col ${cardBgClass} print:border-slate-300 print:bg-white print:h-[400px] print:mb-8 page-break-avoid`}>
+          <div className="flex justify-between items-center mb-12 print:mb-4">
             <h3 className={`text-sm font-black uppercase tracking-[0.4em] flex items-center gap-4 ${darkMode ? 'text-white/60' : 'text-slate-500'} print:text-slate-800`}>
               <div className="w-2 h-8 bg-red-600"></div> Evolución Producción ({chartTitle})
             </h3>
@@ -226,8 +247,8 @@ export const StatsDashboard: React.FC<StatsDashboardProps> = ({ darkMode, data }
                     </linearGradient>
                   </defs>
                   <CartesianGrid strokeDasharray="3 3" stroke={gridColor} vertical={false} />
-                  <XAxis dataKey="date" stroke={axisColor} fontSize={11} axisLine={false} tickLine={false} fontWeight={700} />
-                  <YAxis stroke={axisColor} fontSize={11} axisLine={false} tickLine={false} fontWeight={700} />
+                  <XAxis dataKey="date" stroke={axisColor} fontSize={11} axisLine={false} tickLine={false} fontWeight={700} strokeWidth={0} />
+                  <YAxis stroke={axisColor} fontSize={11} axisLine={false} tickLine={false} fontWeight={700} strokeWidth={0} />
                   <Area type="monotone" dataKey="produccion" stroke="#dc2626" strokeWidth={5} fillOpacity={1} fill="url(#prodColor)" />
                 </AreaChart>
               </ResponsiveContainer>
@@ -235,8 +256,8 @@ export const StatsDashboard: React.FC<StatsDashboardProps> = ({ darkMode, data }
           </div>
         </div>
 
-        {/* Top 10 Productos */}
-        <div className={`p-12 border h-[650px] flex flex-col ${cardBgClass} print:border-slate-300 print:bg-white print:h-auto print:break-inside-avoid`}>
+        {/* Top 10 Productos - Puede ir en la siguiente página si no cabe */}
+        <div className={`p-12 border h-[650px] flex flex-col ${cardBgClass} print:border-slate-300 print:bg-white print:h-auto page-break-avoid`}>
           <h3 className={`text-sm font-black uppercase tracking-[0.4em] flex items-center gap-4 mb-12 ${darkMode ? 'text-white/60' : 'text-slate-500'} print:text-slate-800`}>
             <div className="w-2 h-8 bg-blue-600"></div> TOP PRODUCTOS (VOLUMEN)
           </h3>
@@ -246,7 +267,7 @@ export const StatsDashboard: React.FC<StatsDashboardProps> = ({ darkMode, data }
                  Esperando datos...
                </div>
             ) : topItems.map((item, i) => (
-              <div key={i} className="space-y-3 group">
+              <div key={i} className="space-y-3 group page-break-avoid">
                 <div className="flex justify-between items-end">
                   <span className={`text-[12px] font-black uppercase truncate max-w-[200px] transition-colors ${darkMode ? 'text-white/80 group-hover:text-red-500' : 'text-slate-700 group-hover:text-red-600'} print:text-slate-800`}>{item.name}</span>
                   <span className="text-lg font-black text-red-600 tabular-nums">{item.qty.toLocaleString()}</span>

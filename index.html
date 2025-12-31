@@ -26,21 +26,33 @@
     /* ESTILOS DE IMPRESIÓN PARA PDF */
     @media print {
       @page { margin: 1cm; size: landscape; }
-      body { 
+      
+      /* Resetear layout flexible y scroll */
+      html, body, #root, main { 
         background-color: white !important; 
         color: black !important; 
         overflow: visible !important; 
         height: auto !important; 
         width: 100% !important;
+        position: static !important;
+        display: block !important;
       }
+
+      /* Ocultar elementos de UI */
       header, nav, .no-print, button, ::-webkit-scrollbar { 
         display: none !important; 
       }
-      /* Forzar colores de fondo para gráficas */
-      * { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
       
-      /* Ajustes específicos para el dashboard al imprimir */
-      main { overflow: visible !important; position: static !important; }
+      /* Asegurar que las gráficas y textos se vean bien */
+      * { 
+        -webkit-print-color-adjust: exact !important; 
+        print-color-adjust: exact !important; 
+        box-shadow: none !important;
+      }
+      
+      /* Forzar saltos de página lógicos */
+      .page-break-avoid { break-inside: avoid; page-break-inside: avoid; }
+      .page-break-after { break-after: always; page-break-after: always; }
     }
   </style>
 <script type="importmap">
@@ -52,7 +64,9 @@
     "react-dom/": "https://esm.sh/react-dom@^19.2.3/",
     "@vitejs/plugin-react": "https://esm.sh/@vitejs/plugin-react@^5.1.2",
     "lucide-react": "https://esm.sh/lucide-react@^0.562.0",
-    "recharts": "https://esm.sh/recharts@^3.6.0"
+    "recharts": "https://esm.sh/recharts@^3.6.0",
+    "xlsx": "https://cdn.sheetjs.com/xlsx-0.20.0/package/xlsx.mjs",
+    "file-saver": "https://esm.sh/file-saver@2.0.5"
   }
 }
 </script>
