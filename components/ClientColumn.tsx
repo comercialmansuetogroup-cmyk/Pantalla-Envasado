@@ -32,13 +32,18 @@ export const ClientColumn: React.FC<ClientColumnProps> = ({ group, darkMode, set
     columns.push(activeProducts.slice(i, i + settings.maxRowsPerCol));
   }
   
-  const gridTemplate = "grid-cols-[1fr_70px_110px_90px]";
+  // CAMBIO: Grid más ajustado. Reducimos espacio de números para dárselo al texto y "juntar" visualmente todo.
+  // Antes: 70px 110px 90px (Total ~270px)
+  // Ahora: 55px 85px 75px (Total ~215px) -> Ganamos 55px para el texto o para reducir el ancho total.
+  const gridTemplate = "grid-cols-[1fr_55px_85px_75px]";
+  
   const trendValue = group.trend || 0;
   const isTrendUp = trendValue > 0;
   const isTrendFlat = Math.abs(trendValue) < 0.1;
 
+  // CAMBIO: Reducimos min-w de 520px a 420px para que las columnas sean más compactas y no haya tanto "aire" en medio.
   return (
-    <section className={`flex-1 min-w-[520px] h-full flex flex-col border-r transition-colors duration-300 ${darkMode ? 'border-white/5 bg-[#0c0e14]' : 'border-slate-300 bg-white'}`}>
+    <section className={`flex-1 min-w-[420px] h-full flex flex-col border-r transition-colors duration-300 ${darkMode ? 'border-white/5 bg-[#0c0e14]' : 'border-slate-300 bg-white'}`}>
       
       {/* Header Cliente: CENTRADO Y UNIFICADO */}
       <div className={`p-6 border-b flex-none flex flex-col items-center justify-center text-center ${darkMode ? 'border-white/5 bg-black/40' : 'border-slate-200 bg-slate-50'}`}>
@@ -68,14 +73,15 @@ export const ClientColumn: React.FC<ClientColumnProps> = ({ group, darkMode, set
            </div>
         ) : (
           columns.map((colProducts, colIdx) => (
-            <div key={colIdx} className={`flex-1 min-w-[500px] border-r last:border-r-0 flex flex-col ${darkMode ? 'border-white/5' : 'border-slate-200'}`}>
+            // CAMBIO: min-w reducido de 500px a 400px. Esto hace que en clientes de 1 columna, los datos estén más juntos.
+            <div key={colIdx} className={`flex-1 min-w-[400px] border-r last:border-r-0 flex flex-col ${darkMode ? 'border-white/5' : 'border-slate-200'}`}>
               
               {/* Cabecera Tabla */}
-              <div className={`grid ${gridTemplate} px-4 py-3 border-b ${darkMode ? 'border-white/10 bg-white/2' : 'border-slate-200 bg-slate-100'}`}>
+              <div className={`grid ${gridTemplate} px-3 py-2 border-b ${darkMode ? 'border-white/10 bg-white/2' : 'border-slate-200 bg-slate-100'}`}>
                 <span className={`text-[10px] font-black opacity-40 tracking-[0.2em] uppercase ${darkMode ? 'text-white' : 'text-slate-600'}`}>Referencia</span>
-                <span className={`text-right text-[10px] font-black opacity-40 tracking-[0.2em] uppercase ${darkMode ? 'text-white' : 'text-slate-600'}`}>Stock</span>
-                <span className={`text-right text-[10px] font-black opacity-40 tracking-[0.2em] uppercase ${darkMode ? 'text-white' : 'text-slate-600'}`}>Pendiente</span>
-                <span className="text-right text-[10px] font-black tracking-[0.2em] uppercase text-red-600">Total</span>
+                <span className={`text-right text-[10px] font-black opacity-40 tracking-[0.2em] uppercase ${darkMode ? 'text-white' : 'text-slate-600'}`}>Stk</span>
+                <span className={`text-right text-[10px] font-black opacity-40 tracking-[0.2em] uppercase ${darkMode ? 'text-white' : 'text-slate-600'}`}>Pend</span>
+                <span className="text-right text-[10px] font-black tracking-[0.2em] uppercase text-red-600">Tot</span>
               </div>
               
               <div className={`flex-1 overflow-y-auto custom-scroll ${darkMode ? 'bg-black/10' : 'bg-white'}`}>
@@ -93,18 +99,19 @@ export const ClientColumn: React.FC<ClientColumnProps> = ({ group, darkMode, set
                     : (darkMode ? 'border-white/5 hover:bg-white/2' : 'border-slate-100 hover:bg-slate-50');
 
                   return (
-                    <div key={pIdx} className={`grid ${gridTemplate} px-4 py-3 border-b items-center transition-all duration-500 ease-out ${rowBg}`}>
+                    // Reducido padding horizontal (px-3) y vertical (py-2) para mayor densidad vertical
+                    <div key={pIdx} className={`grid ${gridTemplate} px-3 py-2 border-b items-center transition-all duration-500 ease-out ${rowBg}`}>
                       
                       {/* Columna 1: Info Producto */}
-                      <div className="flex flex-col min-w-0 pr-4">
-                        <div className="flex items-center gap-3">
+                      <div className="flex flex-col min-w-0 pr-2">
+                        <div className="flex items-center gap-2">
                           <span className={`font-black ${textColorBase}`} style={{ fontSize: `${settings.codeFontSize}px` }}>#{p.code}</span>
                           <div className={isHigh ? 'brightness-0 invert' : ''}>
                              <TrendBadge value={p.trend || 0} darkMode={darkMode} fontSize={settings.trendFontSize} />
                           </div>
                         </div>
-                        {/* CAMBIO: Eliminado 'truncate' y añadido 'break-words whitespace-normal leading-tight' para que se vea todo el texto */}
-                        <span className={`font-bold opacity-50 uppercase mt-1 break-words whitespace-normal leading-tight ${isHigh ? 'text-white opacity-80' : (darkMode ? 'text-white' : 'text-slate-500')}`} style={{ fontSize: `${settings.nameFontSize}px` }}>
+                        {/* CAMBIO: Volvemos a 'truncate' y 'whitespace-nowrap' para forzar 1 sola línea y maximizar densidad vertical */}
+                        <span className={`font-bold opacity-50 uppercase mt-0.5 truncate whitespace-nowrap leading-tight ${isHigh ? 'text-white opacity-80' : (darkMode ? 'text-white' : 'text-slate-500')}`} style={{ fontSize: `${settings.nameFontSize}px` }}>
                           {p.name}
                         </span>
                       </div>
@@ -129,49 +136,45 @@ export const ClientColumn: React.FC<ClientColumnProps> = ({ group, darkMode, set
 
       {/* Footer Totales */}
       <div className={`p-6 border-t flex-none ${darkMode ? 'border-white/10 bg-[#080a0f]' : 'border-slate-200 bg-white'}`}>
-        <div className="grid grid-cols-[1.5fr_1fr] gap-8">
+        <div className="grid grid-cols-[1.5fr_1fr] gap-4">
            <div className="space-y-2">
-              <p className={`text-[14px] font-black uppercase tracking-[0.3em] leading-none mb-2 italic ${darkMode ? 'text-white' : 'text-slate-900'}`}>TOTAL ZONA</p>
+              <p className={`text-[12px] font-black uppercase tracking-[0.3em] leading-none mb-2 italic ${darkMode ? 'text-white' : 'text-slate-900'}`}>TOTAL</p>
               <div className="flex items-end gap-3">
-                <p className="text-7xl font-black text-red-600 leading-none tracking-tighter tabular-nums">
+                <p className="text-6xl font-black text-red-600 leading-none tracking-tighter tabular-nums">
                   {totalQty.toLocaleString()}
                 </p>
-                <div className="flex flex-col mb-1">
-                  <span className={`text-[10px] font-black uppercase tracking-[0.2em] ${darkMode ? 'text-white/30' : 'text-slate-400'}`}>UDS</span>
-                  <div className="w-8 h-1 bg-red-600 mt-1"></div>
-                </div>
               </div>
            </div>
 
-           <div className={`grid grid-cols-1 gap-y-3 border-l pl-6 ${darkMode ? 'border-white/10' : 'border-slate-200'}`}>
+           <div className={`grid grid-cols-1 gap-y-2 border-l pl-4 ${darkMode ? 'border-white/10' : 'border-slate-200'}`}>
               <div className="flex items-center justify-between">
-                <div className="flex items-center gap-3">
-                  <Hash size={14} className="text-red-600 opacity-70" />
-                  <span className={`text-[11px] font-black uppercase tracking-wider ${darkMode ? 'text-white/60' : 'text-slate-600'}`}>
-                    PEDIDOS
+                <div className="flex items-center gap-2">
+                  <Hash size={12} className="text-red-600 opacity-70" />
+                  <span className={`text-[10px] font-black uppercase tracking-wider ${darkMode ? 'text-white/60' : 'text-slate-600'}`}>
+                    REFS
                   </span>
                 </div>
-                <span className={`text-lg font-black tabular-nums ${darkMode ? 'text-white' : 'text-slate-800'}`}>{group.products.length}</span>
+                <span className={`text-sm font-black tabular-nums ${darkMode ? 'text-white' : 'text-slate-800'}`}>{group.products.length}</span>
               </div>
               
               <div className="flex items-center justify-between">
-                 <div className="flex items-center gap-3">
-                  <Boxes size={14} className="text-blue-500 opacity-70" />
-                  <span className={`text-[11px] font-black uppercase tracking-wider ${darkMode ? 'text-white/60' : 'text-slate-600'}`}>
-                    REALIZADO
+                 <div className="flex items-center gap-2">
+                  <Boxes size={12} className="text-blue-500 opacity-70" />
+                  <span className={`text-[10px] font-black uppercase tracking-wider ${darkMode ? 'text-white/60' : 'text-slate-600'}`}>
+                    HECHO
                   </span>
                 </div>
-                <span className="text-lg font-black text-blue-500 tabular-nums">{totalStock.toLocaleString()}</span>
+                <span className="text-sm font-black text-blue-500 tabular-nums">{totalStock.toLocaleString()}</span>
               </div>
 
               <div className="flex items-center justify-between">
-                 <div className="flex items-center gap-3">
-                  <AlertTriangle size={14} className="text-orange-500 opacity-70" />
-                  <span className={`text-[11px] font-black uppercase tracking-wider ${darkMode ? 'text-white/60' : 'text-slate-600'}`}>
-                    PENDIENTE
+                 <div className="flex items-center gap-2">
+                  <AlertTriangle size={12} className="text-orange-500 opacity-70" />
+                  <span className={`text-[10px] font-black uppercase tracking-wider ${darkMode ? 'text-white/60' : 'text-slate-600'}`}>
+                    PEND
                   </span>
                 </div>
-                <span className="text-lg font-black text-orange-500 tabular-nums">{totalPending.toLocaleString()}</span>
+                <span className="text-sm font-black text-orange-500 tabular-nums">{totalPending.toLocaleString()}</span>
               </div>
            </div>
         </div>
