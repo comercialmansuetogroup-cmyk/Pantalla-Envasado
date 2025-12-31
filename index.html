@@ -1,9 +1,10 @@
+
 <!DOCTYPE html>
 <html lang="es">
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>FactoryFlow 4K - Legibilidad Optimizada</title>
+  <title>FactoryFlow Dashboard</title>
   
   <script src="https://cdn.tailwindcss.com"></script>
   <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
@@ -20,22 +21,10 @@
       width: 100vw;
     }
     #root { height: 100vh; width: 100vw; display: flex; flex-direction: column; }
-    .animate-fade-in { animation: fadeIn 0.4s ease-out forwards; }
-    @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+    .custom-scroll-horizontal::-webkit-scrollbar { height: 10px; }
+    .custom-scroll-horizontal::-webkit-scrollbar-track { background: rgba(0,0,0,0.1); }
+    .custom-scroll-horizontal::-webkit-scrollbar-thumb { background: #dc2626; border-radius: 10px; }
   </style>
-
-  <script>
-    // Captura de errores para depuración
-    window.onerror = function(message, source, lineno, colno, error) {
-      if (message.includes('invariant=31') || message.includes('Objects are not valid')) {
-        console.group('%c🚨 REACT ERROR #31', 'background: #7f1d1d; color: #fff; padding: 10px; font-weight: bold;');
-        console.error('Mensaje:', message);
-        console.error('Posible causa: Conflicto de versiones de React o importación incorrecta.');
-        console.groupEnd();
-      }
-      return false;
-    };
-  </script>
 
   <script type="importmap">
 {

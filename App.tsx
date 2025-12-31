@@ -23,35 +23,45 @@ export default function App() {
   const fetchData = useCallback(async () => {
     try {
       const res = await fetch('/api/data');
+      if (!res.ok) throw new Error("Server response error");
       const json = await res.json();
-      setData(json);
-    } catch (e) { console.error("Error fetching data:", e); }
-  }, []);
-
-  const resetOrders = async () => {
-    if (confirm("¿Estás seguro de limpiar todos los pedidos de hoy?")) {
-      await fetch('/api/reset', { method: 'POST' });
+      // SEGURO: Solo guardamos si es un array
+      if (Array.isArray(json)) {
+        setData(json);
+      } else {
+        console.error("Data received is not an array:", json);
+        setData([]);
+      }
+    } catch (e) { 
+      console.error("Error fetching data:", e);
+      setData([]); // Reset para evitar crash
     }
-  };
+  }, []);
 
   useEffect(() => {
     fetchData();
     const es = new EventSource('/api/events');
     es.onmessage = (e) => {
-      const msg = JSON.parse(e.data);
       fetchData();
-      if (msg.updatedCode) {
-        setHighlightedCode(msg.updatedCode);
-        setTimeout(() => setHighlightedCode(null), 3000);
-      }
+      try {
+        const msg = JSON.parse(e.data);
+        if (msg.updatedCode) {
+          setHighlightedCode(msg.updatedCode);
+          setTimeout(() => setHighlightedCode(null), 3000);
+        }
+      } catch(err) {}
     };
     return () => es.close();
   }, [fetchData]);
 
-  const globalTotal = useMemo(() => 
-    data.reduce((acc, client) => 
-      acc + client.products.reduce((pAcc, p) => pAcc + Number(p.cantidad), 0), 0
-    ), [data]);
+  // SEGURO: Verificar que 'data' sea array antes de .reduce
+  const globalTotal = useMemo(() => {
+    if (!Array.isArray(data)) return 0;
+    return data.reduce((acc, client) => {
+      const clientProducts = Array.isArray(client.products) ? client.products : [];
+      return acc + clientProducts.reduce((pAcc, p) => pAcc + Number(p.cantidad || 0), 0);
+    }, 0);
+  }, [data]);
 
   return (
     <div className={`flex flex-col h-screen w-screen overflow-hidden ${darkMode ? 'bg-[#020617] text-white' : 'bg-slate-50 text-slate-900'}`}>
@@ -66,38 +76,27 @@ export default function App() {
 
       <main className="flex-1 relative overflow-hidden">
         {view === 'live' ? (
-          <>
-            <div className="absolute inset-0 flex overflow-x-auto p-10 gap-10 items-start custom-scroll-horizontal">
-              {data.length === 0 ? (
-                <div className="w-full h-full flex items-center justify-center opacity-10 font-black text-4xl uppercase tracking-[1em]">
-                  Esperando Datos...
-                </div>
-              ) : (
-                data.map((client) => (
-                  <ClientColumn 
-                    key={client.name} 
-                    group={{
-                      name: client.name,
-                      code: client.code, // Aquí vendrá "0, 10, 14, 5" para Gran Canaria
-                      products: client.products
-                    }} 
-                    darkMode={darkMode} 
-                    settings={settings}
-                    highlightedCode={highlightedCode}
-                  />
-                ))
-              )}
-            </div>
-            
-            {/* Botón Flotante para Limpiar Jornada */}
-            <button 
-              onClick={resetOrders}
-              className="absolute bottom-10 right-10 p-5 bg-red-600 hover:bg-red-700 text-white rounded-full shadow-2xl transition-all active:scale-90 z-50"
-              title="Limpiar pedidos de hoy"
-            >
-              <Trash2 size={24} />
-            </button>
-          </>
+          <div className="absolute inset-0 flex overflow-x-auto p-10 gap-10 items-start custom-scroll-horizontal">
+            {!Array.isArray(data) || data.length === 0 ? (
+              <div className="w-full h-full flex items-center justify-center opacity-10 font-black text-4xl uppercase tracking-[1em]">
+                Esperando Datos...
+              </div>
+            ) : (
+              data.map((client) => (
+                <ClientColumn 
+                  key={client.name} 
+                  group={{
+                    name: client.name,
+                    code: client.code,
+                    products: Array.isArray(client.products) ? client.products : []
+                  }} 
+                  darkMode={darkMode} 
+                  settings={settings}
+                  highlightedCode={highlightedCode}
+                />
+              ))
+            )}
+          </div>
         ) : (
           <StatsDashboard darkMode={darkMode} />
         )}
@@ -112,12 +111,6 @@ export default function App() {
           localStorage.setItem('factory_settings', JSON.stringify(s));
         }}
       />
-
-      <style>{`
-        .custom-scroll-horizontal::-webkit-scrollbar { height: 10px; }
-        .custom-scroll-horizontal::-webkit-scrollbar-track { background: rgba(0,0,0,0.1); }
-        .custom-scroll-horizontal::-webkit-scrollbar-thumb { background: #dc2626; border-radius: 10px; }
-      `}</style>
     </div>
   );
 }
