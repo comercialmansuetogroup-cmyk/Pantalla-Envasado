@@ -83,12 +83,16 @@ const notifyClients = (updatedCode, type = 'update') => {
 // --- API ENDPOINTS ---
 
 // 1. WEBHOOK: Entrada de NUEVOS PEDIDOS (Make)
+// LÓGICA CORREGIDA: Idempotencia diaria. Si llega el mismo pedido hoy, se actualiza, no se suma.
 app.post('/api/webhook', async (req, res) => {
   const { zonas } = req.body;
   
   if (!zonas || !Array.isArray(zonas)) {
+    console.error('❌ [WEBHOOK] Invalid Body:', req.body);
     return res.status(400).json({ error: 'Invalid data format' });
   }
+
+  console.log(`📥 [WEBHOOK] Recibido payload con ${zonas.length} zonas.`);
 
   if (!process.env.DATABASE_URL) {
     notifyClients('TEST-CODE');
@@ -98,9 +102,25 @@ app.post('/api/webhook', async (req, res) => {
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
+    
+    // 1. Identificar Agentes afectados en este envío
+    const incomingAgentCodes = [...new Set(zonas.map(z => String(z.codigo_agente || '0')))];
+    console.log(`🔄 [WEBHOOK] Actualizando datos de HOY para agentes: ${incomingAgentCodes.join(', ')}`);
+
+    // 2. LIMPIEZA PREVENTIVA (CRUCIAL): 
+    // Borramos los pedidos de HOY para estos agentes antes de insertar los nuevos.
+    // Esto evita que si Make se ejecuta 2 veces, se dupliquen las cantidades.
+    // Mantiene el histórico de ayer, anteayer, etc.
+    await client.query(`
+      DELETE FROM orders 
+      WHERE agent_code = ANY($1) 
+      AND received_at::DATE = CURRENT_DATE
+    `, [incomingAgentCodes]);
+
     let lastCode = null;
     let count = 0;
 
+    // 3. Insertar los datos limpios (Snapshot del momento)
     for (const z of zonas) {
       const code = String(z.codigo_agente || '0');
       const name = z.nombre_agente || 'DESCONOCIDO';
@@ -121,7 +141,7 @@ app.post('/api/webhook', async (req, res) => {
       }
     }
     await client.query('COMMIT');
-    console.log(`📥 [WEBHOOK] Imported ${count} new orders.`);
+    console.log(`✅ [WEBHOOK] Sincronización completada. ${count} lineas procesadas (Duplicados evitados).`);
     notifyClients(lastCode, 'order');
     res.json({ ok: true, processed: count });
   } catch (err) {
@@ -190,8 +210,9 @@ app.post('/api/scan', async (req, res) => {
 app.get('/api/data', async (req, res) => {
   if (!process.env.DATABASE_URL) return res.json([]);
   try {
-    // Obtenemos los pedidos agrupados y el stock TOTAL global de cada producto
-    // El frontend se encargará de "repartir" este stock global entre los clientes
+    // CORRECCIÓN CRÍTICA: 
+    // Solo sumamos los pedidos de HOY (CURRENT_DATE) para la vista en vivo.
+    // Esto evita que se muestren pedidos viejos acumulados en la vista operativa.
     const result = await pool.query(`
       SELECT 
         o.agent_code, 
@@ -202,9 +223,13 @@ app.get('/api/data', async (req, res) => {
         COALESCE(MAX(i.stock_qty), 0) as global_stock
       FROM orders o
       LEFT JOIN inventory i ON o.product_code = i.product_code
+      WHERE o.received_at::DATE = CURRENT_DATE
       GROUP BY o.agent_code, o.agent_name, o.product_code, o.product_name
       ORDER BY o.agent_code ASC
     `);
+    
+    // Log para depuración en Railway
+    // console.log(`📊 [DATA] Delivering ${result.rows.length} rows (Filtered by Today)`);
     
     res.json(result.rows);
   } catch (err) {
@@ -272,6 +297,8 @@ app.get('/api/history', async (req, res) => {
 app.post('/api/reset', async (req, res) => {
   if (!process.env.DATABASE_URL) return res.json({ ok: true });
   try {
+    // Al resetear, borramos todo (o podrías querer borrar solo el stock si quisieras mantener histórico de pedidos, 
+    // pero el reset suele ser "Empezar día de cero")
     await pool.query('DELETE FROM orders; DELETE FROM inventory;');
     console.log('⚠️ [RESET] All data cleared.');
     notifyClients('RESET');
