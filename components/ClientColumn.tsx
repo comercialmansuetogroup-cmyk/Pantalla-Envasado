@@ -37,7 +37,7 @@ export const ClientColumn: React.FC<ClientColumnProps> = ({ group, darkMode, set
   
   // Seleccionamos el ancho configurado según el tipo de columna
   // Si no está definido (versión antigua), usamos defaults seguros (340 y 520)
-  const calculatedMinWidth = isMultiCol 
+  const calculatedWidth = isMultiCol 
       ? (settings.colWidthMulti || 520) 
       : (settings.colWidthSingle || 340);
   
@@ -53,8 +53,11 @@ export const ClientColumn: React.FC<ClientColumnProps> = ({ group, darkMode, set
 
   return (
     <section 
-        className={`flex-1 h-full flex flex-col border-r transition-colors duration-300 ${darkMode ? 'border-white/5 bg-[#0c0e14]' : 'border-slate-300 bg-white'}`}
-        style={{ minWidth: `${calculatedMinWidth}px` }}
+        // CAMBIO CRÍTICO: 'flex-none' evita que la columna se estire sola.
+        // Ahora respetará estrictamente el ancho calculado por los hijos o el estilo inline.
+        className={`flex-none h-full flex flex-col border-r transition-colors duration-300 ${darkMode ? 'border-white/5 bg-[#0c0e14]' : 'border-slate-300 bg-white'}`}
+        // Aplicamos minWidth al contenedor para asegurar estructura base
+        style={{ minWidth: isMultiCol ? 'auto' : `${calculatedWidth}px` }}
     >
       
       {/* Header Cliente: CENTRADO Y UNIFICADO */}
@@ -79,13 +82,19 @@ export const ClientColumn: React.FC<ClientColumnProps> = ({ group, darkMode, set
       {/* Contenedor de Columnas */}
       <div className="flex-1 flex overflow-x-auto custom-scroll">
         {columns.length === 0 ? (
-           <div className="flex-1 flex items-center justify-center flex-col opacity-20 w-full" style={{ minWidth: `${calculatedMinWidth}px` }}>
+           // En caso de estar vacío, forzamos el ancho estricto para que el slider funcione visualmente incluso sin productos
+           <div className="flex-1 flex items-center justify-center flex-col opacity-20 w-full" style={{ width: `${calculatedWidth}px` }}>
               <span className="text-6xl font-black text-slate-500">OK</span>
               <span className="text-sm font-bold uppercase tracking-widest mt-2 text-slate-500">Zona Completada</span>
            </div>
         ) : (
           columns.map((colProducts, colIdx) => (
-            <div key={colIdx} className={`flex-1 border-r last:border-r-0 flex flex-col ${darkMode ? 'border-white/5' : 'border-slate-200'}`} style={{ minWidth: `${calculatedMinWidth}px` }}>
+            <div 
+                key={colIdx} 
+                className={`flex-1 border-r last:border-r-0 flex flex-col ${darkMode ? 'border-white/5' : 'border-slate-200'}`} 
+                // AQUI ESTÁ LA CLAVE: Forzamos width y minWidth para que sea exacto al slider
+                style={{ width: `${calculatedWidth}px`, minWidth: `${calculatedWidth}px` }}
+            >
               
               {/* Cabecera Tabla */}
               <div 
