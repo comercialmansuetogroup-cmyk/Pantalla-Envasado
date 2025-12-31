@@ -171,7 +171,7 @@ export default function App() {
             )}
           </div>
         ) : (
-          <StatsDashboard darkMode={darkMode} />
+          <StatsDashboard darkMode={darkMode} data={data} />
         )}
       </main>
 
