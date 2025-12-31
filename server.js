@@ -7,7 +7,6 @@ const { Pool } = require('pg');
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-// Configuración MIME para evitar errores de carga en el navegador
 express.static.mime.define({'application/javascript': ['ts', 'tsx']});
 
 const pool = new Pool({
@@ -15,11 +14,6 @@ const pool = new Pool({
   ssl: { rejectUnauthorized: false }
 });
 
-app.use(cors());
-app.use(bodyParser.json({ limit: '50mb' }));
-app.use(express.static(__dirname));
-
-// MAPPING DE CLIENTES (Backend Source of Truth)
 const CLIENT_MAPPING = {
   '24': 'FILIPPO',
   '26': 'PINGÜINO',
@@ -60,7 +54,6 @@ const initDB = async () => {
 };
 initDB();
 
-// SSE para Tiempo Real
 let clients = [];
 app.get('/api/events', (req, res) => {
   res.setHeader('Content-Type', 'text/event-stream');
@@ -71,14 +64,13 @@ app.get('/api/events', (req, res) => {
 });
 const notify = (data) => clients.forEach(c => c.write(`data: ${JSON.stringify(data)}\n\n`));
 
-// WEBHOOK DE MAKE: LA INTEGRACIÓN PURA
 app.post('/api/webhook', async (req, res) => {
   const { zonas } = req.body;
-  if (!zonas || !Array.isArray(zonas)) return res.status(400).send('Formato de zonas incorrecto');
+  if (!zonas || !Array.isArray(zonas)) return res.status(400).send('Formato inválido');
 
   try {
     await pool.query('BEGIN');
-    await pool.query('DELETE FROM orders'); // Limpieza diaria
+    await pool.query('DELETE FROM orders');
     
     let totalUnidades = 0;
     const agentesActivos = new Set();
@@ -91,18 +83,18 @@ app.post('/api/webhook', async (req, res) => {
       if (zona.productos && Array.isArray(zona.productos)) {
         for (const p of zona.productos) {
           const qty = Number(p.cantidad) || 0;
+          const pName = p.nombre || zona.nombre || 'PRODUCTO';
           totalUnidades += qty;
           
           await pool.query(
             `INSERT INTO orders (agent_code, client_name, product_code, product_name, quantity) 
              VALUES ($1, $2, $3, $4, $5)`,
-            [agentCode, clientName, String(p.codigo).toUpperCase(), p.nombre || zona.nombre || 'PRODUCTO', qty]
+            [agentCode, clientName, String(p.codigo).toUpperCase(), pName, qty]
           );
         }
       }
     }
 
-    // Actualizar estadísticas históricas
     await pool.query(`
       INSERT INTO daily_stats (log_date, total_units, client_count)
       VALUES (CURRENT_DATE, $1, $2)
@@ -120,7 +112,6 @@ app.post('/api/webhook', async (req, res) => {
   }
 });
 
-// API DATA: Agrupación SQL ultra-rápida
 app.get('/api/data', async (req, res) => {
   try {
     const query = `
@@ -165,4 +156,4 @@ app.post('/api/scan', async (req, res) => {
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
-app.listen(PORT, () => console.log(`🚀 Factory Engine V6 Operativo en puerto ${PORT}`));
+app.listen(PORT, () => console.log(`🚀 Engine V6 Operativo en puerto ${PORT}`));

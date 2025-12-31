@@ -1,9 +1,10 @@
+
 <!DOCTYPE html>
 <html lang="es">
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>FactoryFlow 4K - Legibilidad Optimizada</title>
+  <title>FactorySync Engine v6 - Real-Time Dashboard</title>
   
   <script src="https://cdn.tailwindcss.com"></script>
   <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
@@ -23,19 +24,6 @@
     .animate-fade-in { animation: fadeIn 0.4s ease-out forwards; }
     @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
   </style>
-
-  <script>
-    // Captura de errores para depuración
-    window.onerror = function(message, source, lineno, colno, error) {
-      if (message.includes('invariant=31') || message.includes('Objects are not valid')) {
-        console.group('%c🚨 REACT ERROR #31', 'background: #7f1d1d; color: #fff; padding: 10px; font-weight: bold;');
-        console.error('Mensaje:', message);
-        console.error('Posible causa: Conflicto de versiones de React o importación incorrecta.');
-        console.groupEnd();
-      }
-      return false;
-    };
-  </script>
 
   <script type="importmap">
 {
