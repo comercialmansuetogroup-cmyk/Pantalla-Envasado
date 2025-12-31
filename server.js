@@ -83,7 +83,10 @@ const notifyClients = (updatedCode, type = 'update') => {
 // --- API ENDPOINTS ---
 
 // 1. WEBHOOK: Entrada de NUEVOS PEDIDOS (Make)
-// LÓGICA CORREGIDA: Idempotencia diaria. Si llega el mismo pedido hoy, se actualiza, no se suma.
+// LÓGICA CORREGIDA V3: UPSERT (Update or Insert).
+// Ya no borramos nada. Verificamos si existe el par Agente/Producto para HOY.
+// Si existe -> ACTUALIZAMOS cantidad. Si no -> INSERTAMOS.
+// Esto permite múltiples llamadas de Make sin perder datos ni duplicar.
 app.post('/api/webhook', async (req, res) => {
   const { zonas } = req.body;
   
@@ -92,7 +95,7 @@ app.post('/api/webhook', async (req, res) => {
     return res.status(400).json({ error: 'Invalid data format' });
   }
 
-  console.log(`📥 [WEBHOOK] Recibido payload con ${zonas.length} zonas.`);
+  // console.log(`📥 [WEBHOOK] Recibido payload con ${zonas.length} zonas.`);
 
   if (!process.env.DATABASE_URL) {
     notifyClients('TEST-CODE');
@@ -103,47 +106,62 @@ app.post('/api/webhook', async (req, res) => {
   try {
     await client.query('BEGIN');
     
-    // 1. Identificar Agentes afectados en este envío
-    const incomingAgentCodes = [...new Set(zonas.map(z => String(z.codigo_agente || '0')))];
-    console.log(`🔄 [WEBHOOK] Actualizando datos de HOY para agentes: ${incomingAgentCodes.join(', ')}`);
-
-    // 2. LIMPIEZA PREVENTIVA (CRUCIAL): 
-    // Borramos los pedidos de HOY para estos agentes antes de insertar los nuevos.
-    // Esto evita que si Make se ejecuta 2 veces, se dupliquen las cantidades.
-    // Mantiene el histórico de ayer, anteayer, etc.
-    await client.query(`
-      DELETE FROM orders 
-      WHERE agent_code = ANY($1) 
-      AND received_at::DATE = CURRENT_DATE
-    `, [incomingAgentCodes]);
-
     let lastCode = null;
     let count = 0;
+    let updatedCount = 0;
 
-    // 3. Insertar los datos limpios (Snapshot del momento)
     for (const z of zonas) {
-      const code = String(z.codigo_agente || '0');
+      const code = String(z.codigo_agente || '0').trim();
       const name = z.nombre_agente || 'DESCONOCIDO';
-      if (z.productos) {
+      // Importante: z.nombre suele ser el nombre del producto en la estructura plana de Make,
+      // pero si viene dentro de 'productos', usamos ese.
+      const topLevelProductName = z.nombre || 'PRODUCTO';
+
+      if (z.productos && Array.isArray(z.productos)) {
         for (const p of z.productos) {
-          lastCode = String(p.codigo).toUpperCase();
+          lastCode = String(p.codigo).toUpperCase().trim();
           const qty = Number(p.cantidad) || 0;
-          
+          // Preferimos el nombre del producto interno si existe, si no el de la zona
+          const finalProductName = p.nombre || topLevelProductName;
+
           if (qty > 0) {
-            await client.query(
-              `INSERT INTO orders (agent_code, agent_name, product_code, product_name, quantity) 
-               VALUES ($1, $2, $3, $4, $5)`,
-              [code, name, lastCode, z.nombre || 'PRODUCTO', qty]
+            // 1. VERIFICAR EXISTENCIA (Doble check: Agente + Producto + Fecha Hoy)
+            const checkRes = await client.query(
+              `SELECT id FROM orders 
+               WHERE agent_code = $1 
+               AND product_code = $2 
+               AND received_at::DATE = CURRENT_DATE`,
+              [code, lastCode]
             );
-            count++;
+
+            if (checkRes.rows.length > 0) {
+              // 2A. ACTUALIZAR (Sustituir valor, NO sumar)
+              await client.query(
+                `UPDATE orders 
+                 SET quantity = $1, product_name = $2, agent_name = $3
+                 WHERE id = $4`,
+                [qty, finalProductName, name, checkRes.rows[0].id]
+              );
+              updatedCount++;
+            } else {
+              // 2B. INSERTAR NUEVO
+              await client.query(
+                `INSERT INTO orders (agent_code, agent_name, product_code, product_name, quantity) 
+                 VALUES ($1, $2, $3, $4, $5)`,
+                [code, name, lastCode, finalProductName, qty]
+              );
+              count++;
+            }
           }
         }
       }
     }
+
     await client.query('COMMIT');
-    console.log(`✅ [WEBHOOK] Sincronización completada. ${count} lineas procesadas (Duplicados evitados).`);
+    console.log(`✅ [WEBHOOK] Procesado. Insertados: ${count}, Actualizados: ${updatedCount}.`);
     notifyClients(lastCode, 'order');
-    res.json({ ok: true, processed: count });
+    res.json({ ok: true, inserted: count, updated: updatedCount });
+
   } catch (err) {
     await client.query('ROLLBACK');
     console.error('❌ [WEBHOOK] Transaction Failed:', err.message);
@@ -210,9 +228,7 @@ app.post('/api/scan', async (req, res) => {
 app.get('/api/data', async (req, res) => {
   if (!process.env.DATABASE_URL) return res.json([]);
   try {
-    // CORRECCIÓN CRÍTICA: 
-    // Solo sumamos los pedidos de HOY (CURRENT_DATE) para la vista en vivo.
-    // Esto evita que se muestren pedidos viejos acumulados en la vista operativa.
+    // Solo sumamos los pedidos de HOY (CURRENT_DATE)
     const result = await pool.query(`
       SELECT 
         o.agent_code, 
@@ -227,9 +243,6 @@ app.get('/api/data', async (req, res) => {
       GROUP BY o.agent_code, o.agent_name, o.product_code, o.product_name
       ORDER BY o.agent_code ASC
     `);
-    
-    // Log para depuración en Railway
-    // console.log(`📊 [DATA] Delivering ${result.rows.length} rows (Filtered by Today)`);
     
     res.json(result.rows);
   } catch (err) {
@@ -297,8 +310,6 @@ app.get('/api/history', async (req, res) => {
 app.post('/api/reset', async (req, res) => {
   if (!process.env.DATABASE_URL) return res.json({ ok: true });
   try {
-    // Al resetear, borramos todo (o podrías querer borrar solo el stock si quisieras mantener histórico de pedidos, 
-    // pero el reset suele ser "Empezar día de cero")
     await pool.query('DELETE FROM orders; DELETE FROM inventory;');
     console.log('⚠️ [RESET] All data cleared.');
     notifyClients('RESET');
