@@ -21,11 +21,11 @@ app.use(bodyParser.json({ limit: '50mb' }));
 
 const initDB = async () => {
   try {
+    // 1. Crear tablas básicas
     await pool.query(`
       CREATE TABLE IF NOT EXISTS orders (
         id SERIAL PRIMARY KEY,
         agent_code TEXT,
-        agent_name TEXT,
         product_code TEXT,
         product_name TEXT,
         quantity NUMERIC DEFAULT 0,
@@ -43,7 +43,22 @@ const initDB = async () => {
         client_count INTEGER DEFAULT 0
       );
     `);
-    console.log('✅ Postgres Engine V8: Estable');
+
+    // 2. MIGRACIÓN CRÍTICA: Asegurar que existe agent_name o usar client_name como fallback
+    await pool.query(`
+      DO $$ 
+      BEGIN 
+        IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='orders' AND column_name='agent_name') THEN
+          IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='orders' AND column_name='client_name') THEN
+            ALTER TABLE orders RENAME COLUMN client_name TO agent_name;
+          ELSE
+            ALTER TABLE orders ADD COLUMN agent_name TEXT;
+          END IF;
+        END IF;
+      END $$;
+    `);
+
+    console.log('✅ Postgres Engine V9: Sistema de Migración Activo');
   } catch (err) { console.error('❌ DB Error:', err); }
 };
 initDB();
@@ -87,13 +102,13 @@ app.post('/api/webhook', async (req, res) => {
     res.json({ status: 'success' });
   } catch (err) {
     await pool.query('ROLLBACK');
+    console.error("WEBHOOK ERROR:", err);
     res.status(500).json({ error: err.message });
   }
 });
 
 app.get('/api/data', async (req, res) => {
   try {
-    // Consulta optimizada para evitar errores de agrupación
     const query = `
       SELECT 
         name,
@@ -112,7 +127,7 @@ app.get('/api/data', async (req, res) => {
             WHEN agent_code = '26' THEN 'PINGÜINO'
             WHEN agent_code = '23' THEN 'LA PALMA'
             WHEN agent_code = '15' THEN 'TENERIFE NORTE'
-            ELSE COALESCE(agent_name, 'ZONA ' || agent_code)
+            ELSE COALESCE(agent_name, 'AGENTE ' || agent_code)
           END as name,
           agent_code,
           product_code,
@@ -145,4 +160,4 @@ app.post('/api/reset', async (req, res) => {
 });
 
 app.use(express.static(__dirname));
-app.listen(PORT, () => console.log(`🚀 Server V8 Ready on ${PORT}`));
+app.listen(PORT, () => console.log(`🚀 Server V9 Ready on ${PORT}`));

@@ -23,18 +23,20 @@ export default function App() {
   const fetchData = useCallback(async () => {
     try {
       const res = await fetch('/api/data');
-      if (!res.ok) throw new Error("Server response error");
+      if (!res.ok) {
+        console.warn("Servidor devolvió error 500, reintentando...");
+        setData([]);
+        return;
+      }
       const json = await res.json();
-      // SEGURO: Solo guardamos si es un array
       if (Array.isArray(json)) {
         setData(json);
       } else {
-        console.error("Data received is not an array:", json);
         setData([]);
       }
     } catch (e) { 
       console.error("Error fetching data:", e);
-      setData([]); // Reset para evitar crash
+      setData([]);
     }
   }, []);
 
@@ -51,17 +53,25 @@ export default function App() {
         }
       } catch(err) {}
     };
+    es.onerror = () => {
+      console.log("EventSource reconectando...");
+    };
     return () => es.close();
   }, [fetchData]);
 
-  // SEGURO: Verificar que 'data' sea array antes de .reduce
   const globalTotal = useMemo(() => {
     if (!Array.isArray(data)) return 0;
     return data.reduce((acc, client) => {
-      const clientProducts = Array.isArray(client.products) ? client.products : [];
-      return acc + clientProducts.reduce((pAcc, p) => pAcc + Number(p.cantidad || 0), 0);
+      const products = Array.isArray(client.products) ? client.products : [];
+      return acc + products.reduce((pAcc, p) => pAcc + Number(p.cantidad || 0), 0);
     }, 0);
   }, [data]);
+
+  const resetOrders = async () => {
+    if (confirm("¿Limpiar pedidos de hoy?")) {
+      await fetch('/api/reset', { method: 'POST' });
+    }
+  };
 
   return (
     <div className={`flex flex-col h-screen w-screen overflow-hidden ${darkMode ? 'bg-[#020617] text-white' : 'bg-slate-50 text-slate-900'}`}>
@@ -76,27 +86,35 @@ export default function App() {
 
       <main className="flex-1 relative overflow-hidden">
         {view === 'live' ? (
-          <div className="absolute inset-0 flex overflow-x-auto p-10 gap-10 items-start custom-scroll-horizontal">
-            {!Array.isArray(data) || data.length === 0 ? (
-              <div className="w-full h-full flex items-center justify-center opacity-10 font-black text-4xl uppercase tracking-[1em]">
-                Esperando Datos...
-              </div>
-            ) : (
-              data.map((client) => (
-                <ClientColumn 
-                  key={client.name} 
-                  group={{
-                    name: client.name,
-                    code: client.code,
-                    products: Array.isArray(client.products) ? client.products : []
-                  }} 
-                  darkMode={darkMode} 
-                  settings={settings}
-                  highlightedCode={highlightedCode}
-                />
-              ))
-            )}
-          </div>
+          <>
+            <div className="absolute inset-0 flex overflow-x-auto p-10 gap-10 items-start custom-scroll-horizontal">
+              {!Array.isArray(data) || data.length === 0 ? (
+                <div className="w-full h-full flex items-center justify-center opacity-10 font-black text-4xl uppercase tracking-[1em]">
+                  Sin Datos
+                </div>
+              ) : (
+                data.map((client) => (
+                  <ClientColumn 
+                    key={client.name} 
+                    group={{
+                      name: client.name,
+                      code: client.code,
+                      products: Array.isArray(client.products) ? client.products : []
+                    }} 
+                    darkMode={darkMode} 
+                    settings={settings}
+                    highlightedCode={highlightedCode}
+                  />
+                ))
+              )}
+            </div>
+            <button 
+              onClick={resetOrders}
+              className="absolute bottom-10 right-10 p-5 bg-red-600/20 hover:bg-red-600 text-red-600 hover:text-white rounded-full transition-all border border-red-600/20 z-50"
+            >
+              <Trash2 size={24} />
+            </button>
+          </>
         ) : (
           <StatsDashboard darkMode={darkMode} />
         )}
