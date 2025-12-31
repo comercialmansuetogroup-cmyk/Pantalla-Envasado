@@ -41,11 +41,19 @@ export default function App() {
 
       if (Array.isArray(raw)) {
         raw.forEach((row: any) => {
+          // Si el total de hoy es 0 y el de ayer también, ignoramos (a menos que haya stock)
+          if (Number(row.total_qty) === 0 && Number(row.yesterday_qty) === 0 && Number(row.global_stock) === 0) return;
+
           // Normalizar nombre de cliente
           const clientName = CLIENT_MAPPING[row.agent_code] || row.agent_name || `ZONA ${row.agent_code}`;
           
           if (!groups[clientName]) {
-            groups[clientName] = { name: clientName, products: [] };
+            groups[clientName] = { 
+              name: clientName, 
+              products: [],
+              totalToday: 0,
+              totalYesterday: 0
+            };
           }
           
           // Guardar Stock Global (viene repetido en cada fila, tomamos el valor)
@@ -53,46 +61,75 @@ export default function App() {
           const stock = Number(row.global_stock);
           globalStockMap.set(pCode, stock);
 
-          // Agregar producto al grupo (aún sin stock asignado)
+          const qtyToday = Number(row.total_qty);
+          const qtyYesterday = Number(row.yesterday_qty);
+
+          // Calcular tendencia individual del producto
+          // Si ayer fue 0, y hoy > 0, es 100% (o infinito, lo marcamos como 100)
+          let trend = 0;
+          if (qtyYesterday > 0) {
+            trend = ((qtyToday - qtyYesterday) / qtyYesterday) * 100;
+          } else if (qtyToday > 0) {
+            trend = 100;
+          }
+
+          // Agregar producto al grupo
           const existingProd = groups[clientName].products.find((p: any) => p.code === row.product_code);
           if (existingProd) {
-             existingProd.qty += Number(row.total_qty);
+             existingProd.qty += qtyToday;
+             existingProd.yesterdayQty += qtyYesterday;
+             // Recalcular tendencia del producto si ya existía
+             if (existingProd.yesterdayQty > 0) {
+                existingProd.trend = ((existingProd.qty - existingProd.yesterdayQty) / existingProd.yesterdayQty) * 100;
+             }
           } else {
             groups[clientName].products.push({
               code: row.product_code,
               name: row.product_name,
-              qty: Number(row.total_qty),
-              stock: 0, // Se calculará después en la fase de distribución
-              trend: 0
+              qty: qtyToday,
+              yesterdayQty: qtyYesterday, // Guardamos dato de ayer para cálculos internos si hiciera falta
+              stock: 0, 
+              trend: trend
             });
           }
+
+          // Acumuladores de Cliente
+          groups[clientName].totalToday += qtyToday;
+          groups[clientName].totalYesterday += qtyYesterday;
         });
       }
 
       // 2. Ordenar Clientes (GRAN CANARIA PRIMERO)
-      // Esto es CRUCIAL para que la distribución de stock funcione de izquierda a derecha
       const sortedClients = Object.values(groups).sort((a,b) => {
         if(a.name === 'GRAN CANARIA') return -1;
         if(b.name === 'GRAN CANARIA') return 1;
         return a.name.localeCompare(b.name);
       });
 
-      // 3. DISTRIBUIR STOCK (Algoritmo de Consumo)
-      // Iteramos clientes en orden y vamos restando del GlobalStock
+      // 3. CALCULAR TENDENCIA GLOBAL DEL CLIENTE Y DISTRIBUIR STOCK
       sortedClients.forEach(client => {
+         // Tendencia Global del Cliente
+         let clientTrend = 0;
+         if (client.totalYesterday > 0) {
+            clientTrend = ((client.totalToday - client.totalYesterday) / client.totalYesterday) * 100;
+         } else if (client.totalToday > 0) {
+            clientTrend = 100;
+         }
+         client.trend = clientTrend;
+
+         // Algoritmo de Consumo de Stock
          client.products.forEach((p: any) => {
              const available = globalStockMap.get(p.code) || 0;
-             const needed = p.qty;
+             const needed = p.qty; // Usamos el qty de HOY para consumir stock
              
-             // Asignamos lo que haya disponible hasta cubrir la necesidad
              const assigned = Math.min(needed, available);
+             p.stock = assigned; 
              
-             p.stock = assigned; // Este es el stock "realizado" para este cliente específico
-             
-             // Restamos del global para el siguiente cliente
              globalStockMap.set(p.code, Math.max(0, available - assigned));
          });
          
+         // Filtrar: Solo mostrar productos si Hoy > 0 o si tiene pendiente (lógica de ClientColumn)
+         // De momento los mandamos todos y que ClientColumn filtre.
          // Ordenar productos por cantidad descendente
          client.products.sort((a: any, b: any) => b.qty - a.qty);
       });
@@ -133,9 +170,7 @@ export default function App() {
           fetchData();
           
           if (msg.code) {
-            // Trigger animación
             setHighlightedCode(msg.code);
-            // Quitar animación después de 3s
             setTimeout(() => setHighlightedCode(null), 3000);
           }
         } catch(err) {}

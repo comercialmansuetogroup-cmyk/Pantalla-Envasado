@@ -2,12 +2,13 @@
 import React, { useMemo } from 'react';
 import { TrendBadge } from './TrendBadge';
 import { Product, VisualSettings } from '../types';
-import { Hash, Boxes, AlertTriangle } from 'lucide-react';
+import { Hash, Boxes, AlertTriangle, ArrowUp, ArrowDown, Minus } from 'lucide-react';
 
 interface ClientColumnProps {
   group: {
     name: string;
     products: Product[];
+    trend?: number; // Nueva propiedad de tendencia global del cliente
   };
   darkMode: boolean;
   settings: VisualSettings;
@@ -15,13 +16,10 @@ interface ClientColumnProps {
 }
 
 export const ClientColumn: React.FC<ClientColumnProps> = ({ group, darkMode, settings, highlightedCode }) => {
-  // Solo calculamos una vez
   const totalQty = useMemo(() => group.products.reduce((acc, p) => acc + Number(p.qty), 0), [group.products]);
   const totalStock = useMemo(() => group.products.reduce((acc, p) => acc + Number(p.stock), 0), [group.products]);
-  // El cálculo de pendiente es Total - Stock
   const totalPending = useMemo(() => group.products.reduce((acc, p) => acc + Math.max(0, p.qty - p.stock), 0), [group.products]);
   
-  // FILTRO MÁGICO: Solo mostrar productos que aún tienen pendiente.
   const activeProducts = useMemo(() => {
     return group.products.filter(p => {
        const lack = p.qty - p.stock;
@@ -34,28 +32,37 @@ export const ClientColumn: React.FC<ClientColumnProps> = ({ group, darkMode, set
     columns.push(activeProducts.slice(i, i + settings.maxRowsPerCol));
   }
   
-  // Ajuste de Grid: Damos un poco más de espacio a la columna Pendiente (3ra col) porque la fuente será más grande
   const gridTemplate = "grid-cols-[1fr_70px_110px_90px]";
+  const trendValue = group.trend || 0;
+  const isTrendUp = trendValue > 0;
+  const isTrendFlat = Math.abs(trendValue) < 0.1;
 
   return (
     <section className={`flex-1 min-w-[520px] h-full flex flex-col border-r transition-colors duration-300 ${darkMode ? 'border-white/5 bg-[#0c0e14]' : 'border-slate-300 bg-white'}`}>
       
-      {/* Header Cliente */}
-      <div className={`p-6 border-b flex-none ${darkMode ? 'border-white/5 bg-black/40' : 'border-slate-200 bg-slate-50'}`}>
-        <div className="flex items-baseline gap-4">
+      {/* Header Cliente: CENTRADO Y UNIFICADO */}
+      <div className={`p-6 border-b flex-none flex flex-col items-center justify-center text-center ${darkMode ? 'border-white/5 bg-black/40' : 'border-slate-200 bg-slate-50'}`}>
+        <div className="flex items-center gap-4">
           <h2 className={`font-black uppercase tracking-tighter leading-none ${darkMode ? 'text-white' : 'text-slate-900'}`} style={{ fontSize: `${settings.clientNameFontSize}px` }}>
             {group.name}
           </h2>
-          <span className="font-black opacity-30 tracking-[0.3em] text-red-600" style={{ fontSize: `${settings.clientTrendFontSize}px` }}>
-             — {activeProducts.length === 0 ? 'COMPLETADO' : 'EN PROCESO'}
-          </span>
+          
+          {/* Indicador de Tendencia Global del Cliente */}
+          <div className={`flex items-center gap-1 font-black tracking-tight px-3 py-1 rounded-full ${
+            isTrendFlat 
+              ? (darkMode ? 'bg-white/5 text-white/40' : 'bg-slate-200 text-slate-500')
+              : (isTrendUp ? 'bg-green-500/10 text-green-500' : 'bg-red-500/10 text-red-500')
+          }`} style={{ fontSize: `${settings.clientTrendFontSize}px` }}>
+             {isTrendFlat ? <Minus size={settings.clientTrendFontSize} /> : (isTrendUp ? <ArrowUp size={settings.clientTrendFontSize} strokeWidth={3} /> : <ArrowDown size={settings.clientTrendFontSize} strokeWidth={3} />)}
+             <span>{Math.abs(Math.round(trendValue))}%</span>
+          </div>
         </div>
       </div>
 
-      {/* Tabla de Productos */}
+      {/* Contenedor de Columnas */}
       <div className="flex-1 flex overflow-x-auto custom-scroll">
         {columns.length === 0 ? (
-           <div className="flex-1 flex items-center justify-center flex-col opacity-20">
+           <div className="flex-1 flex items-center justify-center flex-col opacity-20 w-full">
               <span className="text-6xl font-black text-slate-500">OK</span>
               <span className="text-sm font-bold uppercase tracking-widest mt-2 text-slate-500">Zona Completada</span>
            </div>
@@ -76,18 +83,14 @@ export const ClientColumn: React.FC<ClientColumnProps> = ({ group, darkMode, set
                   const lack = Math.max(0, p.qty - p.stock);
                   const isHigh = highlightedCode === p.code;
 
-                  // Lógica de Colores Condicional
-                  // Si hay animación (isHigh), TODO texto es BLANCO.
-                  // Si no, usa los colores normales (Azul stock, Naranja/Verde pendiente).
                   const textColorBase = isHigh ? 'text-white' : (darkMode ? 'text-white' : 'text-slate-800');
                   const stockColor = isHigh ? 'text-white' : (darkMode ? 'text-blue-400' : 'text-blue-600');
                   const pendingColor = isHigh ? 'text-white' : (lack > 0 ? 'text-orange-500' : 'text-green-600');
                   const totalColor = isHigh ? 'text-white' : (darkMode ? 'text-white' : 'text-slate-900');
                   
-                  // Fondo de la fila
                   const rowBg = isHigh 
-                    ? 'bg-green-500 shadow-xl z-20 scale-[1.02] border-green-600' // Animación Activada
-                    : (darkMode ? 'border-white/5 hover:bg-white/2' : 'border-slate-100 hover:bg-slate-50'); // Estado Normal
+                    ? 'bg-green-500 shadow-xl z-20 scale-[1.02] border-green-600' 
+                    : (darkMode ? 'border-white/5 hover:bg-white/2' : 'border-slate-100 hover:bg-slate-50');
 
                   return (
                     <div key={pIdx} className={`grid ${gridTemplate} px-4 py-3 border-b items-center transition-all duration-500 ease-out ${rowBg}`}>
@@ -96,26 +99,22 @@ export const ClientColumn: React.FC<ClientColumnProps> = ({ group, darkMode, set
                       <div className="flex flex-col min-w-0 pr-4">
                         <div className="flex items-center gap-3">
                           <span className={`font-black ${textColorBase}`} style={{ fontSize: `${settings.codeFontSize}px` }}>#{p.code}</span>
-                          {/* El badge también cambia a blanco si está activo para que se vea bien sobre el verde */}
                           <div className={isHigh ? 'brightness-0 invert' : ''}>
                              <TrendBadge value={p.trend || 0} darkMode={darkMode} fontSize={settings.trendFontSize} />
                           </div>
                         </div>
-                        <span className={`font-bold opacity-50 uppercase truncate mt-1 ${isHigh ? 'text-white opacity-80' : (darkMode ? 'text-white' : 'text-slate-500')}`} style={{ fontSize: `${settings.nameFontSize}px` }}>
+                        {/* CAMBIO: Eliminado 'truncate' y añadido 'break-words whitespace-normal leading-tight' para que se vea todo el texto */}
+                        <span className={`font-bold opacity-50 uppercase mt-1 break-words whitespace-normal leading-tight ${isHigh ? 'text-white opacity-80' : (darkMode ? 'text-white' : 'text-slate-500')}`} style={{ fontSize: `${settings.nameFontSize}px` }}>
                           {p.name}
                         </span>
                       </div>
                       
-                      {/* Columna 2: Stock Realizado */}
                       <div className={`text-right font-bold tabular-nums text-sm ${stockColor}`}>{p.stock}</div>
                       
-                      {/* Columna 3: PENDIENTE (Con Zoom) */}
-                      {/* Aumentado a text-2xl y añadido scale-125 cuando se activa */}
                       <div className={`text-right font-black tabular-nums tracking-tighter text-2xl transition-transform duration-300 origin-right ${pendingColor} ${isHigh ? 'scale-125' : 'scale-100'}`}>
                         {lack}
                       </div>
                       
-                      {/* Columna 4: Total */}
                       <div className={`text-right font-black text-3xl tracking-tighter tabular-nums leading-none ${totalColor}`}>
                         {p.qty}
                       </div>
@@ -128,7 +127,7 @@ export const ClientColumn: React.FC<ClientColumnProps> = ({ group, darkMode, set
         )}
       </div>
 
-      {/* Footer Totales Compacto */}
+      {/* Footer Totales */}
       <div className={`p-6 border-t flex-none ${darkMode ? 'border-white/10 bg-[#080a0f]' : 'border-slate-200 bg-white'}`}>
         <div className="grid grid-cols-[1.5fr_1fr] gap-8">
            <div className="space-y-2">

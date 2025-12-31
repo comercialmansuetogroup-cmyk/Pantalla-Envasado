@@ -76,17 +76,12 @@ setInterval(() => {
 }, 30000);
 
 const notifyClients = (updatedCode, type = 'update') => {
-  // console.log(`📡 [SSE] Broadcasting ${type}: ${updatedCode || 'GLOBAL'}`);
   clients.forEach(c => c.res.write(`data: ${JSON.stringify({type, code: updatedCode})}\n\n`));
 };
 
 // --- API ENDPOINTS ---
 
 // 1. WEBHOOK: Entrada de NUEVOS PEDIDOS (Make)
-// LÓGICA CORREGIDA V3: UPSERT (Update or Insert).
-// Ya no borramos nada. Verificamos si existe el par Agente/Producto para HOY.
-// Si existe -> ACTUALIZAMOS cantidad. Si no -> INSERTAMOS.
-// Esto permite múltiples llamadas de Make sin perder datos ni duplicar.
 app.post('/api/webhook', async (req, res) => {
   const { zonas } = req.body;
   
@@ -94,8 +89,6 @@ app.post('/api/webhook', async (req, res) => {
     console.error('❌ [WEBHOOK] Invalid Body:', req.body);
     return res.status(400).json({ error: 'Invalid data format' });
   }
-
-  // console.log(`📥 [WEBHOOK] Recibido payload con ${zonas.length} zonas.`);
 
   if (!process.env.DATABASE_URL) {
     notifyClients('TEST-CODE');
@@ -113,19 +106,15 @@ app.post('/api/webhook', async (req, res) => {
     for (const z of zonas) {
       const code = String(z.codigo_agente || '0').trim();
       const name = z.nombre_agente || 'DESCONOCIDO';
-      // Importante: z.nombre suele ser el nombre del producto en la estructura plana de Make,
-      // pero si viene dentro de 'productos', usamos ese.
       const topLevelProductName = z.nombre || 'PRODUCTO';
 
       if (z.productos && Array.isArray(z.productos)) {
         for (const p of z.productos) {
           lastCode = String(p.codigo).toUpperCase().trim();
           const qty = Number(p.cantidad) || 0;
-          // Preferimos el nombre del producto interno si existe, si no el de la zona
           const finalProductName = p.nombre || topLevelProductName;
 
           if (qty > 0) {
-            // 1. VERIFICAR EXISTENCIA (Doble check: Agente + Producto + Fecha Hoy)
             const checkRes = await client.query(
               `SELECT id FROM orders 
                WHERE agent_code = $1 
@@ -135,7 +124,6 @@ app.post('/api/webhook', async (req, res) => {
             );
 
             if (checkRes.rows.length > 0) {
-              // 2A. ACTUALIZAR (Sustituir valor, NO sumar)
               await client.query(
                 `UPDATE orders 
                  SET quantity = $1, product_name = $2, agent_name = $3
@@ -144,7 +132,6 @@ app.post('/api/webhook', async (req, res) => {
               );
               updatedCount++;
             } else {
-              // 2B. INSERTAR NUEVO
               await client.query(
                 `INSERT INTO orders (agent_code, agent_name, product_code, product_name, quantity) 
                  VALUES ($1, $2, $3, $4, $5)`,
@@ -172,22 +159,14 @@ app.post('/api/webhook', async (req, res) => {
 });
 
 // 2. SCAN: Entrada de PRODUCCIÓN (App Envasado)
-// Acepta: { "codigo": "ABC", "cantidad": 5 }
 app.post('/api/scan', async (req, res) => {
-  // 1. AUTH CHECK
   const authHeader = req.headers.authorization;
   if (!authHeader || authHeader !== 'Bearer DASHBOARD_V3_KEY_2025') {
-    console.warn(`⛔ [SCAN] Unauthorized attempt from ${req.ip}`);
     return res.status(401).json({ error: 'Unauthorized' });
   }
 
-  // 2. PAYLOAD PARSING
   const { codigo, cantidad } = req.body;
-  
-  console.log(`🏭 [SCAN] Recibido: Code=${codigo}, Qty=${cantidad}`);
-
   if (!codigo || !cantidad) {
-    console.error('❌ [SCAN] Invalid Payload:', req.body);
     return res.status(400).json({ error: 'Faltan datos: codigo o cantidad' });
   }
 
@@ -201,7 +180,6 @@ app.post('/api/scan', async (req, res) => {
     const qtyNum = Number(cantidad);
     const codeStr = String(codigo).toUpperCase().trim();
 
-    // 3. UPDATE DB
     await client.query(
       `INSERT INTO inventory (product_code, stock_qty) 
        VALUES ($1, $2)
@@ -211,8 +189,6 @@ app.post('/api/scan', async (req, res) => {
     );
 
     console.log(`✅ [SCAN] Stock Updated: ${codeStr} +${qtyNum}`);
-    
-    // 4. NOTIFY FRONTEND (Real-time animation)
     notifyClients(codeStr, 'scan');
     
     res.json({ ok: true, updated: codeStr, qty: qtyNum });
@@ -224,22 +200,23 @@ app.post('/api/scan', async (req, res) => {
   }
 });
 
-// 3. GET DATA: Devuelve el estado combinado
+// 3. GET DATA: Modificado para devolver TOTAL HOY y TOTAL AYER
 app.get('/api/data', async (req, res) => {
   if (!process.env.DATABASE_URL) return res.json([]);
   try {
-    // Solo sumamos los pedidos de HOY (CURRENT_DATE)
+    // Obtenemos datos de HOY y de AYER en la misma consulta usando CASE WHEN
     const result = await pool.query(`
       SELECT 
         o.agent_code, 
         o.agent_name, 
         o.product_code, 
         o.product_name, 
-        SUM(o.quantity) as total_qty, 
+        SUM(CASE WHEN o.received_at::DATE = CURRENT_DATE THEN o.quantity ELSE 0 END) as total_qty,
+        SUM(CASE WHEN o.received_at::DATE = CURRENT_DATE - INTERVAL '1 day' THEN o.quantity ELSE 0 END) as yesterday_qty,
         COALESCE(MAX(i.stock_qty), 0) as global_stock
       FROM orders o
       LEFT JOIN inventory i ON o.product_code = i.product_code
-      WHERE o.received_at::DATE = CURRENT_DATE
+      WHERE o.received_at::DATE >= CURRENT_DATE - INTERVAL '1 day'
       GROUP BY o.agent_code, o.agent_name, o.product_code, o.product_name
       ORDER BY o.agent_code ASC
     `);
@@ -254,10 +231,7 @@ app.get('/api/data', async (req, res) => {
 app.get('/api/history', async (req, res) => {
   if (!process.env.DATABASE_URL) return res.json([]);
   const { period } = req.query; 
-
-  let truncType = 'week';
-  let limit = 4;
-  let interval = '1 month';
+  let truncType = 'week', limit = 4, interval = '1 month';
 
   switch (period) {
     case 'week': truncType = 'week'; limit = 5; interval = '2 month'; break;
@@ -295,11 +269,7 @@ app.get('/api/history', async (req, res) => {
       } else {
          label = d.getFullYear().toString();
       }
-      return {
-        date: label,
-        fullDate: row.date_period,
-        produccion: Number(row.total_qty)
-      };
+      return { date: label, fullDate: row.date_period, produccion: Number(row.total_qty) };
     });
     res.json(formatted);
   } catch (err) {
@@ -311,12 +281,9 @@ app.post('/api/reset', async (req, res) => {
   if (!process.env.DATABASE_URL) return res.json({ ok: true });
   try {
     await pool.query('DELETE FROM orders; DELETE FROM inventory;');
-    console.log('⚠️ [RESET] All data cleared.');
     notifyClients('RESET');
     res.json({ ok: true });
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
+  } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
 if (process.env.NODE_ENV === 'production') {
