@@ -50,6 +50,11 @@ export const ClientColumn: React.FC<ClientColumnProps> = ({ group, darkMode, set
   const trendValue = group.trend || 0;
   const isTrendUp = trendValue > 0;
   const isTrendFlat = Math.abs(trendValue) < 0.1;
+  
+  // Tamaños Footer
+  const footerTotalSize = settings.footerTotalFontSize || 60;
+  const footerMetricsLabelSize = settings.footerMetricsFontSize || 11;
+  const footerMetricsValueSize = Math.round(footerMetricsLabelSize * 1.3); // El valor es 30% mayor que la etiqueta
 
   return (
     <section 
@@ -164,44 +169,46 @@ export const ClientColumn: React.FC<ClientColumnProps> = ({ group, darkMode, set
       {/* Footer Totales */}
       <div className={`p-6 border-t flex-none ${darkMode ? 'border-white/10 bg-[#080a0f]' : 'border-slate-200 bg-white'}`}>
         <div className="grid grid-cols-[1.5fr_1fr] gap-4">
+           {/* SECCIÓN TOTAL */}
            <div className="space-y-2">
-              <p className={`text-[12px] font-black uppercase tracking-[0.3em] leading-none mb-2 italic ${darkMode ? 'text-white' : 'text-slate-900'}`}>TOTAL</p>
+              <p className={`font-black uppercase tracking-[0.3em] leading-none mb-2 italic ${darkMode ? 'text-white' : 'text-slate-900'}`} style={{ fontSize: `${Math.max(10, footerTotalSize * 0.2)}px` }}>TOTAL</p>
               <div className="flex items-end gap-3">
-                <p className="text-6xl font-black text-red-600 leading-none tracking-tighter tabular-nums">
+                <p className="font-black text-red-600 leading-none tracking-tighter tabular-nums" style={{ fontSize: `${footerTotalSize}px` }}>
                   {totalQty.toLocaleString()}
                 </p>
               </div>
            </div>
 
+           {/* SECCIÓN MÉTRICAS */}
            <div className={`grid grid-cols-1 gap-y-2 border-l pl-4 ${darkMode ? 'border-white/10' : 'border-slate-200'}`}>
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2">
-                  <Hash size={12} className="text-red-600 opacity-70" />
-                  <span className={`text-[10px] font-black uppercase tracking-wider ${darkMode ? 'text-white/60' : 'text-slate-600'}`}>
+                  <Hash size={footerMetricsLabelSize} className="text-red-600 opacity-70" />
+                  <span className={`font-black uppercase tracking-wider ${darkMode ? 'text-white/60' : 'text-slate-600'}`} style={{ fontSize: `${footerMetricsLabelSize}px` }}>
                     PRODUCTOS
                   </span>
                 </div>
-                <span className={`text-sm font-black tabular-nums ${darkMode ? 'text-white' : 'text-slate-800'}`}>{group.products.length}</span>
+                <span className={`font-black tabular-nums ${darkMode ? 'text-white' : 'text-slate-800'}`} style={{ fontSize: `${footerMetricsValueSize}px` }}>{group.products.length}</span>
               </div>
               
               <div className="flex items-center justify-between">
                  <div className="flex items-center gap-2">
-                  <Boxes size={12} className="text-blue-500 opacity-70" />
-                  <span className={`text-[10px] font-black uppercase tracking-wider ${darkMode ? 'text-white/60' : 'text-slate-600'}`}>
+                  <Boxes size={footerMetricsLabelSize} className="text-blue-500 opacity-70" />
+                  <span className={`font-black uppercase tracking-wider ${darkMode ? 'text-white/60' : 'text-slate-600'}`} style={{ fontSize: `${footerMetricsLabelSize}px` }}>
                     STOCK BODEGA
                   </span>
                 </div>
-                <span className="text-sm font-black text-blue-500 tabular-nums">{totalStock.toLocaleString()}</span>
+                <span className="font-black text-blue-500 tabular-nums" style={{ fontSize: `${footerMetricsValueSize}px` }}>{totalStock.toLocaleString()}</span>
               </div>
 
               <div className="flex items-center justify-between">
                  <div className="flex items-center gap-2">
-                  <AlertTriangle size={12} className="text-orange-500 opacity-70" />
-                  <span className={`text-[10px] font-black uppercase tracking-wider ${darkMode ? 'text-white/60' : 'text-slate-600'}`}>
+                  <AlertTriangle size={footerMetricsLabelSize} className="text-orange-500 opacity-70" />
+                  <span className={`font-black uppercase tracking-wider ${darkMode ? 'text-white/60' : 'text-slate-600'}`} style={{ fontSize: `${footerMetricsLabelSize}px` }}>
                     A PRODUCIR
                   </span>
                 </div>
-                <span className="text-sm font-black text-orange-500 tabular-nums">{totalPending.toLocaleString()}</span>
+                <span className="font-black text-orange-500 tabular-nums" style={{ fontSize: `${footerMetricsValueSize}px` }}>{totalPending.toLocaleString()}</span>
               </div>
            </div>
         </div>

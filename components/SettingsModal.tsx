@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect } from 'react';
-import { X, Upload, Settings as SettingsIcon, Type, Layout, TrendingUp, Image, MoveHorizontal, ArrowUpDown, Columns, RectangleHorizontal } from 'lucide-react';
+import { X, Upload, Settings as SettingsIcon, Type, Layout, TrendingUp, Image, MoveHorizontal, ArrowUpDown, Columns, RectangleHorizontal, PanelBottom } from 'lucide-react';
 import { VisualSettings } from '../types';
 
 interface SettingsModalProps {
@@ -129,7 +129,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose, v
                     <input type="number" value={localSettings.nameFontSize} onChange={(e) => updateSetting('nameFontSize', Number(e.target.value))} className="w-full bg-black/20 border border-white/10 rounded p-2 text-white text-center font-bold focus:border-red-500 outline-none" />
                  </div>
                  
-                 {/* SOLICITUD 3: Modificar tamaño % Clientes y Productos */}
+                 {/* % Clientes y Productos */}
                  <div className="col-span-2 grid grid-cols-2 gap-6 pt-4 border-t border-white/5">
                     <div className="space-y-2">
                         <label className="text-[10px] font-bold text-white/50 uppercase block flex items-center gap-2"><TrendingUp size={12}/> % Global Cliente</label>
@@ -140,10 +140,26 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose, v
                         <input type="number" value={localSettings.trendFontSize} onChange={(e) => updateSetting('trendFontSize', Number(e.target.value))} className="w-full bg-black/20 border border-white/10 rounded p-2 text-white text-center font-bold focus:border-red-500 outline-none" />
                     </div>
                  </div>
+
+                 {/* NUEVA SECCIÓN: PIE DE PÁGINA */}
+                 <div className="col-span-2 grid grid-cols-2 gap-6 pt-4 border-t border-white/5">
+                    <div className="space-y-2 col-span-2 mb-2">
+                        <h4 className="text-[10px] font-black uppercase text-red-500 tracking-widest flex items-center gap-2"><PanelBottom size={12} /> Pie de Página (Footer)</h4>
+                    </div>
+                    
+                    <div className="space-y-2">
+                        <label className="text-[10px] font-bold text-white/50 uppercase block">Total (Número Grande)</label>
+                        <input type="number" value={localSettings.footerTotalFontSize || 60} onChange={(e) => updateSetting('footerTotalFontSize', Number(e.target.value))} className="w-full bg-black/20 border border-white/10 rounded p-2 text-white text-center font-bold focus:border-red-500 outline-none" />
+                    </div>
+                    <div className="space-y-2">
+                        <label className="text-[10px] font-bold text-white/50 uppercase block">Métricas (Prod/Stock/Pend)</label>
+                        <input type="number" value={localSettings.footerMetricsFontSize || 11} onChange={(e) => updateSetting('footerMetricsFontSize', Number(e.target.value))} className="w-full bg-black/20 border border-white/10 rounded p-2 text-white text-center font-bold focus:border-red-500 outline-none" />
+                    </div>
+                 </div>
             </div>
           </section>
 
-          {/* DENSIDAD Y ESTRUCTURA (NUEVOS CONTROLES DIVIDIDOS) */}
+          {/* DENSIDAD Y ESTRUCTURA */}
           <section className="space-y-6 pt-6 border-t border-white/5">
              <div className="flex items-center gap-2 text-white/80">
               <Layout size={18} className="text-red-500" />
@@ -159,25 +175,22 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose, v
                <input type="range" min="5" max="50" value={localSettings.maxRowsPerCol} onChange={(e) => updateSetting('maxRowsPerCol', parseInt(e.target.value))} className="w-full accent-red-600 h-2 bg-white/10 rounded-full cursor-pointer" />
             </div>
 
-            {/* 2A. Ancho de Columna SIMPLE (NUEVO) */}
+            {/* 2A. Ancho de Columna SIMPLE */}
             <div className="bg-white/5 p-4 rounded-lg space-y-3">
                <div className="flex justify-between text-[10px] font-bold text-white/50">
                  <span className="flex items-center gap-2"><RectangleHorizontal size={12}/> Ancho Columna Simple (Pingüino, etc)</span>
                  <span className="text-white">{localSettings.colWidthSingle || 340}px</span>
                </div>
-               {/* Rango de 250px a 500px */}
-               <input type="range" min="250" max="500" step="10" value={localSettings.colWidthSingle || 340} onChange={(e) => updateSetting('colWidthSingle', parseInt(e.target.value))} className="w-full accent-blue-500 h-2 bg-white/10 rounded-full cursor-pointer" />
+               <input type="range" min="250" max="600" step="10" value={localSettings.colWidthSingle || 340} onChange={(e) => updateSetting('colWidthSingle', parseInt(e.target.value))} className="w-full accent-blue-500 h-2 bg-white/10 rounded-full cursor-pointer" />
             </div>
 
-            {/* 2B. Ancho de Columna MULTIPLE (NUEVO) */}
+            {/* 2B. Ancho de Columna MULTIPLE */}
             <div className="bg-white/5 p-4 rounded-lg space-y-3 border border-white/5">
                <div className="flex justify-between text-[10px] font-bold text-white/50">
                  <span className="flex items-center gap-2 text-blue-400"><Columns size={12}/> Ancho Columna Doble (Gran Canaria)</span>
                  <span className="text-white">{localSettings.colWidthMulti || 520}px</span>
                </div>
-               {/* Rango de 400px a 800px */}
-               <input type="range" min="400" max="800" step="10" value={localSettings.colWidthMulti || 520} onChange={(e) => updateSetting('colWidthMulti', parseInt(e.target.value))} className="w-full accent-blue-400 h-2 bg-white/10 rounded-full cursor-pointer" />
-               <p className="text-[9px] text-white/30 italic mt-1">Ajusta esto para que los nombres largos quepan en una sola línea en clientes grandes.</p>
+               <input type="range" min="400" max="1000" step="10" value={localSettings.colWidthMulti || 520} onChange={(e) => updateSetting('colWidthMulti', parseInt(e.target.value))} className="w-full accent-blue-400 h-2 bg-white/10 rounded-full cursor-pointer" />
             </div>
 
              {/* 3. Espaciado Vertical */}
@@ -186,7 +199,6 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose, v
                  <span className="flex items-center gap-2"><ArrowUpDown size={12}/> Sangría / Separación Filas (PX)</span>
                  <span className="text-white">{localSettings.rowVerticalPadding || 8}px</span>
                </div>
-               {/* Rango de 2px a 30px */}
                <input type="range" min="2" max="30" step="1" value={localSettings.rowVerticalPadding || 8} onChange={(e) => updateSetting('rowVerticalPadding', parseInt(e.target.value))} className="w-full accent-orange-500 h-2 bg-white/10 rounded-full cursor-pointer" />
             </div>
 

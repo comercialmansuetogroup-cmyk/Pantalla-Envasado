@@ -37,6 +37,10 @@ export interface VisualSettings {
   colWidthSingle: number;    // Ancho para clientes de 1 columna (Pingüino)
   colWidthMulti: number;     // Ancho para clientes de 2+ columnas (Gran Canaria)
   rowVerticalPadding: number; // Separación vertical entre filas
+  
+  // NUEVO: Control de Pie de Página
+  footerTotalFontSize: number;   // Tamaño del Número Grande Rojo
+  footerMetricsFontSize: number; // Tamaño base de la sección derecha (Productos, Stock, etc)
 }
 
 export interface IncomingProduct {
@@ -79,8 +83,12 @@ export const DEFAULT_SETTINGS: VisualSettings = {
   clientTrendFontSize: 18,
   headerFontSize: 16,
   
-  // Valores por defecto ajustados a tu gusto actual
-  colWidthSingle: 340, // Ancho estrecho por defecto
-  colWidthMulti: 520,  // Ancho amplio por defecto
-  rowVerticalPadding: 8 // Equivalente a py-2
+  // Valores por defecto ajustados
+  colWidthSingle: 340, 
+  colWidthMulti: 520,  
+  rowVerticalPadding: 8,
+
+  // Defaults Pie de Página
+  footerTotalFontSize: 60, // Tamaño del número rojo grande
+  footerMetricsFontSize: 11 // Tamaño de las etiquetas de métricas (los números serán un poco más grandes proporcionalmente)
 };
