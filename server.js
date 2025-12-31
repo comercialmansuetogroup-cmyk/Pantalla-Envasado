@@ -7,12 +7,19 @@ const { Pool } = require('pg');
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-express.static.mime.define({'application/javascript': ['ts', 'tsx']});
+// Configurar MIME types para archivos TSX
+if (express.static.mime && express.static.mime.define) {
+    express.static.mime.define({'application/javascript': ['ts', 'tsx']});
+}
 
 const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
   ssl: { rejectUnauthorized: false }
 });
+
+// MIDDLEWARES CRÍTICOS
+app.use(cors());
+app.use(bodyParser.json({ limit: '50mb' }));
 
 const CLIENT_MAPPING = {
   '24': 'FILIPPO',
@@ -155,5 +162,8 @@ app.post('/api/scan', async (req, res) => {
     res.json({ status: 'ok' });
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
+
+// SERVIR ARCHIVOS ESTÁTICOS - ESTO ARREGLA EL "CANNOT GET /"
+app.use(express.static(__dirname));
 
 app.listen(PORT, () => console.log(`🚀 Engine V6 Operativo en puerto ${PORT}`));
