@@ -1,246 +1,174 @@
+
 const express = require('express');
 const path = require('path');
 const cors = require('cors');
 const bodyParser = require('body-parser');
+const { Pool } = require('pg');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-// Token de seguridad (Debe coincidir en Make)
-const CUSTOM_DASHBOARD_TOKEN = "DASHBOARD_V3_KEY_2025";
+// Configuración de PostgreSQL - Usa la variable de Railway
+const pool = new Pool({
+  connectionString: process.env.DATABASE_URL,
+  ssl: { rejectUnauthorized: false }
+});
 
 app.use(cors());
 app.use(bodyParser.json({ limit: '50mb' }));
-
-// Almacén en memoria persistente
-let allProductionLines = [];
-
-// Clientes conectados para SSE (Server-Sent Events)
-let clients = [];
-
 app.use(express.static(__dirname));
 
-// --- SSE (Real-time updates) ---
+/**
+ * 1. INICIALIZACIÓN DE TABLAS
+ * Este bloque crea las tablas si no existen.
+ * 'orders' se limpia con cada webhook de Make.
+ * 'inventory' es PERMANENTE (tu stock acumulado).
+ */
+const initDB = async () => {
+  try {
+    // Tabla de Pedidos (Lo que hay que producir)
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS orders (
+        id SERIAL PRIMARY KEY,
+        agent_code TEXT,
+        client_name TEXT,
+        product_code TEXT,
+        product_name TEXT,
+        quantity NUMERIC DEFAULT 0,
+        received_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      )
+    `);
+
+    // Tabla de Inventario (Lo que ya se ha escaneado)
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS inventory (
+        product_code TEXT PRIMARY KEY,
+        stock_qty NUMERIC DEFAULT 0,
+        last_update TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      )
+    `);
+
+    console.log('✅ PostgreSQL: Estructura de tablas verificada.');
+  } catch (err) {
+    console.error('❌ Error inicializando DB:', err);
+  }
+};
+initDB();
+
+/**
+ * 2. REAL-TIME ENGINE (SSE)
+ */
+let clients = [];
 app.get('/api/events', (req, res) => {
   res.setHeader('Content-Type', 'text/event-stream');
   res.setHeader('Cache-Control', 'no-cache');
   res.setHeader('Connection', 'keep-alive');
-
-  const clientId = Date.now();
-  const newClient = {
-    id: clientId,
-    res
-  };
-
-  clients.push(newClient);
-
-  // Enviar mensaje de conexión
-  res.write(`data: ${JSON.stringify({ type: 'sys_log', message: 'Conexión SSE establecida', timestamp: Date.now() })}\n\n`);
-
-  req.on('close', () => {
-    clients = clients.filter(c => c.id !== clientId);
-  });
+  clients.push(res);
+  req.on('close', () => { clients = clients.filter(c => c !== res); });
 });
 
-const broadcastUpdate = (extraData = {}) => {
-  clients.forEach(client => {
-    client.res.write(`data: ${JSON.stringify({ type: 'update', timestamp: Date.now(), ...extraData })}\n\n`);
-  });
-};
-
-const broadcastLog = (msg) => {
-  const payload = JSON.stringify({ type: 'sys_log', message: msg, timestamp: Date.now() });
-  clients.forEach(client => {
-    client.res.write(`data: ${payload}\n\n`);
-  });
-};
-
-// --- ENDPOINTS ---
+const broadcast = (data) => clients.forEach(c => c.write(`data: ${JSON.stringify(data)}\n\n`));
 
 /**
- * Obtener todos los datos acumulados
+ * 3. ENDPOINTS DE NEGOCIO
  */
-app.get('/api/data', (req, res) => {
-  // Evitar caché estricto
-  res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
-  res.setHeader('Pragma', 'no-cache');
-  res.setHeader('Expires', '0');
-  res.json({ zonas: allProductionLines });
-});
 
-/**
- * Endpoint SCAN (Scanner App)
- * Recibe: { "codigo": "12345", "cantidad": 5 }
- */
-app.post('/api/scan', (req, res) => {
-  // --- DEBUGGING EXTREMO PARA VERIFICAR CONEXIÓN ---
-  console.log('------------------------------------------------');
-  console.log('📡 [DEBUG] PETICIÓN ENTRANTE A /api/scan');
-  console.log('👉 IP:', req.ip);
-  console.log('👉 Headers:', JSON.stringify(req.headers, null, 2));
-  console.log('👉 Body:', JSON.stringify(req.body, null, 2));
-  console.log('------------------------------------------------');
-  // -----------------------------------------------------
+// Obtener datos combinados: Pedidos + Stock Real
+app.get('/api/data', async (req, res) => {
+  try {
+    // Consulta SQL que une pedidos con stock físico mediante LEFT JOIN
+    const query = `
+      SELECT 
+        o.agent_code,
+        o.client_name,
+        o.product_name,
+        o.product_code,
+        o.quantity as pedido_qty,
+        COALESCE(i.stock_qty, 0) as stock_real
+      FROM orders o
+      LEFT JOIN inventory i ON o.product_code = i.product_code
+      ORDER BY o.agent_code ASC, o.product_name ASC
+    `;
+    const result = await pool.query(query);
+    
+    // Agrupamos por agente para el Dashboard
+    const zones = {};
+    result.rows.forEach(row => {
+      if (!zones[row.agent_code]) {
+        zones[row.agent_code] = {
+          codigo_agente: row.agent_code,
+          nombre_agente: row.client_name,
+          productos: []
+        };
+      }
+      zones[row.agent_code].productos.push({
+        codigo: row.product_code,
+        nombre: row.product_name,
+        cantidad: Number(row.pedido_qty),
+        stock_fisico: Number(row.stock_real)
+      });
+    });
 
-  const authHeader = req.headers.authorization;
-  const expectedToken = `Bearer ${CUSTOM_DASHBOARD_TOKEN}`;
-
-  // Validación laxa para facilitar pruebas
-  if (authHeader && authHeader !== expectedToken) {
-    const errorMsg = `🔒 ERROR TOKEN: Recibido [${authHeader}] vs Esperado [${expectedToken}]`;
-    console.error(errorMsg);
-    broadcastLog(errorMsg);
-    return res.status(401).json({ error: 'Token inválido' });
+    res.json({ zonas: Object.values(zones) });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
   }
+});
 
+// ESCÁNER: Sumar stock físico a la base de datos
+app.post('/api/scan', async (req, res) => {
   const { codigo, cantidad } = req.body;
+  const pCode = String(codigo).toUpperCase();
+  const qty = Number(cantidad);
 
-  if (!codigo || cantidad === undefined) {
-    const errorMsg = `❌ SCAN Error: Datos incompletos (Codigo: ${codigo}, Cant: ${cantidad})`;
-    console.error(errorMsg);
-    broadcastLog(errorMsg);
-    return res.status(400).json({ error: 'Faltan datos: codigo o cantidad' });
+  if (!pCode || isNaN(qty)) return res.status(400).json({ error: 'Datos de escaneo inválidos' });
+
+  try {
+    // UPSERT: Si el producto existe, suma la cantidad. Si no, lo crea.
+    await pool.query(`
+      INSERT INTO inventory (product_code, stock_qty, last_update)
+      VALUES ($1, $2, CURRENT_TIMESTAMP)
+      ON CONFLICT (product_code) 
+      DO UPDATE SET 
+        stock_qty = inventory.stock_qty + EXCLUDED.stock_qty,
+        last_update = CURRENT_TIMESTAMP
+    `, [pCode, qty]);
+
+    broadcast({ type: 'update', updatedCode: pCode });
+    res.json({ status: 'success', message: `Stock de ${pCode} actualizado` });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
   }
+});
 
-  const qtyToAdd = Number(cantidad);
-  let productFound = false;
-  let updatedProduct = '';
-  let updatedCode = '';
+// MAKE WEBHOOK: Reemplaza la lista de pedidos diaria
+app.post('/api/webhook', async (req, res) => {
+  const { zonas } = req.body;
+  if (!zonas || !Array.isArray(zonas)) return res.status(400).json({ error: 'Formato de Make inválido' });
 
-  // Búsqueda y actualización
-  for (let zona of allProductionLines) {
-    if (Array.isArray(zona.productos)) {
-      for (let prod of zona.productos) {
-        const pCode = String(prod.codigo || '').trim().toUpperCase();
-        const pName = String(prod.nombre || '').trim().toUpperCase();
-        const scanCode = String(codigo).trim().toUpperCase();
+  try {
+    await pool.query('BEGIN');
+    await pool.query('DELETE FROM orders'); // Borramos pedidos viejos, pero el 'inventory' se queda intacto
 
-        if (pCode === scanCode || pName === scanCode) {
-          prod.stock_fisico = (Number(prod.stock_fisico) || 0) + qtyToAdd;
-          productFound = true;
-          updatedProduct = prod.nombre || prod.codigo;
-          updatedCode = pCode;
+    for (const zona of zonas) {
+      const code = zona.codigo_agente || '0';
+      const name = zona.nombre_agente || 'CLIENTE';
+      if (Array.isArray(zona.productos)) {
+        for (const p of zona.productos) {
+          await pool.query(
+            'INSERT INTO orders (agent_code, client_name, product_code, product_name, quantity) VALUES ($1, $2, $3, $4, $5)',
+            [code, name, String(p.codigo).toUpperCase(), p.nombre || 'Producto', p.cantidad || 0]
+          );
         }
       }
-    } else {
-        // Estructura Legacy
-        const pCode = String(zona.codigo_agente || '').trim().toUpperCase();
-        const pName = String(zona.nombre || '').trim().toUpperCase();
-        const scanCode = String(codigo).trim().toUpperCase();
-
-        if (pName === scanCode || pCode === scanCode) {
-            zona.stock_fisico = (Number(zona.stock_fisico) || 0) + qtyToAdd;
-            productFound = true;
-            updatedProduct = zona.nombre;
-            updatedCode = pCode;
-        }
     }
-  }
-
-  if (productFound) {
-    const msg = `MATCH: ${updatedProduct} (+${qtyToAdd})`;
-    console.log(`✅ ${msg}`);
-    broadcastLog(msg); 
-    broadcastUpdate({ updatedCode }); 
-    return res.json({ status: 'ok', message: 'Stock actualizado', codigo, added: qtyToAdd });
-  } else {
-    const msg = `NO MATCH: Código ${codigo} no encontrado en lista activa`;
-    console.warn(`⚠️ ${msg}`);
-    broadcastLog(msg);
-    return res.json({ status: 'warning', message: 'Producto no encontrado en lista activa' });
+    await pool.query('COMMIT');
+    broadcast({ type: 'update' });
+    res.json({ status: 'ok', message: 'Pedidos sincronizados en PostgreSQL' });
+  } catch (err) {
+    await pool.query('ROLLBACK');
+    res.status(500).json({ error: err.message });
   }
 });
 
-/**
- * Reiniciar datos
- */
-app.post('/api/reset', (req, res) => {
-  const authHeader = req.headers.authorization;
-  if (authHeader === `Bearer ${CUSTOM_DASHBOARD_TOKEN}`) {
-    allProductionLines = [];
-    broadcastUpdate();
-    broadcastLog('♻️ SISTEMA REINICIADO (RESET)');
-    return res.json({ status: 'reset_ok' });
-  }
-  res.status(401).json({ error: 'No autorizado' });
-});
-
-/**
- * Webhook REEMPLAZO (Evita duplicidad, preserva stock)
- */
-app.post('/api/webhook', (req, res) => {
-  const authHeader = req.headers.authorization;
-  const expectedToken = `Bearer ${CUSTOM_DASHBOARD_TOKEN}`;
-
-  if (!authHeader || authHeader !== expectedToken) {
-    return res.status(401).json({ error: 'Token inválido' });
-  }
-
-  if (req.body && req.body.zonas && Array.isArray(req.body.zonas)) {
-    const timestamp = new Date().toISOString();
-    
-    // 1. MAPEAR STOCK EXISTENTE (Para no perder lo escaneado)
-    const currentStockMap = new Map();
-    const saveStock = (list) => {
-        list.forEach(zona => {
-            if (Array.isArray(zona.productos)) {
-                zona.productos.forEach(p => {
-                    const key = String(p.codigo || p.nombre || '').trim().toUpperCase();
-                    if (p.stock_fisico > 0) currentStockMap.set(key, p.stock_fisico);
-                });
-            } else {
-                const key = String(zona.codigo_agente || zona.nombre || '').trim().toUpperCase();
-                if (zona.stock_fisico > 0) currentStockMap.set(key, zona.stock_fisico);
-            }
-        });
-    };
-    saveStock(allProductionLines);
-
-    // 2. REEMPLAZAR DATOS (Overwrite)
-    const zonesWithTime = req.body.zonas.map(z => ({ 
-      ...z, 
-      receivedAt: timestamp 
-    }));
-    
-    // Sobrescribimos completamente
-    allProductionLines = zonesWithTime;
-
-    // 3. RESTAURAR STOCK (Rehidratar)
-    let restoredCount = 0;
-    allProductionLines.forEach(zona => {
-        if (Array.isArray(zona.productos)) {
-            zona.productos.forEach(p => {
-                const key = String(p.codigo || p.nombre || '').trim().toUpperCase();
-                if (currentStockMap.has(key)) {
-                    p.stock_fisico = currentStockMap.get(key);
-                    restoredCount++;
-                }
-            });
-        } else {
-             const key = String(zona.codigo_agente || zona.nombre || '').trim().toUpperCase();
-             if (currentStockMap.has(key)) {
-                 zona.stock_fisico = currentStockMap.get(key);
-                 restoredCount++;
-             }
-        }
-    });
-    
-    const msg = `📥 WEBHOOK: Reemplazo completo. ${req.body.zonas.length} zonas cargadas. Stocks restaurados: ${restoredCount}`;
-    console.log(msg);
-    broadcastLog(msg);
-    broadcastUpdate();
-    return res.status(200).json({ status: 'ok', mode: 'overwrite', restoredStocks: restoredCount });
-  }
-  
-  res.status(400).json({ error: 'Formato incorrecto' });
-});
-
-app.get('*', (req, res) => {
-  const ext = path.extname(req.url);
-  if (ext && ext !== '.html') return res.status(404).send('Not found');
-  res.sendFile(path.join(__dirname, 'index.html'));
-});
-
-app.listen(PORT, () => {
-  console.log(`🚀 FACTORYFLOW PRO - PORT ${PORT}`);
-});
+app.listen(PORT, () => console.log(`🚀 Factory Engine (Postgres Ready) en puerto ${PORT}`));
