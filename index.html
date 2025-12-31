@@ -2,43 +2,173 @@
 <!DOCTYPE html>
 <html lang="es">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>FactoryFlow Dashboard V10</title>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>FactoryFlow V11 | LIVE</title>
   <script src="https://cdn.tailwindcss.com"></script>
-  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
   <style>
-    * { box-sizing: border-box; margin: 0; padding: 0; }
-    ::-webkit-scrollbar { display: none; }
-    html, body { 
-      background-color: #020617; 
-      color: white; 
-      overflow: hidden; 
-      font-family: ui-sans-serif, system-ui, -apple-system, sans-serif;
-      height: 100vh;
-      width: 100vw;
-    }
-    #root { height: 100vh; width: 100vw; display: flex; flex-direction: column; }
-    .custom-scroll-horizontal::-webkit-scrollbar { height: 10px; }
-    .custom-scroll-horizontal::-webkit-scrollbar-track { background: rgba(0,0,0,0.1); }
-    .custom-scroll-horizontal::-webkit-scrollbar-thumb { background: #dc2626; border-radius: 10px; }
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;700;900&display=swap');
+    body { font-family: 'Inter', sans-serif; background: #020617; color: white; overflow: hidden; }
+    .custom-scroll::-webkit-scrollbar { height: 8px; width: 4px; }
+    .custom-scroll::-webkit-scrollbar-thumb { background: #dc2626; border-radius: 10px; }
+    .card-glow { box-shadow: 0 0 40px -10px rgba(220, 38, 38, 0.2); }
+    .agent-column { min-width: 450px; flex-shrink: 0; height: 100%; display: flex; flex-direction: column; }
   </style>
-  <script type="importmap">
+<script type="importmap">
 {
   "imports": {
-    "react": "https://esm.sh/react@18.2.0",
-    "react-dom": "https://esm.sh/react-dom@18.2.0",
-    "react-dom/client": "https://esm.sh/react-dom@18.2.0/client",
-    "recharts": "https://esm.sh/recharts@2.12.7?external=react,react-dom",
-    "lucide-react": "https://esm.sh/lucide-react@0.292.0?external=react",
-    "react-dom/": "https://esm.sh/react-dom@^19.2.3/",
-    "react/": "https://esm.sh/react@^19.2.3/"
+    "react": "https://esm.sh/react@^19.2.3",
+    "react/": "https://esm.sh/react@^19.2.3/",
+    "lucide-react": "https://esm.sh/lucide-react@^0.562.0",
+    "recharts": "https://esm.sh/recharts@^3.6.0"
   }
 }
 </script>
 </head>
-<body>
-  <div id="root"></div>
-  <script type="text/babel" data-type="module" data-presets="react,typescript" src="./index.tsx"></script>
+<body class="h-screen w-screen flex flex-col">
+
+  <!-- HEADER -->
+  <header class="h-24 flex-none border-b border-white/10 flex items-center justify-between px-10 bg-black/40 backdrop-blur-xl z-50">
+    <div class="flex items-center gap-5">
+      <div class="bg-red-600 p-3 rounded-2xl shadow-lg shadow-red-600/40">
+        <svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M2 20V9l4-2 4 2 4-2 4 2 4-2v11a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2Z"/><path d="M17 18h1"/><path d="M12 18h1"/><path d="M7 18h1"/></svg>
+      </div>
+      <div>
+        <h1 class="text-3xl font-black tracking-tighter uppercase">Factory<span class="text-red-600">Sync</span></h1>
+        <p class="text-[9px] font-black opacity-30 tracking-[0.5em]">STANDARD WEB ENGINE V11</p>
+      </div>
+    </div>
+    <div class="flex items-center gap-10">
+      <div class="text-right border-r border-white/10 pr-10">
+        <p class="text-[10px] font-black opacity-30 uppercase tracking-widest">Total Producción</p>
+        <p id="total-global" class="text-5xl font-black text-red-600 tabular-nums tracking-tighter">0</p>
+      </div>
+      <button onclick="resetData()" class="p-4 bg-white/5 hover:bg-red-600 rounded-2xl border border-white/10 transition-all active:scale-95">
+        <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/><line x1="10" x2="10" y1="11" y2="17"/><line x1="14" x2="14" y1="11" y2="17"/></svg>
+      </button>
+    </div>
+  </header>
+
+  <!-- MAIN DASHBOARD -->
+  <main id="dashboard-container" class="flex-1 flex overflow-x-auto p-10 gap-10 items-start custom-scroll bg-[#020617]">
+    <!-- Las columnas se inyectan aquí -->
+    <div class="w-full h-full flex items-center justify-center opacity-20 italic">Cargando motor de datos...</div>
+  </main>
+
+  <script>
+    const container = document.getElementById('dashboard-container');
+    const totalEl = document.getElementById('total-global');
+
+    async function fetchData() {
+      try {
+        const res = await fetch('/api/data');
+        if (!res.ok) throw new Error('Error de servidor');
+        const data = await res.json();
+        render(data);
+      } catch (e) {
+        console.error(e);
+      }
+    }
+
+    function render(rows) {
+      if (!rows || rows.length === 0) {
+        container.innerHTML = `<div class="w-full h-full flex items-center justify-center opacity-10 font-black text-4xl uppercase tracking-[1em]">Sin Pedidos</div>`;
+        totalEl.innerText = '0';
+        return;
+      }
+
+      // Agrupar en JS (más seguro que SQL complejo)
+      const mapping = {
+        '24': 'FILIPPO', '26': 'PINGÜINO', '23': 'LA PALMA', '15': 'TENERIFE NORTE',
+        '10': 'GRAN CANARIA', '14': 'GRAN CANARIA', '5': 'GRAN CANARIA', '0': 'GRAN CANARIA'
+      };
+
+      const groups = {};
+      let globalSum = 0;
+
+      rows.forEach(row => {
+        const clientName = mapping[row.agent_code] || row.agent_name || `ZONA ${row.agent_code}`;
+        if (!groups[clientName]) groups[clientName] = { name: clientName, codes: new Set(), items: [] };
+        
+        groups[clientName].codes.add(row.agent_code);
+        groups[clientName].items.push(row);
+        globalSum += Number(row.total_qty);
+      });
+
+      totalEl.innerText = globalSum.toLocaleString();
+
+      // Generar HTML
+      container.innerHTML = Object.values(groups)
+        .sort((a,b) => a.name === 'GRAN CANARIA' ? -1 : a.name.localeCompare(b.name))
+        .map(group => {
+          const groupTotal = group.items.reduce((acc, i) => acc + Number(i.total_qty), 0);
+          
+          return `
+            <div class="agent-column bg-white/5 border border-white/5 rounded-[3rem] overflow-hidden shadow-2xl card-glow">
+              <div class="p-8 border-b border-white/5 bg-black/20">
+                <h2 class="text-3xl font-black uppercase tracking-tighter truncate">${group.name}</h2>
+                <p class="text-[10px] font-black opacity-30 tracking-widest mt-1">IDs: ${Array.from(group.codes).join(', ')}</p>
+              </div>
+              
+              <div class="flex-1 overflow-y-auto p-5 space-y-4 custom-scroll">
+                ${group.items.map(item => {
+                  const lack = Math.max(0, item.total_qty - item.stock);
+                  const isDone = lack <= 0;
+                  return `
+                    <div class="p-6 rounded-[2rem] border transition-all ${isDone ? 'opacity-20 grayscale' : 'bg-white/5 border-white/5'}">
+                      <div class="flex justify-between items-center mb-1">
+                        <span class="text-xl font-black tracking-tighter">#${item.product_code}</span>
+                        ${isDone ? '<span class="text-green-500 text-[10px] font-black uppercase">LISTO</span>' : '<span class="text-red-500 text-[10px] font-black animate-pulse">PENDIENTE</span>'}
+                      </div>
+                      <div class="text-[11px] font-bold opacity-40 uppercase truncate mb-4">${item.product_name}</div>
+                      <div class="flex justify-between items-end border-t border-white/5 pt-4">
+                        <div class="text-center">
+                          <p class="text-[8px] font-black opacity-30 uppercase">Stock</p>
+                          <p class="text-lg font-black text-blue-500">${item.stock}</p>
+                        </div>
+                        <div class="text-center">
+                          <p class="text-[8px] font-black opacity-30 uppercase">Falta</p>
+                          <p class="text-lg font-black ${isDone ? 'text-green-500' : 'text-red-500'}">${isDone ? 'OK' : lack}</p>
+                        </div>
+                        <div class="text-right">
+                          <p class="text-[8px] font-black opacity-30 uppercase">Pedido</p>
+                          <p class="text-4xl font-black leading-none">${item.total_qty}</p>
+                        </div>
+                      </div>
+                    </div>
+                  `;
+                }).join('')}
+              </div>
+
+              <div class="p-8 bg-red-600/10 flex justify-between items-center border-t border-red-600/10">
+                <div>
+                  <p class="text-[10px] font-black opacity-40 uppercase">Total Unidades</p>
+                  <p class="text-6xl font-black text-red-600 tracking-tighter tabular-nums leading-none">${groupTotal}</p>
+                </div>
+                <div class="text-right">
+                   <p class="text-[10px] font-black opacity-40 uppercase">Productos</p>
+                   <p class="text-2xl font-black">${group.items.length}</p>
+                </div>
+              </div>
+            </div>
+          `;
+        }).join('');
+    }
+
+    async function resetData() {
+      if (confirm('¿Limpiar tablero?')) {
+        await fetch('/api/reset', { method: 'POST' });
+        fetchData();
+      }
+    }
+
+    // REAL-TIME ENGINE
+    const eventSource = new EventSource('/api/events');
+    eventSource.onmessage = () => fetchData();
+    
+    // Initial Load
+    fetchData();
+    setInterval(fetchData, 30000); // Backup cada 30s
+  </script>
 </body>
 </html>
