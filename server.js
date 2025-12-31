@@ -15,10 +15,8 @@ const pool = new Pool({
 app.use(cors());
 app.use(bodyParser.json({ limit: '50mb' }));
 
-// MIGRACIÓN DEFINITIVA V11
 const initDB = async () => {
   try {
-    // Asegurar tabla base
     await pool.query(`
       CREATE TABLE IF NOT EXISTS orders (
         id SERIAL PRIMARY KEY,
@@ -34,19 +32,16 @@ const initDB = async () => {
         stock_qty NUMERIC DEFAULT 0
       );
     `);
-
-    // Corregir columnas si el usuario viene de versiones antiguas
+    // Migración de nombre de columna
     await pool.query(`
-      DO $$ 
-      BEGIN 
+      DO $$ BEGIN 
         IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='orders' AND column_name='client_name') THEN
           ALTER TABLE orders RENAME COLUMN client_name TO agent_name;
         END IF;
       END $$;
     `);
-
-    console.log('✅ Base de Datos V11: Lista');
-  } catch (err) { console.error('❌ Error DB:', err); }
+    console.log('✅ DB V12 Ready');
+  } catch (err) { console.error('❌ DB Error:', err); }
 };
 initDB();
 
@@ -58,28 +53,30 @@ app.get('/api/events', (req, res) => {
   clients.push(res);
   req.on('close', () => clients = clients.filter(c => c !== res));
 });
-const notify = () => clients.forEach(c => c.write(`data: update\n\n`));
+const notify = (updatedCode) => clients.forEach(c => c.write(`data: ${JSON.stringify({type:'update', code: updatedCode})}\n\n`));
 
 app.post('/api/webhook', async (req, res) => {
   const { zonas } = req.body;
   if (!zonas) return res.status(400).send('No data');
   try {
     await pool.query('BEGIN');
+    let lastCode = null;
     for (const z of zonas) {
       const code = String(z.codigo_agente || '0');
       const name = z.nombre_agente || 'DESCONOCIDO';
       if (z.productos) {
         for (const p of z.productos) {
+          lastCode = String(p.codigo).toUpperCase();
           await pool.query(
             `INSERT INTO orders (agent_code, agent_name, product_code, product_name, quantity) 
              VALUES ($1, $2, $3, $4, $5)`,
-            [code, name, String(p.codigo).toUpperCase(), z.nombre || 'PRODUCTO', Number(p.cantidad) || 0]
+            [code, name, lastCode, z.nombre || 'PRODUCTO', Number(p.cantidad) || 0]
           );
         }
       }
     }
     await pool.query('COMMIT');
-    notify();
+    notify(lastCode);
     res.json({ ok: true });
   } catch (err) {
     await pool.query('ROLLBACK');
@@ -91,20 +88,14 @@ app.get('/api/data', async (req, res) => {
   try {
     const result = await pool.query(`
       SELECT 
-        o.agent_code, 
-        o.agent_name, 
-        o.product_code, 
-        o.product_name, 
-        SUM(o.quantity) as total_qty,
-        COALESCE(i.stock_qty, 0) as stock
+        o.agent_code, o.agent_name, o.product_code, o.product_name, 
+        SUM(o.quantity) as total_qty, COALESCE(i.stock_qty, 0) as stock
       FROM orders o
       LEFT JOIN inventory i ON o.product_code = i.product_code
-      GROUP BY o.agent_code, o.agent_name, o.product_code, o.product_name, i.stock_qty
+      GROUP BY 1,2,3,4,i.stock_qty
     `);
     res.json(result.rows);
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
+  } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
 app.post('/api/reset', async (req, res) => {
@@ -114,4 +105,4 @@ app.post('/api/reset', async (req, res) => {
 });
 
 app.use(express.static(__dirname));
-app.listen(PORT, () => console.log(`🚀 Servidor V11 en puerto ${PORT}`));
+app.listen(PORT, () => console.log(`🚀 V12 en puerto ${PORT}`));

@@ -4,150 +4,303 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>FactoryFlow V11 | LIVE</title>
+  <title>FactorySync V12 | 4K Industrial</title>
   <script src="https://cdn.tailwindcss.com"></script>
   <style>
-    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;700;900&display=swap');
-    body { font-family: 'Inter', sans-serif; background: #020617; color: white; overflow: hidden; }
-    .custom-scroll::-webkit-scrollbar { height: 8px; width: 4px; }
-    .custom-scroll::-webkit-scrollbar-thumb { background: #dc2626; border-radius: 10px; }
-    .card-glow { box-shadow: 0 0 40px -10px rgba(220, 38, 38, 0.2); }
-    .agent-column { min-width: 450px; flex-shrink: 0; height: 100%; display: flex; flex-direction: column; }
+    @import url('https://fonts.googleapis.com/css2?family=Roboto+Condensed:wght@400;700;900&display=swap');
+    
+    :root {
+      --fs-client: 32px;
+      --fs-code: 18px;
+      --fs-name: 12px;
+      --fs-data: 16px;
+      --fs-total: 60px;
+    }
+
+    * { box-sizing: border-box; border-radius: 0 !important; }
+    body { 
+      font-family: 'Roboto Condensed', sans-serif; 
+      background: #020617; 
+      color: white; 
+      overflow: hidden; 
+      height: 100vh;
+      width: 100vw;
+    }
+
+    .custom-scroll::-webkit-scrollbar { width: 4px; height: 10px; }
+    .custom-scroll::-webkit-scrollbar-thumb { background: #dc2626; }
+    .custom-scroll::-webkit-scrollbar-track { background: rgba(0,0,0,0.2); }
+
+    .product-row {
+      display: grid;
+      grid-template-columns: 100px 1fr 60px 60px 80px;
+      align-items: center;
+      padding: 4px 15px;
+      border-bottom: 1px solid rgba(255,255,255,0.03);
+      transition: all 0.3s;
+    }
+
+    .product-row:hover { background: rgba(255,255,255,0.02); }
+
+    .flash-update {
+      animation: flash-green 2s forwards;
+    }
+
+    @keyframes flash-green {
+      0% { background-color: rgba(34, 197, 94, 0.4); }
+      100% { background-color: transparent; }
+    }
+
+    .client-col {
+      min-width: 480px;
+      height: 100%;
+      border-right: 1px solid rgba(255,255,255,0.05);
+      background: rgba(255,255,255,0.01);
+      display: flex;
+      flex-direction: column;
+    }
+
+    .trend-up { color: #22c55e; }
+    .trend-down { color: #ef4444; }
+    
+    #settings-modal { background: rgba(0,0,0,0.95); backdrop-filter: blur(10px); }
   </style>
 <script type="importmap">
 {
   "imports": {
     "react": "https://esm.sh/react@^19.2.3",
-    "react/": "https://esm.sh/react@^19.2.3/",
     "lucide-react": "https://esm.sh/lucide-react@^0.562.0",
+    "react/": "https://esm.sh/react@^19.2.3/",
     "recharts": "https://esm.sh/recharts@^3.6.0"
   }
 }
 </script>
 </head>
-<body class="h-screen w-screen flex flex-col">
+<body class="flex flex-col">
 
   <!-- HEADER -->
-  <header class="h-24 flex-none border-b border-white/10 flex items-center justify-between px-10 bg-black/40 backdrop-blur-xl z-50">
-    <div class="flex items-center gap-5">
-      <div class="bg-red-600 p-3 rounded-2xl shadow-lg shadow-red-600/40">
-        <svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M2 20V9l4-2 4 2 4-2 4 2 4-2v11a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2Z"/><path d="M17 18h1"/><path d="M12 18h1"/><path d="M7 18h1"/></svg>
-      </div>
+  <header class="h-20 flex-none border-b border-white/10 flex items-center justify-between px-8 bg-black">
+    <div class="flex items-center gap-6">
+      <img id="logo-main" src="" class="h-12 hidden" alt="Logo">
+      <div id="logo-placeholder" class="bg-red-600 px-3 py-1 font-black text-2xl tracking-tighter">FACTORY<span class="opacity-50">SYNC</span></div>
+      <div class="h-10 w-px bg-white/10 mx-2"></div>
       <div>
-        <h1 class="text-3xl font-black tracking-tighter uppercase">Factory<span class="text-red-600">Sync</span></h1>
-        <p class="text-[9px] font-black opacity-30 tracking-[0.5em]">STANDARD WEB ENGINE V11</p>
+        <h1 class="text-xl font-black uppercase tracking-widest leading-none">Producción en Vivo</h1>
+        <p class="text-[9px] font-bold opacity-30 tracking-[0.4em]">INDUSTRIAL ENGINE V12</p>
       </div>
     </div>
-    <div class="flex items-center gap-10">
-      <div class="text-right border-r border-white/10 pr-10">
-        <p class="text-[10px] font-black opacity-30 uppercase tracking-widest">Total Producción</p>
-        <p id="total-global" class="text-5xl font-black text-red-600 tabular-nums tracking-tighter">0</p>
+
+    <div class="flex items-center gap-8">
+      <div class="flex border border-white/10 p-1">
+        <button onclick="changeView('live')" id="btn-live" class="px-6 py-2 bg-red-600 text-[10px] font-black uppercase">En Vivo</button>
+        <button onclick="changeView('stats')" id="btn-stats" class="px-6 py-2 text-[10px] font-black uppercase opacity-40 hover:opacity-100">Estadísticas</button>
       </div>
-      <button onclick="resetData()" class="p-4 bg-white/5 hover:bg-red-600 rounded-2xl border border-white/10 transition-all active:scale-95">
-        <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/><line x1="10" x2="10" y1="11" y2="17"/><line x1="14" x2="14" y1="11" y2="17"/></svg>
+      
+      <div class="text-right">
+        <p class="text-[9px] font-black opacity-30 uppercase">Total Global</p>
+        <div class="flex items-center gap-2">
+          <span id="global-trend" class="text-xs font-black"></span>
+          <p id="total-global" class="text-4xl font-black text-red-600 tabular-nums">0</p>
+        </div>
+      </div>
+
+      <button onclick="toggleSettings(true)" class="p-3 border border-white/10 hover:bg-white/5">
+        <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/><circle cx="12" cy="12" r="3"/></svg>
       </button>
     </div>
   </header>
 
-  <!-- MAIN DASHBOARD -->
-  <main id="dashboard-container" class="flex-1 flex overflow-x-auto p-10 gap-10 items-start custom-scroll bg-[#020617]">
-    <!-- Las columnas se inyectan aquí -->
-    <div class="w-full h-full flex items-center justify-center opacity-20 italic">Cargando motor de datos...</div>
+  <!-- MAIN AREA -->
+  <main id="view-live" class="flex-1 flex overflow-x-auto custom-scroll bg-[#020617]">
+    <!-- Columnas dinámicas -->
   </main>
 
+  <main id="view-stats" class="hidden flex-1 p-10 overflow-y-auto custom-scroll">
+    <h2 class="text-4xl font-black mb-10 uppercase italic">Resumen Histórico</h2>
+    <div id="stats-content" class="grid grid-cols-4 gap-4"></div>
+  </main>
+
+  <!-- SETTINGS MODAL -->
+  <div id="settings-modal" class="fixed inset-0 hidden z-[100] flex items-center justify-center p-10">
+    <div class="bg-slate-900 border border-white/10 w-full max-w-5xl flex flex-col h-[80vh]">
+      <div class="p-8 bg-red-600 flex justify-between items-center">
+        <h2 class="text-3xl font-black uppercase italic">Configuración de Sistema</h2>
+        <button onclick="toggleSettings(false)" class="text-4xl font-bold">&times;</button>
+      </div>
+      
+      <div class="flex-1 overflow-y-auto p-10 grid grid-cols-2 gap-10">
+        <!-- Logos -->
+        <div class="space-y-6">
+          <h3 class="text-xs font-black uppercase tracking-widest opacity-40">Identidad</h3>
+          <div class="grid grid-cols-2 gap-4">
+            <label class="block p-6 border border-white/10 hover:bg-white/5 cursor-pointer text-center">
+              <p class="text-[10px] font-black mb-4">LOGO MODO OSCURO</p>
+              <input type="file" class="hidden" onchange="uploadLogo(this, 'dark')">
+              <span class="bg-red-600 px-4 py-2 text-[10px] font-black">SUBIR</span>
+            </label>
+            <label class="block p-6 border border-white/10 hover:bg-white/5 cursor-pointer text-center">
+              <p class="text-[10px] font-black mb-4">LOGO MODO CLARO</p>
+              <input type="file" class="hidden" onchange="uploadLogo(this, 'light')">
+              <span class="bg-red-600 px-4 py-2 text-[10px] font-black">SUBIR</span>
+            </label>
+          </div>
+        </div>
+
+        <!-- Fuentes -->
+        <div class="space-y-6">
+          <h3 class="text-xs font-black uppercase tracking-widest opacity-40">Tipografía (PX)</h3>
+          <div class="space-y-4">
+            <div class="flex justify-between items-center">
+              <span class="text-xs font-bold">NOMBRE CLIENTE</span>
+              <input type="range" min="20" max="60" value="32" oninput="updateFS('client', this.value)" class="accent-red-600">
+            </div>
+            <div class="flex justify-between items-center">
+              <span class="text-xs font-bold">CÓDIGO PRODUCTO</span>
+              <input type="range" min="10" max="30" value="18" oninput="updateFS('code', this.value)" class="accent-red-600">
+            </div>
+            <div class="flex justify-between items-center">
+              <span class="text-xs font-bold">NOMBRE PRODUCTO</span>
+              <input type="range" min="8" max="20" value="12" oninput="updateFS('name', this.value)" class="accent-red-600">
+            </div>
+            <div class="flex justify-between items-center">
+              <span class="text-xs font-bold">DATOS TABLA</span>
+              <input type="range" min="10" max="25" value="16" oninput="updateFS('data', this.value)" class="accent-red-600">
+            </div>
+          </div>
+        </div>
+
+        <!-- Acciones -->
+        <div class="col-span-2 border-t border-white/10 pt-10 flex gap-4">
+           <button onclick="resetServerData()" class="flex-1 py-4 bg-red-600 font-black uppercase hover:bg-red-700">Reiniciar Base de Datos (Limpiar Hoy)</button>
+           <button onclick="toggleSettings(false)" class="flex-1 py-4 bg-white/10 font-black uppercase hover:bg-white/20">Cerrar Panel</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
   <script>
-    const container = document.getElementById('dashboard-container');
-    const totalEl = document.getElementById('total-global');
+    let currentData = [];
+    let prevData = [];
+    let settings = JSON.parse(localStorage.getItem('fs_v12_settings')) || {
+      fs: { client: 32, code: 18, name: 12, data: 16, total: 60 },
+      logos: { dark: '', light: '' }
+    };
+
+    function updateFS(key, val) {
+      settings.fs[key] = val;
+      document.documentElement.style.setProperty(`--fs-${key}`, val + 'px');
+      saveSettings();
+    }
+
+    function uploadLogo(input, mode) {
+      const file = input.files[0];
+      if(!file) return;
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        settings.logos[mode] = e.target.result;
+        applyLogos();
+        saveSettings();
+      };
+      reader.readAsDataURL(file);
+    }
+
+    function applyLogos() {
+      const img = document.getElementById('logo-main');
+      const placeholder = document.getElementById('logo-placeholder');
+      if(settings.logos.dark) {
+        img.src = settings.logos.dark;
+        img.classList.remove('hidden');
+        placeholder.classList.add('hidden');
+      }
+    }
+
+    function saveSettings() { localStorage.setItem('fs_v12_settings', JSON.stringify(settings)); }
 
     async function fetchData() {
       try {
         const res = await fetch('/api/data');
-        if (!res.ok) throw new Error('Error de servidor');
         const data = await res.json();
-        render(data);
-      } catch (e) {
-        console.error(e);
-      }
+        prevData = JSON.parse(JSON.stringify(currentData));
+        currentData = data;
+        render();
+      } catch (e) { console.error(e); }
     }
 
-    function render(rows) {
-      if (!rows || rows.length === 0) {
-        container.innerHTML = `<div class="w-full h-full flex items-center justify-center opacity-10 font-black text-4xl uppercase tracking-[1em]">Sin Pedidos</div>`;
-        totalEl.innerText = '0';
+    function render() {
+      const container = document.getElementById('view-live');
+      if (!currentData || currentData.length === 0) {
+        container.innerHTML = `<div class="w-full flex items-center justify-center opacity-10 text-6xl font-black italic">SIN PEDIDOS</div>`;
+        document.getElementById('total-global').innerText = '0';
         return;
       }
 
-      // Agrupar en JS (más seguro que SQL complejo)
       const mapping = {
         '24': 'FILIPPO', '26': 'PINGÜINO', '23': 'LA PALMA', '15': 'TENERIFE NORTE',
         '10': 'GRAN CANARIA', '14': 'GRAN CANARIA', '5': 'GRAN CANARIA', '0': 'GRAN CANARIA'
       };
 
       const groups = {};
-      let globalSum = 0;
+      let gTotal = 0;
 
-      rows.forEach(row => {
-        const clientName = mapping[row.agent_code] || row.agent_name || `ZONA ${row.agent_code}`;
-        if (!groups[clientName]) groups[clientName] = { name: clientName, codes: new Set(), items: [] };
-        
-        groups[clientName].codes.add(row.agent_code);
-        groups[clientName].items.push(row);
-        globalSum += Number(row.total_qty);
+      currentData.forEach(row => {
+        const cName = mapping[row.agent_code] || row.agent_name || `ZONA ${row.agent_code}`;
+        if (!groups[cName]) groups[cName] = { name: cName, codes: new Set(), items: [] };
+        groups[cName].codes.add(row.agent_code);
+        groups[cName].items.push(row);
+        gTotal += Number(row.total_qty);
       });
 
-      totalEl.innerText = globalSum.toLocaleString();
+      document.getElementById('total-global').innerText = gTotal.toLocaleString();
 
-      // Generar HTML
       container.innerHTML = Object.values(groups)
         .sort((a,b) => a.name === 'GRAN CANARIA' ? -1 : a.name.localeCompare(b.name))
         .map(group => {
           const groupTotal = group.items.reduce((acc, i) => acc + Number(i.total_qty), 0);
           
           return `
-            <div class="agent-column bg-white/5 border border-white/5 rounded-[3rem] overflow-hidden shadow-2xl card-glow">
-              <div class="p-8 border-b border-white/5 bg-black/20">
-                <h2 class="text-3xl font-black uppercase tracking-tighter truncate">${group.name}</h2>
-                <p class="text-[10px] font-black opacity-30 tracking-widest mt-1">IDs: ${Array.from(group.codes).join(', ')}</p>
+            <div class="client-col">
+              <div class="p-6 border-b border-white/10">
+                <h2 class="font-black uppercase tracking-tighter truncate leading-none" style="font-size: var(--fs-client)">${group.name}</h2>
+                <div class="flex justify-between mt-2">
+                  <span class="text-[9px] font-black opacity-30 uppercase">IDs: ${Array.from(group.codes).join(', ')}</span>
+                  <span class="text-[9px] font-black text-red-600 uppercase">PRODUCCIÓN ACTIVA</span>
+                </div>
               </div>
-              
-              <div class="flex-1 overflow-y-auto p-5 space-y-4 custom-scroll">
+
+              <div class="flex-1 overflow-y-auto custom-scroll">
+                <div class="bg-white/5 text-[9px] font-black uppercase flex px-[15px] py-2 border-b border-white/5 opacity-40">
+                  <div class="w-[100px]">CÓDIGO</div>
+                  <div class="flex-1">PRODUCTO</div>
+                  <div class="w-[60px] text-right">STOCK</div>
+                  <div class="w-[60px] text-right">FALTA</div>
+                  <div class="w-[80px] text-right">PEDIDO</div>
+                </div>
                 ${group.items.map(item => {
                   const lack = Math.max(0, item.total_qty - item.stock);
                   const isDone = lack <= 0;
+                  const prevItem = prevData.find(p => p.product_code === item.product_code && p.agent_code === item.agent_code);
+                  const isNew = prevItem && Number(prevItem.total_qty) !== Number(item.total_qty);
+
                   return `
-                    <div class="p-6 rounded-[2rem] border transition-all ${isDone ? 'opacity-20 grayscale' : 'bg-white/5 border-white/5'}">
-                      <div class="flex justify-between items-center mb-1">
-                        <span class="text-xl font-black tracking-tighter">#${item.product_code}</span>
-                        ${isDone ? '<span class="text-green-500 text-[10px] font-black uppercase">LISTO</span>' : '<span class="text-red-500 text-[10px] font-black animate-pulse">PENDIENTE</span>'}
-                      </div>
-                      <div class="text-[11px] font-bold opacity-40 uppercase truncate mb-4">${item.product_name}</div>
-                      <div class="flex justify-between items-end border-t border-white/5 pt-4">
-                        <div class="text-center">
-                          <p class="text-[8px] font-black opacity-30 uppercase">Stock</p>
-                          <p class="text-lg font-black text-blue-500">${item.stock}</p>
-                        </div>
-                        <div class="text-center">
-                          <p class="text-[8px] font-black opacity-30 uppercase">Falta</p>
-                          <p class="text-lg font-black ${isDone ? 'text-green-500' : 'text-red-500'}">${isDone ? 'OK' : lack}</p>
-                        </div>
-                        <div class="text-right">
-                          <p class="text-[8px] font-black opacity-30 uppercase">Pedido</p>
-                          <p class="text-4xl font-black leading-none">${item.total_qty}</p>
-                        </div>
-                      </div>
+                    <div class="product-row ${isNew ? 'flash-update' : ''} ${isDone ? 'opacity-20 grayscale' : ''}">
+                      <div class="font-black truncate" style="font-size: var(--fs-code)">#${item.product_code}</div>
+                      <div class="font-bold opacity-40 uppercase truncate pr-4" style="font-size: var(--fs-name)">${item.product_name}</div>
+                      <div class="text-right font-bold text-blue-500" style="font-size: var(--fs-data)">${item.stock}</div>
+                      <div class="text-right font-black ${isDone ? 'text-green-500' : 'text-red-500'}" style="font-size: var(--fs-data)">${isDone ? 'OK' : lack}</div>
+                      <div class="text-right font-black" style="font-size: calc(var(--fs-data) + 4px)">${item.total_qty}</div>
                     </div>
                   `;
                 }).join('')}
               </div>
 
-              <div class="p-8 bg-red-600/10 flex justify-between items-center border-t border-red-600/10">
+              <div class="p-6 border-t border-white/10 bg-red-600/5 flex justify-between items-end">
                 <div>
-                  <p class="text-[10px] font-black opacity-40 uppercase">Total Unidades</p>
-                  <p class="text-6xl font-black text-red-600 tracking-tighter tabular-nums leading-none">${groupTotal}</p>
+                  <p class="text-[10px] font-black opacity-30 uppercase">Unidades</p>
+                  <p class="font-black text-red-600 leading-none tabular-nums" style="font-size: var(--fs-total)">${groupTotal}</p>
                 </div>
                 <div class="text-right">
-                   <p class="text-[10px] font-black opacity-40 uppercase">Productos</p>
-                   <p class="text-2xl font-black">${group.items.length}</p>
+                  <p class="text-[10px] font-black opacity-30 uppercase">Líneas</p>
+                  <p class="text-3xl font-black">${group.items.length}</p>
                 </div>
               </div>
             </div>
@@ -155,20 +308,31 @@
         }).join('');
     }
 
-    async function resetData() {
-      if (confirm('¿Limpiar tablero?')) {
-        await fetch('/api/reset', { method: 'POST' });
+    function toggleSettings(show) { document.getElementById('settings-modal').classList.toggle('hidden', !show); }
+    
+    function changeView(v) {
+      document.getElementById('view-live').classList.toggle('hidden', v !== 'live');
+      document.getElementById('view-stats').classList.toggle('hidden', v !== 'stats');
+      document.getElementById('btn-live').classList.toggle('bg-red-600', v === 'live');
+      document.getElementById('btn-stats').classList.toggle('bg-red-600', v === 'stats');
+    }
+
+    async function resetServerData() {
+      if(confirm('¿BORRAR TODO?')) {
+        await fetch('/api/reset', {method:'POST'});
         fetchData();
+        toggleSettings(false);
       }
     }
 
-    // REAL-TIME ENGINE
-    const eventSource = new EventSource('/api/events');
-    eventSource.onmessage = () => fetchData();
+    // Inicializar
+    Object.keys(settings.fs).forEach(k => document.documentElement.style.setProperty(`--fs-${k}`, settings.fs[k] + 'px'));
+    applyLogos();
     
-    // Initial Load
+    const es = new EventSource('/api/events');
+    es.onmessage = () => fetchData();
     fetchData();
-    setInterval(fetchData, 30000); // Backup cada 30s
+    setInterval(fetchData, 30000);
   </script>
 </body>
 </html>
