@@ -18,23 +18,6 @@ export interface ClientGroup {
   code?: string;
 }
 
-export interface ProductPayload {
-  codigo: string;
-  cantidad: number;
-  stock_fisico?: number;
-}
-
-export interface ZonaPayload {
-  nombre: string;
-  codigo_agente: string;
-  nombre_agente: string;
-  productos?: ProductPayload[];
-}
-
-export interface IncomingDataPayload {
-  zonas: ZonaPayload[];
-}
-
 export interface VisualSettings {
   logoLight: string | null;
   logoDark: string | null;
@@ -47,6 +30,23 @@ export interface VisualSettings {
   headerFontSize: number;
 }
 
+/* Fix: Added missing IncomingDataPayload and related interfaces for the mock data generator */
+export interface IncomingProduct {
+  codigo: string;
+  cantidad: number;
+}
+
+export interface IncomingZona {
+  nombre: string;
+  codigo_agente: string;
+  nombre_agente: string;
+  productos: IncomingProduct[];
+}
+
+export interface IncomingDataPayload {
+  zonas: IncomingZona[];
+}
+
 export const CLIENT_MAPPING: Record<string, string> = {
   '24': 'FILIPPO', 
   '26': 'PINGÜINO', 
@@ -56,17 +56,17 @@ export const CLIENT_MAPPING: Record<string, string> = {
   '14': 'GRAN CANARIA', 
   '5': 'GRAN CANARIA', 
   '0': 'GRAN CANARIA',
-  '8': 'GRAN CANARIA' // Agregado código 8 solicitado
+  '8': 'GRAN CANARIA'
 };
 
 export const DEFAULT_SETTINGS: VisualSettings = {
   logoLight: null,
   logoDark: null,
   displayMode: 'both',
-  maxRowsPerCol: 22,      
-  nameFontSize: 11,       
-  codeFontSize: 16,       
-  clientNameFontSize: 36, 
-  trendFontSize: 11,
-  headerFontSize: 12
+  maxRowsPerCol: 20,      
+  nameFontSize: 12,       
+  codeFontSize: 18,       
+  clientNameFontSize: 42, 
+  trendFontSize: 12,
+  headerFontSize: 14
 };

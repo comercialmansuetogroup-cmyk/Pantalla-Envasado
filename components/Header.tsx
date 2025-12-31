@@ -17,53 +17,53 @@ export const Header: React.FC<HeaderProps> = ({ darkMode, setDarkMode, view, set
   const logo = darkMode ? settings.logoDark : settings.logoLight;
 
   return (
-    <header className="flex-none h-32 flex items-center justify-between px-14 border-b border-white/5 bg-[#080a0f] z-[100] shadow-2xl">
-      <div className="flex items-center gap-14 h-full">
+    <header className="flex-none h-44 flex items-center justify-between px-16 border-b border-white/5 bg-[#080a0f] z-[100] shadow-2xl">
+      <div className="flex items-center gap-16 h-full">
         <div className="flex items-center">
           {logo ? (
-            <img src={logo} className="h-24 object-contain max-w-[500px] w-auto transition-all" alt="Ansueto" />
+            <img src={logo} className="h-32 object-contain max-w-[600px] w-auto transition-all" alt="Logo" />
           ) : (
-            <div className="font-black text-6xl tracking-tighter italic select-none">
+            <div className="font-black text-7xl tracking-tighter italic select-none">
               AN<span className="text-red-600">SUETO</span>
             </div>
           )}
         </div>
-        <div className="h-14 w-px bg-white/10 hidden xl:block"></div>
-        <div className="hidden xl:block">
-          <h1 className="text-base font-black uppercase tracking-[0.4em] leading-none text-white/90">Control Industrial</h1>
-          <span className="text-[10px] font-bold opacity-20 tracking-[0.7em] uppercase mt-2 block">Real-Time V16 Engine</span>
+        <div className="h-20 w-px bg-white/10 hidden 2xl:block"></div>
+        <div className="hidden 2xl:block">
+          <h1 className="text-xl font-black uppercase tracking-[0.5em] leading-none text-white/90">Sistema de Control Industrial</h1>
+          <span className="text-[12px] font-bold opacity-20 tracking-[0.8em] uppercase mt-3 block text-red-600">Real-Time V17 Engine</span>
         </div>
       </div>
 
-      <div className="flex items-center gap-14">
-        <div className="flex bg-white/5 p-1.5 border border-white/10 rounded-sm">
+      <div className="flex items-center gap-16">
+        <div className="flex bg-white/5 p-2 border border-white/10 rounded-sm">
           <button 
             onClick={() => setView('live')} 
-            className={`px-12 py-3 text-[12px] font-black uppercase transition-all flex items-center gap-2 ${view === 'live' ? 'bg-red-600 text-white' : 'opacity-40 hover:opacity-100'}`}
+            className={`px-14 py-4 text-[13px] font-black uppercase transition-all flex items-center gap-2 ${view === 'live' ? 'bg-red-600 text-white shadow-[0_0_20px_rgba(220,38,38,0.4)]' : 'opacity-40 hover:opacity-100'}`}
           >
-            <Layout size={16} /> PEDIDOS
+            <Layout size={18} /> PEDIDOS
           </button>
           <button 
             onClick={() => setView('stats')} 
-            className={`px-12 py-3 text-[12px] font-black uppercase transition-all flex items-center gap-2 ${view === 'stats' ? 'bg-red-600 text-white' : 'opacity-40 hover:opacity-100'}`}
+            className={`px-14 py-4 text-[13px] font-black uppercase transition-all flex items-center gap-2 ${view === 'stats' ? 'bg-red-600 text-white shadow-[0_0_20px_rgba(220,38,38,0.4)]' : 'opacity-40 hover:opacity-100'}`}
           >
-            <BarChart size={16} /> ANALÍTICA
+            <BarChart size={18} /> ANALÍTICA
           </button>
         </div>
 
         <div className="flex flex-col items-end">
-          <span className="text-[12px] font-black opacity-30 uppercase tracking-[0.4em] mb-1">Producción Global</span>
-          <span className="text-8xl font-black text-red-600 tabular-nums leading-none tracking-tighter drop-shadow-[0_0_25px_rgba(220,38,38,0.4)]">
+          <span className="text-[14px] font-black opacity-40 uppercase tracking-[0.5em] mb-2">Producción Global</span>
+          <span className="text-[120px] font-black text-red-600 tabular-nums leading-none tracking-tighter drop-shadow-[0_0_35px_rgba(220,38,38,0.5)]">
             {total.toLocaleString()}
           </span>
         </div>
 
-        <div className="flex items-center gap-4 pl-8 border-l border-white/10">
-          <button onClick={onSettings} className="p-4 bg-white/5 border border-white/10 hover:bg-white/10 transition-colors">
-            <Settings size={26} />
+        <div className="flex items-center gap-5 pl-10 border-l border-white/10">
+          <button onClick={onSettings} className="p-5 bg-white/5 border border-white/10 hover:bg-white/10 transition-colors">
+            <Settings size={32} />
           </button>
-          <button onClick={() => setDarkMode(!darkMode)} className="p-4 bg-white/5 border border-white/10 hover:bg-white/10 transition-colors">
-            {darkMode ? <Sun size={26} className="text-yellow-400" /> : <Moon size={26} />}
+          <button onClick={() => setDarkMode(!darkMode)} className="p-5 bg-white/5 border border-white/10 hover:bg-white/10 transition-colors">
+            {darkMode ? <Sun size={32} className="text-yellow-400" /> : <Moon size={32} />}
           </button>
         </div>
       </div>

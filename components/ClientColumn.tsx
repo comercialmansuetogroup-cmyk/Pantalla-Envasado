@@ -2,7 +2,7 @@
 import React from 'react';
 import { TrendBadge } from './TrendBadge';
 import { Product, VisualSettings } from '../types';
-import { Package, Hash, Boxes, AlertTriangle } from 'lucide-react';
+import { Hash, Boxes, AlertTriangle, ChevronRight } from 'lucide-react';
 
 interface ClientColumnProps {
   group: {
@@ -25,50 +25,50 @@ export const ClientColumn: React.FC<ClientColumnProps> = ({ group, darkMode, set
   }
 
   return (
-    <section className="flex-1 min-w-[500px] h-full flex flex-col border-r border-white/5 bg-[#0c0e14]">
-      {/* Header del Cliente */}
-      <div className="p-12 border-b border-white/5 bg-black/30 flex-none">
-        <div className="flex items-baseline gap-5">
+    <section className="flex-1 min-w-[550px] h-full flex flex-col border-r border-white/5 bg-[#0c0e14]">
+      {/* Header Cliente */}
+      <div className="p-14 border-b border-white/5 bg-black/40 flex-none">
+        <div className="flex items-baseline gap-6">
           <h2 className="font-black uppercase tracking-tighter leading-none" style={{ fontSize: `${settings.clientNameFontSize}px` }}>
             {group.name}
           </h2>
-          <span className="text-[12px] font-black opacity-20 tracking-[0.3em]">— 0%</span>
+          <span className="text-[14px] font-black opacity-20 tracking-[0.4em]">SINC 100%</span>
         </div>
       </div>
 
-      {/* Cuerpo de la tabla con espaciado ancho */}
+      {/* Tabla de Productos */}
       <div className="flex-1 flex overflow-x-auto custom-scroll">
         {columns.map((colProducts, colIdx) => (
-          <div key={colIdx} className="flex-1 min-w-[480px] border-r border-white/5 last:border-r-0 flex flex-col">
-            <div className="grid grid-cols-[1fr_100px_100px_130px] px-10 py-5 border-b border-white/5 bg-white/2">
-              <span className="text-[11px] font-black opacity-40 tracking-widest">REFERENCIA</span>
-              <span className="text-right text-[11px] font-black opacity-40 tracking-widest">STOCK</span>
-              <span className="text-right text-[11px] font-black opacity-40 tracking-widest">FALTA</span>
-              <span className="text-right text-[11px] font-black opacity-40 tracking-widest">PEDIDO</span>
+          <div key={colIdx} className="flex-1 min-w-[500px] border-r border-white/5 last:border-r-0 flex flex-col">
+            <div className="grid grid-cols-[1fr_110px_110px_140px] px-12 py-6 border-b border-white/5 bg-white/2">
+              <span className="text-[12px] font-black opacity-50 tracking-widest uppercase">Referencia</span>
+              <span className="text-right text-[12px] font-black opacity-50 tracking-widest uppercase">Stock</span>
+              <span className="text-right text-[12px] font-black opacity-50 tracking-widest uppercase">Falta</span>
+              <span className="text-right text-[12px] font-black opacity-50 tracking-widest uppercase text-red-600">Pedido</span>
             </div>
             
-            <div className="flex-1 overflow-y-auto custom-scroll bg-black/10">
+            <div className="flex-1 overflow-y-auto custom-scroll bg-black/5">
               {colProducts.map((p, pIdx) => {
                 const lack = Math.max(0, p.qty - p.stock);
                 const isDone = lack <= 0;
                 const isHigh = highlightedCode === p.code;
 
                 return (
-                  <div key={pIdx} className={`grid grid-cols-[1fr_100px_100px_130px] px-10 py-5 border-b border-white/5 items-center transition-all duration-500 ${isHigh ? 'bg-red-600/40' : isDone ? 'opacity-20 grayscale' : 'hover:bg-white/2'}`}>
-                    <div className="flex flex-col min-w-0 pr-8">
-                      <div className="flex items-center gap-3">
+                  <div key={pIdx} className={`grid grid-cols-[1fr_110px_110px_140px] px-12 py-6 border-b border-white/5 items-center transition-all duration-500 ${isHigh ? 'bg-red-600/50 scale-[1.01] z-10' : isDone ? 'opacity-20 grayscale' : 'hover:bg-white/2'}`}>
+                    <div className="flex flex-col min-w-0 pr-10">
+                      <div className="flex items-center gap-4">
                         <span className="font-black" style={{ fontSize: `${settings.codeFontSize}px` }}>#{p.code}</span>
                         <TrendBadge value={p.trend || 0} darkMode={darkMode} fontSize={settings.trendFontSize} />
                       </div>
-                      <span className="text-[12px] font-bold opacity-30 uppercase truncate mt-1" style={{ fontSize: `${settings.nameFontSize}px` }}>
+                      <span className="text-[12px] font-bold opacity-30 uppercase truncate mt-2" style={{ fontSize: `${settings.nameFontSize}px` }}>
                         {p.name}
                       </span>
                     </div>
-                    <div className="text-right font-bold text-slate-500 tabular-nums text-base">{p.stock}</div>
-                    <div className={`text-right font-black tabular-nums text-base ${lack > 0 ? 'text-orange-500' : 'text-green-500'}`}>
+                    <div className="text-right font-bold text-slate-400 tabular-nums text-lg">{p.stock}</div>
+                    <div className={`text-right font-black tabular-nums text-lg ${lack > 0 ? 'text-orange-500' : 'text-green-500'}`}>
                       {isDone ? 'OK' : lack}
                     </div>
-                    <div className="text-right font-black text-4xl tracking-tighter tabular-nums leading-none">
+                    <div className="text-right font-black text-5xl tracking-tighter tabular-nums leading-none text-white">
                       {p.qty}
                     </div>
                   </div>
@@ -79,37 +79,53 @@ export const ClientColumn: React.FC<ClientColumnProps> = ({ group, darkMode, set
         ))}
       </div>
 
-      {/* Footer del Cliente Brutal */}
-      <div className="p-12 border-t border-white/10 bg-black/50 flex-none shadow-[0_-10px_30px_rgba(0,0,0,0.5)]">
-        <div className="grid grid-cols-2 gap-10">
-           {/* KPI Principal */}
-           <div className="space-y-2">
-              <p className="text-[14px] font-black text-white uppercase tracking-[0.3em]">TOTAL PEDIDOS</p>
-              <div className="flex items-end gap-3">
-                <p className="text-8xl font-black text-red-600 leading-none tracking-tighter tabular-nums drop-shadow-[0_0_15px_rgba(220,38,38,0.2)]">{totalQty}</p>
-                <span className="text-xs font-black opacity-20 mb-2 uppercase tracking-widest">Unidades</span>
+      {/* FOOTER DEL CLIENTE - REDISEÑO TOTAL */}
+      <div className="p-14 border-t border-white/10 bg-[#080a0f] flex-none shadow-[0_-20px_50px_rgba(0,0,0,0.6)]">
+        <div className="grid grid-cols-[1.5fr_1fr] gap-12">
+           {/* KPI Principal Izquierda */}
+           <div className="space-y-4">
+              <p className="text-[24px] font-black text-white uppercase tracking-[0.4em] leading-none mb-4 italic">TOTAL PEDIDOS</p>
+              <div className="flex items-end gap-5">
+                <p className="text-[110px] font-black text-red-600 leading-none tracking-tighter tabular-nums drop-shadow-[0_0_20px_rgba(220,38,38,0.3)]">
+                  {totalQty.toLocaleString()}
+                </p>
+                <div className="flex flex-col mb-4">
+                  <span className="text-[12px] font-black text-white/20 uppercase tracking-widest">Unidades</span>
+                  <div className="w-12 h-1 bg-red-600 mt-1"></div>
+                </div>
               </div>
            </div>
 
-           {/* Resúmenes Secundarios */}
-           <div className="grid grid-cols-2 gap-y-8 gap-x-4 border-l border-white/10 pl-10">
-              <div className="space-y-1">
-                <p className="text-[11px] font-black text-white uppercase tracking-widest flex items-center gap-2 opacity-80">
-                  <Hash size={12} className="text-red-600" /> PRODUCTOS
-                </p>
-                <p className="text-3xl font-black text-white">{group.products.length}</p>
+           {/* KPIs Secundarios Derecha */}
+           <div className="grid grid-cols-1 gap-y-10 border-l border-white/10 pl-12 py-2">
+              <div className="flex items-center justify-between">
+                <div className="space-y-1">
+                  <p className="text-[16px] font-black text-white uppercase tracking-widest flex items-center gap-3">
+                    <Hash size={18} className="text-red-600" /> LÍNEAS ÚNICAS
+                  </p>
+                  <p className="text-4xl font-black text-white/90 tabular-nums">{group.products.length}</p>
+                </div>
+                <ChevronRight className="opacity-10" />
               </div>
-              <div className="space-y-1">
-                <p className="text-[11px] font-black text-white uppercase tracking-widest flex items-center gap-2 opacity-80">
-                  <Boxes size={12} className="text-blue-500" /> EN STOCK
-                </p>
-                <p className="text-3xl font-black text-blue-400">{totalStock}</p>
+              
+              <div className="flex items-center justify-between">
+                <div className="space-y-1">
+                  <p className="text-[16px] font-black text-white uppercase tracking-widest flex items-center gap-3">
+                    <Boxes size={18} className="text-blue-500" /> STOCK ASIGNADO
+                  </p>
+                  <p className="text-4xl font-black text-blue-500 tabular-nums">{totalStock.toLocaleString()}</p>
+                </div>
+                <ChevronRight className="opacity-10" />
               </div>
-              <div className="space-y-1 col-span-2">
-                <p className="text-[11px] font-black text-white uppercase tracking-widest flex items-center gap-2 opacity-80">
-                  <AlertTriangle size={12} className="text-orange-500" /> TOTAL FALTANTE POR PRODUCIR
-                </p>
-                <p className="text-3xl font-black text-orange-500">{totalPending}</p>
+
+              <div className="flex items-center justify-between">
+                <div className="space-y-1">
+                  <p className="text-[16px] font-black text-white uppercase tracking-widest flex items-center gap-3">
+                    <AlertTriangle size={18} className="text-orange-500" /> FALTA PRODUCIR
+                  </p>
+                  <p className="text-4xl font-black text-orange-500 tabular-nums">{totalPending.toLocaleString()}</p>
+                </div>
+                <ChevronRight className="opacity-10" />
               </div>
            </div>
         </div>

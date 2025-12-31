@@ -12,11 +12,12 @@ export default function App() {
   const [data, setData] = useState<any[]>([]);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [highlightedCode, setHighlightedCode] = useState<string | null>(null);
-  const [error, setError] = useState<string | null>(null);
+  const [isConnecting, setIsConnecting] = useState(false);
+  const [errorCount, setErrorCount] = useState(0);
   
   const [settings, setSettings] = useState<any>(() => {
     try {
-      const saved = localStorage.getItem('factory_settings_v16');
+      const saved = localStorage.getItem('factory_settings_v17');
       return saved ? JSON.parse(saved) : DEFAULT_SETTINGS;
     } catch {
       return DEFAULT_SETTINGS;
@@ -25,8 +26,9 @@ export default function App() {
 
   const fetchData = useCallback(async () => {
     try {
+      setIsConnecting(true);
       const res = await fetch('/api/data');
-      if (!res.ok) throw new Error('Network error');
+      if (!res.ok) throw new Error('API Unreachable');
       const raw = await res.json();
       
       const groups: Record<string, any> = {};
@@ -49,38 +51,50 @@ export default function App() {
         if(b.name === 'GRAN CANARIA') return 1;
         return a.name.localeCompare(b.name);
       }));
-      setError(null);
+      setErrorCount(0);
     } catch (e) { 
       console.warn('Fetch error:', e);
-      setError('Error conectando con el servidor. Reintentando...');
+      setErrorCount(prev => prev + 1);
+    } finally {
+      setIsConnecting(false);
     }
   }, []);
 
   useEffect(() => {
     fetchData();
-    const es = new EventSource('/api/events');
     
-    es.onmessage = (e) => {
-      if (!e.data) return;
-      try {
-        const msg = JSON.parse(e.data);
-        fetchData();
-        if (msg.code) {
-          setHighlightedCode(msg.code);
-          setTimeout(() => setHighlightedCode(null), 4000);
+    let es: EventSource | null = null;
+    
+    const connectSSE = () => {
+      if (es) es.close();
+      es = new EventSource('/api/events');
+      
+      es.onmessage = (e) => {
+        if (!e.data || e.data.trim() === '') return;
+        try {
+          const msg = JSON.parse(e.data);
+          fetchData();
+          if (msg.code) {
+            setHighlightedCode(msg.code);
+            setTimeout(() => setHighlightedCode(null), 5000);
+          }
+        } catch(err) {
+          // Ignorar basura en el stream
         }
-      } catch(err) {
-        // Silently skip malformed JSON from stream
-      }
+      };
+
+      es.onerror = () => {
+        console.log('Stream error, reconnecting in 5s...');
+        es?.close();
+        setTimeout(connectSSE, 5000);
+      };
     };
 
-    es.onerror = () => {
-      console.log('SSE Reconnecting...');
-    };
+    connectSSE();
+    const interval = setInterval(fetchData, 20000);
 
-    const interval = setInterval(fetchData, 10000);
     return () => {
-      es.close();
+      es?.close();
       clearInterval(interval);
     };
   }, [fetchData]);
@@ -101,9 +115,16 @@ export default function App() {
         settings={settings}
       />
 
-      {error && (
-        <div className="absolute top-36 left-1/2 -translate-x-1/2 bg-red-600/90 text-white px-8 py-2 rounded-full text-[10px] font-black uppercase tracking-widest z-[150] shadow-xl">
-          {error}
+      {errorCount > 0 && (
+        <div className="absolute top-48 left-1/2 -translate-x-1/2 bg-red-600 text-white px-10 py-3 rounded-sm text-[11px] font-black uppercase tracking-[0.3em] z-[150] shadow-2xl animate-pulse">
+          ERROR DE CONEXIÓN - REINTENTANDO ({errorCount})
+        </div>
+      )}
+
+      {isConnecting && errorCount === 0 && (
+        <div className="absolute top-48 right-16 flex items-center gap-3 z-[150]">
+          <div className="w-2 h-2 bg-red-600 rounded-full animate-ping"></div>
+          <span className="text-[10px] font-black opacity-40 uppercase tracking-widest">Actualizando...</span>
         </div>
       )}
 
@@ -112,8 +133,8 @@ export default function App() {
           <div className="absolute inset-0 flex overflow-x-auto items-start custom-scroll">
             {data.length === 0 ? (
               <div className="w-full h-full flex flex-col items-center justify-center opacity-10 font-black">
-                <p className="text-6xl uppercase tracking-[1em] italic">Esperando Datos</p>
-                <p className="text-xs tracking-[0.5em] mt-8 uppercase">Sincronización de Planta v16</p>
+                <p className="text-8xl uppercase tracking-[1em] italic">ANSUETO HUB</p>
+                <p className="text-sm tracking-[0.8em] mt-12 uppercase text-red-600">Waiting for live production stream</p>
               </div>
             ) : (
               data.map((client) => (
@@ -138,7 +159,7 @@ export default function App() {
         visualSettings={settings}
         onSaveSettings={(s) => {
           setSettings(s);
-          localStorage.setItem('factory_settings_v16', JSON.stringify(s));
+          localStorage.setItem('factory_settings_v17', JSON.stringify(s));
         }}
       />
     </div>
