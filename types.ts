@@ -33,8 +33,9 @@ export interface VisualSettings {
   
   headerFontSize: number;
 
-  // Nuevos campos de Estructura (Solicitud Usuario)
-  colMinWidth: number;       // Ancho base de la columna
+  // Nuevos campos de Estructura (Solicitud Usuario V2)
+  colWidthSingle: number;    // Ancho para clientes de 1 columna (Pingüino)
+  colWidthMulti: number;     // Ancho para clientes de 2+ columnas (Gran Canaria)
   rowVerticalPadding: number; // Separación vertical entre filas
 }
 
@@ -79,6 +80,7 @@ export const DEFAULT_SETTINGS: VisualSettings = {
   headerFontSize: 16,
   
   // Valores por defecto ajustados a tu gusto actual
-  colMinWidth: 340, 
+  colWidthSingle: 340, // Ancho estrecho por defecto
+  colWidthMulti: 520,  // Ancho amplio por defecto
   rowVerticalPadding: 8 // Equivalente a py-2
 };

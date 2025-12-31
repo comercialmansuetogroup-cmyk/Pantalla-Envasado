@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect } from 'react';
-import { X, Upload, Settings as SettingsIcon, Type, Layout, TrendingUp, Image, MoveHorizontal, ArrowUpDown } from 'lucide-react';
+import { X, Upload, Settings as SettingsIcon, Type, Layout, TrendingUp, Image, MoveHorizontal, ArrowUpDown, Columns, RectangleHorizontal } from 'lucide-react';
 import { VisualSettings } from '../types';
 
 interface SettingsModalProps {
@@ -143,7 +143,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose, v
             </div>
           </section>
 
-          {/* DENSIDAD Y ESTRUCTURA (NUEVOS CONTROLES) */}
+          {/* DENSIDAD Y ESTRUCTURA (NUEVOS CONTROLES DIVIDIDOS) */}
           <section className="space-y-6 pt-6 border-t border-white/5">
              <div className="flex items-center gap-2 text-white/80">
               <Layout size={18} className="text-red-500" />
@@ -159,18 +159,28 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose, v
                <input type="range" min="5" max="50" value={localSettings.maxRowsPerCol} onChange={(e) => updateSetting('maxRowsPerCol', parseInt(e.target.value))} className="w-full accent-red-600 h-2 bg-white/10 rounded-full cursor-pointer" />
             </div>
 
-            {/* 2. Ancho de Columna (NUEVO) */}
+            {/* 2A. Ancho de Columna SIMPLE (NUEVO) */}
             <div className="bg-white/5 p-4 rounded-lg space-y-3">
                <div className="flex justify-between text-[10px] font-bold text-white/50">
-                 <span className="flex items-center gap-2"><MoveHorizontal size={12}/> Ancho Base Columna (PX)</span>
-                 <span className="text-white">{localSettings.colMinWidth || 340}px</span>
+                 <span className="flex items-center gap-2"><RectangleHorizontal size={12}/> Ancho Columna Simple (Pingüino, etc)</span>
+                 <span className="text-white">{localSettings.colWidthSingle || 340}px</span>
                </div>
-               {/* Rango de 250px a 600px */}
-               <input type="range" min="250" max="600" step="10" value={localSettings.colMinWidth || 340} onChange={(e) => updateSetting('colMinWidth', parseInt(e.target.value))} className="w-full accent-blue-500 h-2 bg-white/10 rounded-full cursor-pointer" />
-               <p className="text-[9px] text-white/30 italic mt-1">* Las columnas dobles (ej. Gran Canaria) serán automáticamente un 50% más anchas que este valor.</p>
+               {/* Rango de 250px a 500px */}
+               <input type="range" min="250" max="500" step="10" value={localSettings.colWidthSingle || 340} onChange={(e) => updateSetting('colWidthSingle', parseInt(e.target.value))} className="w-full accent-blue-500 h-2 bg-white/10 rounded-full cursor-pointer" />
             </div>
 
-             {/* 3. Espaciado Vertical (NUEVO) */}
+            {/* 2B. Ancho de Columna MULTIPLE (NUEVO) */}
+            <div className="bg-white/5 p-4 rounded-lg space-y-3 border border-white/5">
+               <div className="flex justify-between text-[10px] font-bold text-white/50">
+                 <span className="flex items-center gap-2 text-blue-400"><Columns size={12}/> Ancho Columna Doble (Gran Canaria)</span>
+                 <span className="text-white">{localSettings.colWidthMulti || 520}px</span>
+               </div>
+               {/* Rango de 400px a 800px */}
+               <input type="range" min="400" max="800" step="10" value={localSettings.colWidthMulti || 520} onChange={(e) => updateSetting('colWidthMulti', parseInt(e.target.value))} className="w-full accent-blue-400 h-2 bg-white/10 rounded-full cursor-pointer" />
+               <p className="text-[9px] text-white/30 italic mt-1">Ajusta esto para que los nombres largos quepan en una sola línea en clientes grandes.</p>
+            </div>
+
+             {/* 3. Espaciado Vertical */}
              <div className="bg-white/5 p-4 rounded-lg space-y-3">
                <div className="flex justify-between text-[10px] font-bold text-white/50">
                  <span className="flex items-center gap-2"><ArrowUpDown size={12}/> Sangría / Separación Filas (PX)</span>

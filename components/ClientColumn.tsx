@@ -32,12 +32,14 @@ export const ClientColumn: React.FC<ClientColumnProps> = ({ group, darkMode, set
     columns.push(activeProducts.slice(i, i + settings.maxRowsPerCol));
   }
   
-  // LOGICA DINÁMICA DE ANCHO DE COLUMNA (Usuario)
-  // Usamos el valor del slider (colMinWidth). 
-  // Si hay múltiples columnas (Gran Canaria), multiplicamos por 1.5 para asegurar que cabe el texto largo.
+  // LOGICA DINÁMICA DE ANCHO DE COLUMNA SEPARADA
   const isMultiCol = columns.length > 1;
-  const baseWidth = settings.colMinWidth || 340;
-  const calculatedMinWidth = isMultiCol ? Math.floor(baseWidth * 1.5) : baseWidth;
+  
+  // Seleccionamos el ancho configurado según el tipo de columna
+  // Si no está definido (versión antigua), usamos defaults seguros (340 y 520)
+  const calculatedMinWidth = isMultiCol 
+      ? (settings.colWidthMulti || 520) 
+      : (settings.colWidthSingle || 340);
   
   // Separación vertical definida por usuario (rowVerticalPadding)
   const verticalPadding = settings.rowVerticalPadding || 8;
