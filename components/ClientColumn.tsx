@@ -22,11 +22,9 @@ export const ClientColumn: React.FC<ClientColumnProps> = ({ group, darkMode, set
   const totalPending = useMemo(() => group.products.reduce((acc, p) => acc + Math.max(0, p.qty - p.stock), 0), [group.products]);
   
   // FILTRO MÁGICO: Solo mostrar productos que aún tienen pendiente.
-  // "hasta que quede a cero... esa línea tiene que desaparecer"
   const activeProducts = useMemo(() => {
     return group.products.filter(p => {
        const lack = p.qty - p.stock;
-       // Si falta por producir, o si es el código que se acaba de escanear (para verlo desaparecer brevemente si quisieramos, pero por ahora estricto > 0)
        return lack > 0;
     });
   }, [group.products]);
@@ -36,11 +34,11 @@ export const ClientColumn: React.FC<ClientColumnProps> = ({ group, darkMode, set
     columns.push(activeProducts.slice(i, i + settings.maxRowsPerCol));
   }
   
-  // Si no hay productos activos, no renderizamos la columna entera? O mostramos "Completado"?
-  // La lógica actual es mostrar la columna con el footer aunque esté vacía, para mantener la estructura de zonas.
+  // Ajuste de Grid: Damos un poco más de espacio a la columna Pendiente (3ra col) porque la fuente será más grande
+  const gridTemplate = "grid-cols-[1fr_70px_110px_90px]";
 
   return (
-    <section className={`flex-1 min-w-[500px] h-full flex flex-col border-r transition-colors duration-300 ${darkMode ? 'border-white/5 bg-[#0c0e14]' : 'border-slate-300 bg-white'}`}>
+    <section className={`flex-1 min-w-[520px] h-full flex flex-col border-r transition-colors duration-300 ${darkMode ? 'border-white/5 bg-[#0c0e14]' : 'border-slate-300 bg-white'}`}>
       
       {/* Header Cliente */}
       <div className={`p-6 border-b flex-none ${darkMode ? 'border-white/5 bg-black/40' : 'border-slate-200 bg-slate-50'}`}>
@@ -63,10 +61,10 @@ export const ClientColumn: React.FC<ClientColumnProps> = ({ group, darkMode, set
            </div>
         ) : (
           columns.map((colProducts, colIdx) => (
-            <div key={colIdx} className={`flex-1 min-w-[480px] border-r last:border-r-0 flex flex-col ${darkMode ? 'border-white/5' : 'border-slate-200'}`}>
+            <div key={colIdx} className={`flex-1 min-w-[500px] border-r last:border-r-0 flex flex-col ${darkMode ? 'border-white/5' : 'border-slate-200'}`}>
               
               {/* Cabecera Tabla */}
-              <div className={`grid grid-cols-[1fr_80px_100px_100px] px-4 py-3 border-b ${darkMode ? 'border-white/10 bg-white/2' : 'border-slate-200 bg-slate-100'}`}>
+              <div className={`grid ${gridTemplate} px-4 py-3 border-b ${darkMode ? 'border-white/10 bg-white/2' : 'border-slate-200 bg-slate-100'}`}>
                 <span className={`text-[10px] font-black opacity-40 tracking-[0.2em] uppercase ${darkMode ? 'text-white' : 'text-slate-600'}`}>Referencia</span>
                 <span className={`text-right text-[10px] font-black opacity-40 tracking-[0.2em] uppercase ${darkMode ? 'text-white' : 'text-slate-600'}`}>Stock</span>
                 <span className={`text-right text-[10px] font-black opacity-40 tracking-[0.2em] uppercase ${darkMode ? 'text-white' : 'text-slate-600'}`}>Pendiente</span>
@@ -78,28 +76,47 @@ export const ClientColumn: React.FC<ClientColumnProps> = ({ group, darkMode, set
                   const lack = Math.max(0, p.qty - p.stock);
                   const isHigh = highlightedCode === p.code;
 
+                  // Lógica de Colores Condicional
+                  // Si hay animación (isHigh), TODO texto es BLANCO.
+                  // Si no, usa los colores normales (Azul stock, Naranja/Verde pendiente).
+                  const textColorBase = isHigh ? 'text-white' : (darkMode ? 'text-white' : 'text-slate-800');
+                  const stockColor = isHigh ? 'text-white' : (darkMode ? 'text-blue-400' : 'text-blue-600');
+                  const pendingColor = isHigh ? 'text-white' : (lack > 0 ? 'text-orange-500' : 'text-green-600');
+                  const totalColor = isHigh ? 'text-white' : (darkMode ? 'text-white' : 'text-slate-900');
+                  
+                  // Fondo de la fila
+                  const rowBg = isHigh 
+                    ? 'bg-green-500 shadow-xl z-20 scale-[1.02] border-green-600' // Animación Activada
+                    : (darkMode ? 'border-white/5 hover:bg-white/2' : 'border-slate-100 hover:bg-slate-50'); // Estado Normal
+
                   return (
-                    <div key={pIdx} className={`grid grid-cols-[1fr_80px_100px_100px] px-4 py-3 border-b items-center transition-all duration-500 
-                      ${darkMode ? 'border-white/5' : 'border-slate-100'}
-                      ${isHigh ? 'bg-red-600/60 z-10 scale-[1.02]' : (darkMode ? 'hover:bg-white/2' : 'hover:bg-slate-50')}
-                    `}>
+                    <div key={pIdx} className={`grid ${gridTemplate} px-4 py-3 border-b items-center transition-all duration-500 ease-out ${rowBg}`}>
+                      
+                      {/* Columna 1: Info Producto */}
                       <div className="flex flex-col min-w-0 pr-4">
                         <div className="flex items-center gap-3">
-                          <span className={`font-black ${darkMode ? 'text-white' : 'text-slate-800'}`} style={{ fontSize: `${settings.codeFontSize}px` }}>#{p.code}</span>
-                          <TrendBadge value={p.trend || 0} darkMode={darkMode} fontSize={settings.trendFontSize} />
+                          <span className={`font-black ${textColorBase}`} style={{ fontSize: `${settings.codeFontSize}px` }}>#{p.code}</span>
+                          {/* El badge también cambia a blanco si está activo para que se vea bien sobre el verde */}
+                          <div className={isHigh ? 'brightness-0 invert' : ''}>
+                             <TrendBadge value={p.trend || 0} darkMode={darkMode} fontSize={settings.trendFontSize} />
+                          </div>
                         </div>
-                        <span className={`font-bold opacity-50 uppercase truncate mt-1 ${darkMode ? 'text-white' : 'text-slate-500'}`} style={{ fontSize: `${settings.nameFontSize}px` }}>
+                        <span className={`font-bold opacity-50 uppercase truncate mt-1 ${isHigh ? 'text-white opacity-80' : (darkMode ? 'text-white' : 'text-slate-500')}`} style={{ fontSize: `${settings.nameFontSize}px` }}>
                           {p.name}
                         </span>
                       </div>
                       
-                      <div className={`text-right font-bold tabular-nums text-sm ${darkMode ? 'text-blue-400' : 'text-blue-600'}`}>{p.stock}</div>
+                      {/* Columna 2: Stock Realizado */}
+                      <div className={`text-right font-bold tabular-nums text-sm ${stockColor}`}>{p.stock}</div>
                       
-                      <div className={`text-right font-black tabular-nums text-sm ${lack > 0 ? 'text-orange-500' : 'text-green-600'}`}>
+                      {/* Columna 3: PENDIENTE (Con Zoom) */}
+                      {/* Aumentado a text-2xl y añadido scale-125 cuando se activa */}
+                      <div className={`text-right font-black tabular-nums tracking-tighter text-2xl transition-transform duration-300 origin-right ${pendingColor} ${isHigh ? 'scale-125' : 'scale-100'}`}>
                         {lack}
                       </div>
                       
-                      <div className={`text-right font-black text-3xl tracking-tighter tabular-nums leading-none ${darkMode ? 'text-white' : 'text-slate-900'}`}>
+                      {/* Columna 4: Total */}
+                      <div className={`text-right font-black text-3xl tracking-tighter tabular-nums leading-none ${totalColor}`}>
                         {p.qty}
                       </div>
                     </div>
