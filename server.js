@@ -136,6 +136,91 @@ app.get('/api/data', async (req, res) => {
   }
 });
 
+// NUEVO ENDPOINT: Histórico Agregado
+app.get('/api/history', async (req, res) => {
+  if (!process.env.DATABASE_URL) return res.json([]);
+  const { period } = req.query; // week, month, quarter, year
+
+  let truncType = 'week';
+  let limit = 4;
+  let interval = '1 month'; // fallback
+
+  // Definir la lógica de agrupación SQL según el filtro
+  switch (period) {
+    case 'week':
+      truncType = 'week';
+      limit = 5; // Últimas 5 semanas
+      interval = '2 month'; 
+      break;
+    case 'month':
+      truncType = 'month';
+      limit = 12; // Últimos 12 meses
+      interval = '1 year';
+      break;
+    case 'quarter':
+      truncType = 'quarter';
+      limit = 5; // Últimos 5 trimestres
+      interval = '2 year';
+      break;
+    case 'year':
+      truncType = 'year';
+      limit = 5; // Últimos 5 años
+      interval = '5 year';
+      break;
+    default: // week por defecto
+      truncType = 'week';
+      limit = 5;
+      interval = '2 month';
+  }
+
+  try {
+    const query = `
+      SELECT 
+        DATE_TRUNC($1, received_at) as date_period,
+        SUM(quantity) as total_qty
+      FROM orders 
+      WHERE received_at >= NOW() - $2::INTERVAL
+      GROUP BY date_period
+      ORDER BY date_period ASC
+      LIMIT $3
+    `;
+    
+    const result = await pool.query(query, [truncType, interval, limit]);
+    
+    // Formatear fechas para el frontend
+    const formatted = result.rows.map(row => {
+      const d = new Date(row.date_period);
+      let label = '';
+      
+      if (period === 'week') {
+         // Obtener número de semana
+         const onejan = new Date(d.getFullYear(), 0, 1);
+         const weekNum = Math.ceil((((d.getTime() - onejan.getTime()) / 86400000) + onejan.getDay() + 1) / 7);
+         label = `S${weekNum}`;
+      } else if (period === 'month') {
+         label = d.toLocaleDateString('es-ES', { month: 'short' }).toUpperCase();
+      } else if (period === 'quarter') {
+         const q = Math.floor((d.getMonth() + 3) / 3);
+         label = `Q${q} ${d.getFullYear().toString().substr(-2)}`;
+      } else {
+         label = d.getFullYear().toString();
+      }
+
+      return {
+        date: label,
+        fullDate: row.date_period,
+        produccion: Number(row.total_qty)
+      };
+    });
+
+    res.json(formatted);
+
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'History query failed', details: err.message });
+  }
+});
+
 app.post('/api/reset', async (req, res) => {
   if (!process.env.DATABASE_URL) return res.json({ ok: true });
   try {
@@ -148,7 +233,6 @@ app.post('/api/reset', async (req, res) => {
 });
 
 // IMPORTANTE: En producción servimos la carpeta dist construida por Vite
-// En desarrollo, Vite se encarga del frontend en otro puerto
 if (process.env.NODE_ENV === 'production') {
   app.use(express.static(path.join(__dirname, 'dist')));
   app.get('*', (req, res) => {

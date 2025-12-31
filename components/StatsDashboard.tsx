@@ -1,7 +1,7 @@
 
 import React, { useState, useEffect, useMemo } from 'react';
-import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
-import { Download, TrendingUp, Package, Calendar, Users, FileText, Share2 } from 'lucide-react';
+import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, BarChart, Bar } from 'recharts';
+import { Download, TrendingUp, Package, Calendar, Users, FileText, Share2, BarChart3 } from 'lucide-react';
 import { TimeFilter, ClientGroup } from '../types';
 
 interface StatsDashboardProps {
@@ -11,9 +11,10 @@ interface StatsDashboardProps {
 
 export const StatsDashboard: React.FC<StatsDashboardProps> = ({ darkMode, data }) => {
   const [filter, setFilter] = useState<TimeFilter>('week');
-  const [chartData, setChartData] = useState<any[]>([]);
+  const [historyData, setHistoryData] = useState<any[]>([]);
+  const [loadingHistory, setLoadingHistory] = useState(false);
 
-  // 1. Calcular KPIs REALES basados en 'data'
+  // 1. Calcular KPIs REALES basados en 'data' (Estado Actual)
   const totalProduction = useMemo(() => {
     return data.reduce((acc, client) => acc + client.products.reduce((pAcc: number, p: any) => pAcc + p.qty, 0), 0);
   }, [data]);
@@ -23,13 +24,12 @@ export const StatsDashboard: React.FC<StatsDashboardProps> = ({ darkMode, data }
   }, [data]);
 
   const activeZones = data.length;
-
   const averagePerZone = activeZones > 0 ? Math.round(totalProduction / activeZones) : 0;
   
-  // Eficiencia simulada basada en stock vs producción (Datos reales)
-  const efficiency = totalProduction > 0 ? Math.min(99.9, ((totalProduction - Math.max(0, totalProduction - totalStock)) / totalProduction) * 100 + 50).toFixed(1) : '100';
+  // Eficiencia actual (Stock vs Producción)
+  const efficiency = totalProduction > 0 ? Math.min(99.9, ((totalProduction - Math.max(0, totalProduction - totalStock)) / totalProduction) * 100).toFixed(1) : '100';
 
-  // 2. Calcular TOP PRODUCTOS Reales
+  // 2. Calcular TOP PRODUCTOS (Acumulado Total)
   const topItems = useMemo(() => {
     const allProducts = new Map<string, number>();
     
@@ -43,30 +43,37 @@ export const StatsDashboard: React.FC<StatsDashboardProps> = ({ darkMode, data }
     return Array.from(allProducts.entries())
       .map(([name, qty]) => ({ name, qty }))
       .sort((a, b) => b.qty - a.qty)
-      .slice(0, 10); // Top 10
+      .slice(0, 10);
   }, [data]);
 
-  // 3. Generar Datos de Gráfica (Proyección basada en totales reales)
+  // 3. Obtener Historial Real del Servidor
   useEffect(() => {
-    const count = filter === 'week' ? 7 : filter === 'month' ? 30 : filter === 'quarter' ? 90 : 365;
-    // Generamos una curva que termine en los valores actuales reales para consistencia visual
-    const mockStats = Array.from({ length: count }).map((_, i) => {
-       const progress = i / count;
-       const variance = Math.random() * 0.2 + 0.9; // +/- varianza
-       return {
-          date: new Date(Date.now() - (count - i) * 86400000).toLocaleDateString('es-ES', { day: '2-digit', month: 'short' }),
-          produccion: Math.floor(totalProduction * variance * (0.5 + (progress * 0.5)) / (filter === 'week' ? 1 : 4)), // Escalado aproximado
-          stock: Math.floor(totalStock * variance * (0.6 + (progress * 0.4)) / (filter === 'week' ? 1 : 4)),
-       };
-    });
-    setChartData(mockStats);
-  }, [filter, totalProduction, totalStock]);
+    const fetchHistory = async () => {
+      setLoadingHistory(true);
+      try {
+        const res = await fetch(`/api/history?period=${filter}`);
+        if (res.ok) {
+          const json = await res.json();
+          // Si no hay datos suficientes, mostrar mensaje o array vacío
+          setHistoryData(json);
+        } else {
+          console.error("Error fetching history");
+        }
+      } catch (e) {
+        console.error(e);
+      } finally {
+        setLoadingHistory(false);
+      }
+    };
+
+    fetchHistory();
+  }, [filter]);
 
   const exportData = (type: 'csv' | 'pdf') => {
     alert(`Generando reporte ${type.toUpperCase()} con los filtros actuales...`);
   };
 
-  // Clases dinámicas según tema
+  // Estilos
   const bgClass = darkMode ? 'bg-[#080a0f]' : 'bg-slate-50';
   const cardBgClass = darkMode ? 'bg-white/2 border-white/5' : 'bg-white border-slate-200 shadow-sm';
   const textTitleClass = darkMode ? 'text-white' : 'text-slate-900';
@@ -75,6 +82,12 @@ export const StatsDashboard: React.FC<StatsDashboardProps> = ({ darkMode, data }
   const axisColor = darkMode ? 'rgba(255,255,255,0.2)' : 'rgba(0,0,0,0.3)';
   const tooltipBg = darkMode ? '#0a0c10' : '#ffffff';
   const tooltipBorder = darkMode ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.1)';
+
+  // Determinamos el título de la gráfica según el filtro
+  const chartTitle = filter === 'week' ? 'Últimas 4 Semanas' 
+                   : filter === 'month' ? 'Últimos 12 Meses'
+                   : filter === 'quarter' ? 'Evolución Trimestral'
+                   : 'Histórico Anual';
 
   return (
     <div className={`p-16 h-full overflow-y-auto space-y-16 custom-scroll transition-colors duration-300 ${bgClass}`}>
@@ -110,15 +123,14 @@ export const StatsDashboard: React.FC<StatsDashboardProps> = ({ darkMode, data }
       <div className="grid grid-cols-4 gap-8">
         {[
           { label: 'Unidades Producidas', val: totalProduction.toLocaleString(), icon: Package, color: 'text-red-600', trend: '+12.4%', trendUp: true },
-          { label: 'Eficiencia Media', val: `${efficiency}%`, icon: TrendingUp, color: 'text-green-500', trend: '+2.1%', trendUp: true },
-          { label: 'Zonas Activas', val: `${activeZones} Regiones`, icon: Users, color: 'text-blue-500', trend: 'Estable', trendUp: null },
-          { label: 'Promedio Por Zona', val: averagePerZone.toLocaleString(), icon: Calendar, color: 'text-orange-500', trend: '-1.5%', trendUp: false }
+          { label: 'Eficiencia Global', val: `${efficiency}%`, icon: TrendingUp, color: 'text-green-500', trend: '+2.1%', trendUp: true },
+          { label: 'Regiones Activas', val: `${activeZones}`, icon: Users, color: 'text-blue-500', trend: 'Estable', trendUp: null },
+          { label: 'Media Por Zona', val: averagePerZone.toLocaleString(), icon: Calendar, color: 'text-orange-500', trend: '-1.5%', trendUp: false }
         ].map((kpi, i) => (
           <div key={i} className={`p-12 border flex flex-col gap-6 group transition-all duration-300 ${cardBgClass} ${darkMode ? 'hover:bg-white/5' : 'hover:shadow-md'}`}>
             <div className="flex justify-between items-start">
               <kpi.icon className={kpi.color} size={40} />
-              {/* PORCENTAJE MAS GRANDE */}
-              <span className={`text-2xl font-black tracking-tight ${
+              <span className={`text-3xl font-black tracking-tight ${
                   kpi.trendUp === true ? 'text-green-500' : 
                   kpi.trendUp === false ? 'text-red-500' : 
                   (darkMode ? 'text-slate-500' : 'text-slate-400')
@@ -134,43 +146,46 @@ export const StatsDashboard: React.FC<StatsDashboardProps> = ({ darkMode, data }
         ))}
       </div>
 
-      {/* Gráficas Principales */}
+      {/* Gráfica Histórica y Top */}
       <div className="grid grid-cols-3 gap-10">
         <div className={`col-span-2 p-12 border h-[650px] flex flex-col ${cardBgClass}`}>
           <div className="flex justify-between items-center mb-12">
             <h3 className={`text-sm font-black uppercase tracking-[0.4em] flex items-center gap-4 ${darkMode ? 'text-white/60' : 'text-slate-500'}`}>
-              <div className="w-2 h-8 bg-red-600"></div> Evolución Producción vs Stock
+              <div className="w-2 h-8 bg-red-600"></div> Evolución Producción ({chartTitle})
             </h3>
             <div className={`flex gap-6 text-[10px] font-black uppercase ${darkMode ? 'text-white/40' : 'text-slate-400'}`}>
-              <div className="flex items-center gap-2"><div className="w-3 h-3 bg-red-600"></div> PRODUCCIÓN</div>
-              <div className="flex items-center gap-2"><div className="w-3 h-3 bg-blue-600"></div> STOCK</div>
+               <div className="flex items-center gap-2"><div className="w-3 h-3 bg-red-600"></div> VOLUMEN</div>
             </div>
           </div>
           
-          <div className="flex-1">
-            <ResponsiveContainer width="100%" height="100%">
-              <AreaChart data={chartData}>
-                <defs>
-                  <linearGradient id="prodColor" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="5%" stopColor="#dc2626" stopOpacity={0.4}/>
-                    <stop offset="95%" stopColor="#dc2626" stopOpacity={0}/>
-                  </linearGradient>
-                  <linearGradient id="stockColor" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="5%" stopColor="#2563eb" stopOpacity={0.4}/>
-                    <stop offset="95%" stopColor="#2563eb" stopOpacity={0}/>
-                  </linearGradient>
-                </defs>
-                <CartesianGrid strokeDasharray="3 3" stroke={gridColor} vertical={false} />
-                <XAxis dataKey="date" stroke={axisColor} fontSize={11} axisLine={false} tickLine={false} />
-                <YAxis stroke={axisColor} fontSize={11} axisLine={false} tickLine={false} />
-                <Tooltip 
-                  contentStyle={{ background: tooltipBg, border: `1px solid ${tooltipBorder}`, borderRadius: '4px', boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1)' }}
-                  itemStyle={{ fontWeight: '900', fontSize: '12px', textTransform: 'uppercase', color: darkMode ? '#fff' : '#1e293b' }}
-                />
-                <Area type="monotone" dataKey="produccion" stroke="#dc2626" strokeWidth={5} fillOpacity={1} fill="url(#prodColor)" />
-                <Area type="monotone" dataKey="stock" stroke="#2563eb" strokeWidth={5} fillOpacity={1} fill="url(#stockColor)" />
-              </AreaChart>
-            </ResponsiveContainer>
+          <div className="flex-1 relative">
+            {loadingHistory ? (
+              <div className="absolute inset-0 flex items-center justify-center text-xs font-black uppercase opacity-40">Cargando histórico...</div>
+            ) : historyData.length === 0 ? (
+               <div className="absolute inset-0 flex items-center justify-center flex-col gap-4 opacity-30">
+                  <BarChart3 size={48} />
+                  <span className="text-xs font-black uppercase tracking-widest">Sin datos históricos suficientes para comparar</span>
+               </div>
+            ) : (
+              <ResponsiveContainer width="100%" height="100%">
+                <AreaChart data={historyData}>
+                  <defs>
+                    <linearGradient id="prodColor" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="5%" stopColor="#dc2626" stopOpacity={0.4}/>
+                      <stop offset="95%" stopColor="#dc2626" stopOpacity={0}/>
+                    </linearGradient>
+                  </defs>
+                  <CartesianGrid strokeDasharray="3 3" stroke={gridColor} vertical={false} />
+                  <XAxis dataKey="date" stroke={axisColor} fontSize={11} axisLine={false} tickLine={false} fontWeight={700} />
+                  <YAxis stroke={axisColor} fontSize={11} axisLine={false} tickLine={false} fontWeight={700} />
+                  <Tooltip 
+                    contentStyle={{ background: tooltipBg, border: `1px solid ${tooltipBorder}`, borderRadius: '4px', boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1)' }}
+                    itemStyle={{ fontWeight: '900', fontSize: '12px', textTransform: 'uppercase', color: darkMode ? '#fff' : '#1e293b' }}
+                  />
+                  <Area type="monotone" dataKey="produccion" stroke="#dc2626" strokeWidth={5} fillOpacity={1} fill="url(#prodColor)" />
+                </AreaChart>
+              </ResponsiveContainer>
+            )}
           </div>
         </div>
 
