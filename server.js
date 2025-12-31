@@ -21,12 +21,13 @@ app.use(bodyParser.json({ limit: '50mb' }));
 // Inicialización DB
 const initDB = async () => {
   if (!process.env.DATABASE_URL) {
-    console.log('⚠️ Running without Database Connection (Memory Mode)');
+    console.log('⚠️ [SYSTEM] Running without Database Connection (Memory Mode - Data will not persist)');
     return;
   }
   try {
     const client = await pool.connect();
     try {
+      console.log('🔄 [DB] Syncing Tables...');
       await client.query(`
         CREATE TABLE IF NOT EXISTS orders (
           id SERIAL PRIMARY KEY,
@@ -42,11 +43,11 @@ const initDB = async () => {
           stock_qty NUMERIC DEFAULT 0
         );
       `);
-      console.log('✅ DB Connected & Synced');
+      console.log('✅ [DB] Connected & Synced Successfully');
     } finally {
       client.release();
     }
-  } catch (err) { console.error('❌ DB Connection Error:', err.message); }
+  } catch (err) { console.error('❌ [DB] Connection Error:', err.message); }
 };
 initDB();
 
@@ -74,17 +75,21 @@ setInterval(() => {
   clients.forEach(c => c.res.write(': keepalive\n\n'));
 }, 30000);
 
-const notifyClients = (updatedCode) => {
-  clients.forEach(c => c.res.write(`data: ${JSON.stringify({type:'update', code: updatedCode})}\n\n`));
+const notifyClients = (updatedCode, type = 'update') => {
+  // console.log(`📡 [SSE] Broadcasting ${type}: ${updatedCode || 'GLOBAL'}`);
+  clients.forEach(c => c.res.write(`data: ${JSON.stringify({type, code: updatedCode})}\n\n`));
 };
 
 // --- API ENDPOINTS ---
 
+// 1. WEBHOOK: Entrada de NUEVOS PEDIDOS (Make)
 app.post('/api/webhook', async (req, res) => {
   const { zonas } = req.body;
-  if (!zonas || !Array.isArray(zonas)) return res.status(400).json({ error: 'Invalid data format' });
+  
+  if (!zonas || !Array.isArray(zonas)) {
+    return res.status(400).json({ error: 'Invalid data format' });
+  }
 
-  // Modo sin DB para pruebas
   if (!process.env.DATABASE_URL) {
     notifyClients('TEST-CODE');
     return res.json({ ok: true, mode: 'no-db' });
@@ -94,83 +99,134 @@ app.post('/api/webhook', async (req, res) => {
   try {
     await client.query('BEGIN');
     let lastCode = null;
+    let count = 0;
+
     for (const z of zonas) {
       const code = String(z.codigo_agente || '0');
       const name = z.nombre_agente || 'DESCONOCIDO';
       if (z.productos) {
         for (const p of z.productos) {
           lastCode = String(p.codigo).toUpperCase();
-          await client.query(
-            `INSERT INTO orders (agent_code, agent_name, product_code, product_name, quantity) 
-             VALUES ($1, $2, $3, $4, $5)`,
-            [code, name, lastCode, z.nombre || 'PRODUCTO', Number(p.cantidad) || 0]
-          );
+          const qty = Number(p.cantidad) || 0;
+          
+          if (qty > 0) {
+            await client.query(
+              `INSERT INTO orders (agent_code, agent_name, product_code, product_name, quantity) 
+               VALUES ($1, $2, $3, $4, $5)`,
+              [code, name, lastCode, z.nombre || 'PRODUCTO', qty]
+            );
+            count++;
+          }
         }
       }
     }
     await client.query('COMMIT');
-    notifyClients(lastCode);
-    res.json({ ok: true });
+    console.log(`📥 [WEBHOOK] Imported ${count} new orders.`);
+    notifyClients(lastCode, 'order');
+    res.json({ ok: true, processed: count });
   } catch (err) {
     await client.query('ROLLBACK');
+    console.error('❌ [WEBHOOK] Transaction Failed:', err.message);
     res.status(500).json({ error: err.message });
   } finally {
     client.release();
   }
 });
 
-app.get('/api/data', async (req, res) => {
-  if (!process.env.DATABASE_URL) return res.json([]);
+// 2. SCAN: Entrada de PRODUCCIÓN (App Envasado)
+// Acepta: { "codigo": "ABC", "cantidad": 5 }
+app.post('/api/scan', async (req, res) => {
+  // 1. AUTH CHECK
+  const authHeader = req.headers.authorization;
+  if (!authHeader || authHeader !== 'Bearer DASHBOARD_V3_KEY_2025') {
+    console.warn(`⛔ [SCAN] Unauthorized attempt from ${req.ip}`);
+    return res.status(401).json({ error: 'Unauthorized' });
+  }
+
+  // 2. PAYLOAD PARSING
+  const { codigo, cantidad } = req.body;
+  
+  console.log(`🏭 [SCAN] Recibido: Code=${codigo}, Qty=${cantidad}`);
+
+  if (!codigo || !cantidad) {
+    console.error('❌ [SCAN] Invalid Payload:', req.body);
+    return res.status(400).json({ error: 'Faltan datos: codigo o cantidad' });
+  }
+
+  if (!process.env.DATABASE_URL) {
+    notifyClients(codigo, 'scan');
+    return res.json({ ok: true, mode: 'no-db', message: 'Simulado' });
+  }
+
+  const client = await pool.connect();
   try {
-    const result = await pool.query(`
-      SELECT 
-        o.agent_code, o.agent_name, o.product_code, o.product_name, 
-        SUM(o.quantity) as total_qty, COALESCE(MAX(i.stock_qty), 0) as stock
-      FROM orders o
-      LEFT JOIN inventory i ON o.product_code = i.product_code
-      GROUP BY o.agent_code, o.agent_name, o.product_code, o.product_name
-    `);
-    res.json(result.rows);
+    const qtyNum = Number(cantidad);
+    const codeStr = String(codigo).toUpperCase().trim();
+
+    // 3. UPDATE DB
+    await client.query(
+      `INSERT INTO inventory (product_code, stock_qty) 
+       VALUES ($1, $2)
+       ON CONFLICT (product_code) 
+       DO UPDATE SET stock_qty = inventory.stock_qty + $2`,
+      [codeStr, qtyNum]
+    );
+
+    console.log(`✅ [SCAN] Stock Updated: ${codeStr} +${qtyNum}`);
+    
+    // 4. NOTIFY FRONTEND (Real-time animation)
+    notifyClients(codeStr, 'scan');
+    
+    res.json({ ok: true, updated: codeStr, qty: qtyNum });
   } catch (err) {
-    res.status(500).json({ error: 'Database query failed', details: err.message });
+    console.error('❌ [SCAN] DB Error:', err.message);
+    res.status(500).json({ error: err.message });
+  } finally {
+    client.release();
   }
 });
 
-// NUEVO ENDPOINT: Histórico Agregado
+// 3. GET DATA: Devuelve el estado combinado
+app.get('/api/data', async (req, res) => {
+  if (!process.env.DATABASE_URL) return res.json([]);
+  try {
+    // Obtenemos los pedidos agrupados y el stock TOTAL global de cada producto
+    // El frontend se encargará de "repartir" este stock global entre los clientes
+    const result = await pool.query(`
+      SELECT 
+        o.agent_code, 
+        o.agent_name, 
+        o.product_code, 
+        o.product_name, 
+        SUM(o.quantity) as total_qty, 
+        COALESCE(MAX(i.stock_qty), 0) as global_stock
+      FROM orders o
+      LEFT JOIN inventory i ON o.product_code = i.product_code
+      GROUP BY o.agent_code, o.agent_name, o.product_code, o.product_name
+      ORDER BY o.agent_code ASC
+    `);
+    
+    res.json(result.rows);
+  } catch (err) {
+    console.error('❌ [DATA] Error fetching:', err.message);
+    res.status(500).json({ error: 'Database query failed' });
+  }
+});
+
 app.get('/api/history', async (req, res) => {
   if (!process.env.DATABASE_URL) return res.json([]);
-  const { period } = req.query; // week, month, quarter, year
+  const { period } = req.query; 
 
   let truncType = 'week';
   let limit = 4;
-  let interval = '1 month'; // fallback
+  let interval = '1 month';
 
-  // Definir la lógica de agrupación SQL según el filtro
   switch (period) {
-    case 'week':
-      truncType = 'week';
-      limit = 5; // Últimas 5 semanas
-      interval = '2 month'; 
-      break;
-    case 'month':
-      truncType = 'month';
-      limit = 12; // Últimos 12 meses
-      interval = '1 year';
-      break;
-    case 'quarter':
-      truncType = 'quarter';
-      limit = 5; // Últimos 5 trimestres
-      interval = '2 year';
-      break;
-    case 'year':
-      truncType = 'year';
-      limit = 5; // Últimos 5 años
-      interval = '5 year';
-      break;
-    default: // week por defecto
-      truncType = 'week';
-      limit = 5;
-      interval = '2 month';
+    case 'week': truncType = 'week'; limit = 5; interval = '2 month'; break;
+    case 'month': truncType = 'month'; limit = 12; interval = '1 year'; break;
+    case 'quarter': truncType = 'quarter'; limit = 5; interval = '2 year'; break;
+    case 'year': truncType = 'year'; limit = 5; interval = '5 year'; break;
+    default: truncType = 'week'; limit = 5; interval = '2 month';
   }
 
   try {
@@ -184,16 +240,12 @@ app.get('/api/history', async (req, res) => {
       ORDER BY date_period ASC
       LIMIT $3
     `;
-    
     const result = await pool.query(query, [truncType, interval, limit]);
     
-    // Formatear fechas para el frontend
     const formatted = result.rows.map(row => {
       const d = new Date(row.date_period);
       let label = '';
-      
       if (period === 'week') {
-         // Obtener número de semana
          const onejan = new Date(d.getFullYear(), 0, 1);
          const weekNum = Math.ceil((((d.getTime() - onejan.getTime()) / 86400000) + onejan.getDay() + 1) / 7);
          label = `S${weekNum}`;
@@ -205,26 +257,23 @@ app.get('/api/history', async (req, res) => {
       } else {
          label = d.getFullYear().toString();
       }
-
       return {
         date: label,
         fullDate: row.date_period,
         produccion: Number(row.total_qty)
       };
     });
-
     res.json(formatted);
-
   } catch (err) {
-    console.error(err);
-    res.status(500).json({ error: 'History query failed', details: err.message });
+    res.status(500).json({ error: 'History query failed' });
   }
 });
 
 app.post('/api/reset', async (req, res) => {
   if (!process.env.DATABASE_URL) return res.json({ ok: true });
   try {
-    await pool.query('DELETE FROM orders');
+    await pool.query('DELETE FROM orders; DELETE FROM inventory;');
+    console.log('⚠️ [RESET] All data cleared.');
     notifyClients('RESET');
     res.json({ ok: true });
   } catch (err) {
@@ -232,7 +281,6 @@ app.post('/api/reset', async (req, res) => {
   }
 });
 
-// IMPORTANTE: En producción servimos la carpeta dist construida por Vite
 if (process.env.NODE_ENV === 'production') {
   app.use(express.static(path.join(__dirname, 'dist')));
   app.get('*', (req, res) => {

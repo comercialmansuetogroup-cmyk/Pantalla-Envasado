@@ -31,28 +31,30 @@ export default function App() {
       setErrorMsg(null);
       
       const res = await fetch('/api/data');
-      
-      const contentType = res.headers.get('content-type');
-      if (!contentType || !contentType.includes('application/json')) {
-        throw new Error(`Invalid Server Response: ${res.status} ${res.statusText}`);
-      }
-
-      if (!res.ok) {
-        throw new Error(`API Error: ${res.status}`);
-      }
+      if (!res.ok) throw new Error(`API Error: ${res.status}`);
       
       const raw = await res.json();
       
+      // 1. Agrupar filas por Cliente
       const groups: Record<string, any> = {};
+      const globalStockMap = new Map<string, number>();
+
       if (Array.isArray(raw)) {
         raw.forEach((row: any) => {
+          // Normalizar nombre de cliente
           const clientName = CLIENT_MAPPING[row.agent_code] || row.agent_name || `ZONA ${row.agent_code}`;
+          
           if (!groups[clientName]) {
             groups[clientName] = { name: clientName, products: [] };
           }
           
+          // Guardar Stock Global (viene repetido en cada fila, tomamos el valor)
+          const pCode = row.product_code;
+          const stock = Number(row.global_stock);
+          globalStockMap.set(pCode, stock);
+
+          // Agregar producto al grupo (aún sin stock asignado)
           const existingProd = groups[clientName].products.find((p: any) => p.code === row.product_code);
-          
           if (existingProd) {
              existingProd.qty += Number(row.total_qty);
           } else {
@@ -60,18 +62,43 @@ export default function App() {
               code: row.product_code,
               name: row.product_name,
               qty: Number(row.total_qty),
-              stock: Number(row.stock),
+              stock: 0, // Se calculará después en la fase de distribución
               trend: 0
             });
           }
         });
       }
 
-      setData(Object.values(groups).sort((a,b) => {
+      // 2. Ordenar Clientes (GRAN CANARIA PRIMERO)
+      // Esto es CRUCIAL para que la distribución de stock funcione de izquierda a derecha
+      const sortedClients = Object.values(groups).sort((a,b) => {
         if(a.name === 'GRAN CANARIA') return -1;
         if(b.name === 'GRAN CANARIA') return 1;
         return a.name.localeCompare(b.name);
-      }));
+      });
+
+      // 3. DISTRIBUIR STOCK (Algoritmo de Consumo)
+      // Iteramos clientes en orden y vamos restando del GlobalStock
+      sortedClients.forEach(client => {
+         client.products.forEach((p: any) => {
+             const available = globalStockMap.get(p.code) || 0;
+             const needed = p.qty;
+             
+             // Asignamos lo que haya disponible hasta cubrir la necesidad
+             const assigned = Math.min(needed, available);
+             
+             p.stock = assigned; // Este es el stock "realizado" para este cliente específico
+             
+             // Restamos del global para el siguiente cliente
+             globalStockMap.set(p.code, Math.max(0, available - assigned));
+         });
+         
+         // Ordenar productos por cantidad descendente
+         client.products.sort((a: any, b: any) => b.qty - a.qty);
+      });
+
+      setData(sortedClients);
+
     } catch (e: any) { 
       console.warn('Connection failed:', e);
       setErrorMsg(e.message || 'Connection Error');
@@ -102,10 +129,14 @@ export default function App() {
         
         try {
           const msg = JSON.parse(rawData);
+          // Si recibimos evento, refrescamos datos
           fetchData();
+          
           if (msg.code) {
+            // Trigger animación
             setHighlightedCode(msg.code);
-            setTimeout(() => setHighlightedCode(null), 6000);
+            // Quitar animación después de 3s
+            setTimeout(() => setHighlightedCode(null), 3000);
           }
         } catch(err) {}
       };
