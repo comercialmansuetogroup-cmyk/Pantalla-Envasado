@@ -42,13 +42,13 @@ export const ClientColumn: React.FC<ClientColumnProps> = ({ group, darkMode, set
       {/* Tabla de Productos */}
       <div className="flex-1 flex overflow-x-auto custom-scroll">
         {columns.map((colProducts, colIdx) => (
-          <div key={colIdx} className={`flex-1 min-w-[450px] border-r last:border-r-0 flex flex-col ${darkMode ? 'border-white/5' : 'border-slate-200'}`}>
+          <div key={colIdx} className={`flex-1 min-w-[480px] border-r last:border-r-0 flex flex-col ${darkMode ? 'border-white/5' : 'border-slate-200'}`}>
             
-            {/* Cabecera Tabla */}
-            <div className={`grid grid-cols-[1fr_80px_80px_100px] px-4 py-3 border-b ${darkMode ? 'border-white/10 bg-white/2' : 'border-slate-200 bg-slate-100'}`}>
+            {/* Cabecera Tabla - Ajuste de grid a 100px para Producción */}
+            <div className={`grid grid-cols-[1fr_80px_100px_100px] px-4 py-3 border-b ${darkMode ? 'border-white/10 bg-white/2' : 'border-slate-200 bg-slate-100'}`}>
               <span className={`text-[10px] font-black opacity-40 tracking-[0.2em] uppercase ${darkMode ? 'text-white' : 'text-slate-600'}`}>Referencia</span>
               <span className={`text-right text-[10px] font-black opacity-40 tracking-[0.2em] uppercase ${darkMode ? 'text-white' : 'text-slate-600'}`}>Stock</span>
-              <span className={`text-right text-[10px] font-black opacity-40 tracking-[0.2em] uppercase ${darkMode ? 'text-white' : 'text-slate-600'}`}>Falta</span>
+              <span className={`text-right text-[10px] font-black opacity-40 tracking-[0.2em] uppercase ${darkMode ? 'text-white' : 'text-slate-600'}`}>Producción</span>
               <span className="text-right text-[10px] font-black opacity-40 tracking-[0.2em] uppercase text-red-600">Pedido</span>
             </div>
             
@@ -59,7 +59,7 @@ export const ClientColumn: React.FC<ClientColumnProps> = ({ group, darkMode, set
                 const isHigh = highlightedCode === p.code;
 
                 return (
-                  <div key={pIdx} className={`grid grid-cols-[1fr_80px_80px_100px] px-4 py-3 border-b items-center transition-all duration-500 
+                  <div key={pIdx} className={`grid grid-cols-[1fr_80px_100px_100px] px-4 py-3 border-b items-center transition-all duration-500 
                     ${darkMode ? 'border-white/5' : 'border-slate-100'}
                     ${isHigh ? 'bg-red-600/60 z-10' : isDone ? 'opacity-30 grayscale' : (darkMode ? 'hover:bg-white/2' : 'hover:bg-slate-50')}
                   `}>
@@ -111,7 +111,7 @@ export const ClientColumn: React.FC<ClientColumnProps> = ({ group, darkMode, set
                 <div className="flex items-center gap-3">
                   <Hash size={14} className="text-red-600 opacity-70" />
                   <span className={`text-[11px] font-black uppercase tracking-wider ${darkMode ? 'text-white/60' : 'text-slate-600'}`}>
-                    REFS
+                    PRODUCTOS
                   </span>
                 </div>
                 <span className={`text-lg font-black tabular-nums ${darkMode ? 'text-white' : 'text-slate-800'}`}>{group.products.length}</span>
@@ -131,7 +131,7 @@ export const ClientColumn: React.FC<ClientColumnProps> = ({ group, darkMode, set
                  <div className="flex items-center gap-3">
                   <AlertTriangle size={14} className="text-orange-500 opacity-70" />
                   <span className={`text-[11px] font-black uppercase tracking-wider ${darkMode ? 'text-white/60' : 'text-slate-600'}`}>
-                    FALTA
+                    PRODUCCIÓN
                   </span>
                 </div>
                 <span className="text-lg font-black text-orange-500 tabular-nums">{totalPending.toLocaleString()}</span>
