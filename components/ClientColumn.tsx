@@ -32,11 +32,15 @@ export const ClientColumn: React.FC<ClientColumnProps> = ({ group, darkMode, set
     columns.push(activeProducts.slice(i, i + settings.maxRowsPerCol));
   }
   
-  // LOGICA DINÁMICA DE ANCHO DE COLUMNA
-  // Si hay más de 1 columna (Gran Canaria): Usamos 520px para que quepan nombres largos en una línea.
-  // Si hay solo 1 columna (Pingüino): Usamos 340px para "apretar" los datos y quitar espacios vacíos.
+  // LOGICA DINÁMICA DE ANCHO DE COLUMNA (Usuario)
+  // Usamos el valor del slider (colMinWidth). 
+  // Si hay múltiples columnas (Gran Canaria), multiplicamos por 1.5 para asegurar que cabe el texto largo.
   const isMultiCol = columns.length > 1;
-  const colWidthClass = isMultiCol ? 'min-w-[520px]' : 'min-w-[340px]';
+  const baseWidth = settings.colMinWidth || 340;
+  const calculatedMinWidth = isMultiCol ? Math.floor(baseWidth * 1.5) : baseWidth;
+  
+  // Separación vertical definida por usuario (rowVerticalPadding)
+  const verticalPadding = settings.rowVerticalPadding || 8;
 
   // Grid Numérico Ajustado: [Nombre_Auto, Stock_50, Pendiente_80, Total_70]
   const gridTemplate = "grid-cols-[1fr_50px_80px_70px]";
@@ -46,7 +50,10 @@ export const ClientColumn: React.FC<ClientColumnProps> = ({ group, darkMode, set
   const isTrendFlat = Math.abs(trendValue) < 0.1;
 
   return (
-    <section className={`flex-1 h-full flex flex-col border-r transition-colors duration-300 ${darkMode ? 'border-white/5 bg-[#0c0e14]' : 'border-slate-300 bg-white'}`}>
+    <section 
+        className={`flex-1 h-full flex flex-col border-r transition-colors duration-300 ${darkMode ? 'border-white/5 bg-[#0c0e14]' : 'border-slate-300 bg-white'}`}
+        style={{ minWidth: `${calculatedMinWidth}px` }}
+    >
       
       {/* Header Cliente: CENTRADO Y UNIFICADO */}
       <div className={`p-6 border-b flex-none flex flex-col items-center justify-center text-center ${darkMode ? 'border-white/5 bg-black/40' : 'border-slate-200 bg-slate-50'}`}>
@@ -70,16 +77,19 @@ export const ClientColumn: React.FC<ClientColumnProps> = ({ group, darkMode, set
       {/* Contenedor de Columnas */}
       <div className="flex-1 flex overflow-x-auto custom-scroll">
         {columns.length === 0 ? (
-           <div className={`flex-1 flex items-center justify-center flex-col opacity-20 w-full ${colWidthClass}`}>
+           <div className="flex-1 flex items-center justify-center flex-col opacity-20 w-full" style={{ minWidth: `${calculatedMinWidth}px` }}>
               <span className="text-6xl font-black text-slate-500">OK</span>
               <span className="text-sm font-bold uppercase tracking-widest mt-2 text-slate-500">Zona Completada</span>
            </div>
         ) : (
           columns.map((colProducts, colIdx) => (
-            <div key={colIdx} className={`flex-1 ${colWidthClass} border-r last:border-r-0 flex flex-col ${darkMode ? 'border-white/5' : 'border-slate-200'}`}>
+            <div key={colIdx} className={`flex-1 border-r last:border-r-0 flex flex-col ${darkMode ? 'border-white/5' : 'border-slate-200'}`} style={{ minWidth: `${calculatedMinWidth}px` }}>
               
               {/* Cabecera Tabla */}
-              <div className={`grid ${gridTemplate} px-3 py-2 border-b ${darkMode ? 'border-white/10 bg-white/2' : 'border-slate-200 bg-slate-100'}`}>
+              <div 
+                className={`grid ${gridTemplate} px-3 border-b ${darkMode ? 'border-white/10 bg-white/2' : 'border-slate-200 bg-slate-100'}`}
+                style={{ paddingTop: `${verticalPadding}px`, paddingBottom: `${verticalPadding}px` }}
+               >
                 <span className={`text-[10px] font-black opacity-40 tracking-[0.2em] uppercase ${darkMode ? 'text-white' : 'text-slate-600'}`}>Referencia</span>
                 <span className={`text-right text-[10px] font-black opacity-40 tracking-[0.2em] uppercase ${darkMode ? 'text-white' : 'text-slate-600'}`}>Stk</span>
                 <span className={`text-right text-[10px] font-black opacity-40 tracking-[0.2em] uppercase ${darkMode ? 'text-white' : 'text-slate-600'}`}>Pend</span>
@@ -101,8 +111,12 @@ export const ClientColumn: React.FC<ClientColumnProps> = ({ group, darkMode, set
                     : (darkMode ? 'border-white/5 hover:bg-white/2' : 'border-slate-100 hover:bg-slate-50');
 
                   return (
-                    // Ajuste fino de padding para densidad vertical
-                    <div key={pIdx} className={`grid ${gridTemplate} px-3 py-2 border-b items-center transition-all duration-500 ease-out ${rowBg}`}>
+                    // Ajuste dinámico de padding con style
+                    <div 
+                        key={pIdx} 
+                        className={`grid ${gridTemplate} px-3 border-b items-center transition-all duration-500 ease-out ${rowBg}`}
+                        style={{ paddingTop: `${verticalPadding}px`, paddingBottom: `${verticalPadding}px` }}
+                    >
                       
                       {/* Columna 1: Info Producto */}
                       <div className="flex flex-col min-w-0 pr-2">

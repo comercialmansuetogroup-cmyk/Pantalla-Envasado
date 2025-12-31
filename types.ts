@@ -32,6 +32,10 @@ export interface VisualSettings {
   clientTrendFontSize: number; // Para cabecera de cliente
   
   headerFontSize: number;
+
+  // Nuevos campos de Estructura (Solicitud Usuario)
+  colMinWidth: number;       // Ancho base de la columna
+  rowVerticalPadding: number; // Separación vertical entre filas
 }
 
 export interface IncomingProduct {
@@ -71,6 +75,10 @@ export const DEFAULT_SETTINGS: VisualSettings = {
   codeFontSize: 20,       
   clientNameFontSize: 48, 
   trendFontSize: 14,
-  clientTrendFontSize: 18, // Valor por defecto
-  headerFontSize: 16
+  clientTrendFontSize: 18,
+  headerFontSize: 16,
+  
+  // Valores por defecto ajustados a tu gusto actual
+  colMinWidth: 340, 
+  rowVerticalPadding: 8 // Equivalente a py-2
 };

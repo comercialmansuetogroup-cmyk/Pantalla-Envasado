@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect } from 'react';
-import { X, Upload, Settings as SettingsIcon, Type, Layout, TrendingUp, Image } from 'lucide-react';
+import { X, Upload, Settings as SettingsIcon, Type, Layout, TrendingUp, Image, MoveHorizontal, ArrowUpDown } from 'lucide-react';
 import { VisualSettings } from '../types';
 
 interface SettingsModalProps {
@@ -143,19 +143,43 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose, v
             </div>
           </section>
 
-          {/* DENSIDAD */}
-          <section className="space-y-4 pt-6 border-t border-white/5">
+          {/* DENSIDAD Y ESTRUCTURA (NUEVOS CONTROLES) */}
+          <section className="space-y-6 pt-6 border-t border-white/5">
              <div className="flex items-center gap-2 text-white/80">
               <Layout size={18} className="text-red-500" />
-              <h3 className="text-xs font-black uppercase tracking-widest">Estructura</h3>
+              <h3 className="text-xs font-black uppercase tracking-widest">Estructura Dinámica</h3>
             </div>
-            <div className="bg-white/5 p-4 rounded-lg">
-               <div className="flex justify-between text-[10px] font-bold text-white/50 mb-2">
-                 <span>Filas por Columna</span>
-                 <span className="text-white text-lg">{localSettings.maxRowsPerCol}</span>
+            
+            {/* 1. Filas por Columna */}
+            <div className="bg-white/5 p-4 rounded-lg space-y-3">
+               <div className="flex justify-between text-[10px] font-bold text-white/50">
+                 <span className="flex items-center gap-2"><Layout size={12}/> Productos por Columna</span>
+                 <span className="text-white">{localSettings.maxRowsPerCol}</span>
                </div>
                <input type="range" min="5" max="50" value={localSettings.maxRowsPerCol} onChange={(e) => updateSetting('maxRowsPerCol', parseInt(e.target.value))} className="w-full accent-red-600 h-2 bg-white/10 rounded-full cursor-pointer" />
             </div>
+
+            {/* 2. Ancho de Columna (NUEVO) */}
+            <div className="bg-white/5 p-4 rounded-lg space-y-3">
+               <div className="flex justify-between text-[10px] font-bold text-white/50">
+                 <span className="flex items-center gap-2"><MoveHorizontal size={12}/> Ancho Base Columna (PX)</span>
+                 <span className="text-white">{localSettings.colMinWidth || 340}px</span>
+               </div>
+               {/* Rango de 250px a 600px */}
+               <input type="range" min="250" max="600" step="10" value={localSettings.colMinWidth || 340} onChange={(e) => updateSetting('colMinWidth', parseInt(e.target.value))} className="w-full accent-blue-500 h-2 bg-white/10 rounded-full cursor-pointer" />
+               <p className="text-[9px] text-white/30 italic mt-1">* Las columnas dobles (ej. Gran Canaria) serán automáticamente un 50% más anchas que este valor.</p>
+            </div>
+
+             {/* 3. Espaciado Vertical (NUEVO) */}
+             <div className="bg-white/5 p-4 rounded-lg space-y-3">
+               <div className="flex justify-between text-[10px] font-bold text-white/50">
+                 <span className="flex items-center gap-2"><ArrowUpDown size={12}/> Sangría / Separación Filas (PX)</span>
+                 <span className="text-white">{localSettings.rowVerticalPadding || 8}px</span>
+               </div>
+               {/* Rango de 2px a 30px */}
+               <input type="range" min="2" max="30" step="1" value={localSettings.rowVerticalPadding || 8} onChange={(e) => updateSetting('rowVerticalPadding', parseInt(e.target.value))} className="w-full accent-orange-500 h-2 bg-white/10 rounded-full cursor-pointer" />
+            </div>
+
           </section>
 
           <div className="pt-4">
