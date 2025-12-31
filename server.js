@@ -7,8 +7,9 @@ const { Pool } = require('pg');
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-// Configuración MIME para evitar errores de carga en el navegador
-express.static.mime.define({'application/javascript': ['ts', 'tsx']});
+if (express.static.mime && express.static.mime.define) {
+    express.static.mime.define({'application/javascript': ['ts', 'tsx']});
+}
 
 const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
@@ -17,10 +18,9 @@ const pool = new Pool({
 
 app.use(cors());
 app.use(bodyParser.json({ limit: '50mb' }));
-app.use(express.static(__dirname));
 
-// MAPPING DE CLIENTES (Backend Source of Truth)
-const CLIENT_MAPPING = {
+// MAPPING DE UNIFICACIÓN (Solo para visualización)
+const AGENT_TO_CLIENT_MAP = {
   '24': 'FILIPPO',
   '26': 'PINGÜINO',
   '23': 'LA PALMA',
@@ -33,11 +33,12 @@ const CLIENT_MAPPING = {
 
 const initDB = async () => {
   try {
+    // Tabla de Pedidos (Pura, sin agrupaciones forzadas)
     await pool.query(`
       CREATE TABLE IF NOT EXISTS orders (
         id SERIAL PRIMARY KEY,
         agent_code TEXT,
-        client_name TEXT,
+        agent_name TEXT,
         product_code TEXT,
         product_name TEXT,
         quantity NUMERIC DEFAULT 0,
@@ -55,12 +56,11 @@ const initDB = async () => {
         client_count INTEGER DEFAULT 0
       );
     `);
-    console.log('✅ Postgres Engine V6: Tablas Listas');
+    console.log('✅ Postgres Engine V7: Tablas Robustas Listas');
   } catch (err) { console.error('❌ DB Error:', err); }
 };
 initDB();
 
-// SSE para Tiempo Real
 let clients = [];
 app.get('/api/events', (req, res) => {
   res.setHeader('Content-Type', 'text/event-stream');
@@ -71,84 +71,105 @@ app.get('/api/events', (req, res) => {
 });
 const notify = (data) => clients.forEach(c => c.write(`data: ${JSON.stringify(data)}\n\n`));
 
-// WEBHOOK DE MAKE: LA INTEGRACIÓN PURA
+// WEBHOOK: RECIBE REGISTROS PUROS
 app.post('/api/webhook', async (req, res) => {
   const { zonas } = req.body;
-  if (!zonas || !Array.isArray(zonas)) return res.status(400).send('Formato de zonas incorrecto');
+  if (!zonas || !Array.isArray(zonas)) return res.status(400).send('Formato inválido');
 
   try {
     await pool.query('BEGIN');
-    await pool.query('DELETE FROM orders'); // Limpieza diaria
     
-    let totalUnidades = 0;
-    const agentesActivos = new Set();
-
+    // IMPORTANTE: Ya no borramos todo al inicio. 
+    // Si quieres limpiar el día, podrías llamar a un endpoint /api/reset
+    
     for (const zona of zonas) {
       const agentCode = String(zona.codigo_agente || '0');
-      const clientName = CLIENT_MAPPING[agentCode] || zona.nombre_agente || `ZONA ${agentCode}`;
-      agentesActivos.add(clientName);
+      const agentName = zona.nombre_agente || 'DESCONOCIDO';
 
       if (zona.productos && Array.isArray(zona.productos)) {
         for (const p of zona.productos) {
+          const pCode = String(p.codigo).toUpperCase();
+          const pName = zona.nombre || 'PRODUCTO';
           const qty = Number(p.cantidad) || 0;
-          totalUnidades += qty;
-          
+
+          // Insertar registro puro
           await pool.query(
-            `INSERT INTO orders (agent_code, client_name, product_code, product_name, quantity) 
+            `INSERT INTO orders (agent_code, agent_name, product_code, product_name, quantity) 
              VALUES ($1, $2, $3, $4, $5)`,
-            [agentCode, clientName, String(p.codigo).toUpperCase(), p.nombre || zona.nombre || 'PRODUCTO', qty]
+            [agentCode, agentName, pCode, pName, qty]
           );
         }
       }
     }
 
-    // Actualizar estadísticas históricas
-    await pool.query(`
-      INSERT INTO daily_stats (log_date, total_units, client_count)
-      VALUES (CURRENT_DATE, $1, $2)
-      ON CONFLICT (log_date) DO UPDATE SET 
-        total_units = EXCLUDED.total_units,
-        client_count = EXCLUDED.client_count
-    `, [totalUnidades, agentesActivos.size]);
-
     await pool.query('COMMIT');
     notify({ type: 'update' });
-    res.json({ status: 'success', total: totalUnidades });
+    res.json({ status: 'success' });
   } catch (err) {
     await pool.query('ROLLBACK');
     res.status(500).json({ error: err.message });
   }
 });
 
-// API DATA: Agrupación SQL ultra-rápida
+// GET DATA: EL CEREBRO DE LA AGRUPACIÓN
 app.get('/api/data', async (req, res) => {
   try {
+    // Esta consulta agrupa por el mapeo de agentes (0,10,14,5 -> Gran Canaria)
+    // y suma las cantidades de los registros puros.
     const query = `
+      WITH mapped_orders AS (
+        SELECT 
+          CASE 
+            WHEN agent_code IN ('0', '5', '10', '14') THEN 'GRAN CANARIA'
+            WHEN agent_code = '24' THEN 'FILIPPO'
+            WHEN agent_code = '26' THEN 'PINGÜINO'
+            WHEN agent_code = '23' THEN 'LA PALMA'
+            WHEN agent_code = '15' THEN 'TENERIFE NORTE'
+            ELSE agent_name 
+          END as display_client_name,
+          agent_code,
+          product_code,
+          product_name,
+          quantity
+        FROM orders
+        WHERE received_at >= CURRENT_DATE -- Opcional: solo ver hoy
+      )
       SELECT 
-        o.client_name as name,
-        o.agent_code as code,
+        display_client_name as name,
+        string_agg(DISTINCT agent_code, ', ') as code,
         json_agg(json_build_object(
-          'codigo', o.product_code,
-          'nombre', o.product_name,
-          'cantidad', o.quantity,
-          'stock', COALESCE(i.stock_qty, 0)
-        ) ORDER BY o.product_name) as products
-      FROM orders o
-      LEFT JOIN inventory i ON o.product_code = i.product_code
-      GROUP BY o.client_name, o.agent_code
+          'codigo', product_code,
+          'nombre', product_name,
+          'cantidad', total_qty,
+          'stock', COALESCE(stock_qty, 0)
+        )) as products
+      FROM (
+        SELECT 
+          display_client_name,
+          agent_code,
+          product_code,
+          product_name,
+          SUM(quantity) as total_qty
+        FROM mapped_orders
+        GROUP BY display_client_name, agent_code, product_code, product_name
+      ) sub
+      LEFT JOIN inventory i ON sub.product_code = i.product_code
+      GROUP BY display_client_name
       ORDER BY 
-        CASE WHEN o.client_name = 'GRAN CANARIA' THEN 0 ELSE 1 END,
-        o.client_name ASC
+        CASE WHEN display_client_name = 'GRAN CANARIA' THEN 0 ELSE 1 END,
+        display_client_name ASC
     `;
     const result = await pool.query(query);
     res.json(result.rows);
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
-app.get('/api/stats', async (req, res) => {
+// Limpiar pedidos (Para empezar el turno de cero)
+app.post('/api/reset', async (req, res) => {
   try {
-    const result = await pool.query('SELECT * FROM daily_stats ORDER BY log_date DESC LIMIT 30');
-    res.json(result.rows);
+    await pool.query('DELETE FROM orders');
+    notify({ type: 'update' });
+    res.json({ status: 'reset ok' });
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
@@ -165,4 +186,13 @@ app.post('/api/scan', async (req, res) => {
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
-app.listen(PORT, () => console.log(`🚀 Factory Engine V6 Operativo en puerto ${PORT}`));
+app.get('/api/stats', async (req, res) => {
+  try {
+    const result = await pool.query('SELECT * FROM daily_stats ORDER BY log_date DESC LIMIT 30');
+    res.json(result.rows);
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+app.use(express.static(__dirname));
+
+app.listen(PORT, () => console.log(`🚀 Engine V7 (Pure Records) Operativo en ${PORT}`));
