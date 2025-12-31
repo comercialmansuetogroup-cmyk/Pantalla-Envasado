@@ -178,7 +178,7 @@ export const ClientColumn: React.FC<ClientColumnProps> = ({ group, darkMode, set
                 <div className="flex items-center gap-2">
                   <Hash size={12} className="text-red-600 opacity-70" />
                   <span className={`text-[10px] font-black uppercase tracking-wider ${darkMode ? 'text-white/60' : 'text-slate-600'}`}>
-                    REFS
+                    PRODUCTOS
                   </span>
                 </div>
                 <span className={`text-sm font-black tabular-nums ${darkMode ? 'text-white' : 'text-slate-800'}`}>{group.products.length}</span>
@@ -188,7 +188,7 @@ export const ClientColumn: React.FC<ClientColumnProps> = ({ group, darkMode, set
                  <div className="flex items-center gap-2">
                   <Boxes size={12} className="text-blue-500 opacity-70" />
                   <span className={`text-[10px] font-black uppercase tracking-wider ${darkMode ? 'text-white/60' : 'text-slate-600'}`}>
-                    HECHO
+                    STOCK BODEGA
                   </span>
                 </div>
                 <span className="text-sm font-black text-blue-500 tabular-nums">{totalStock.toLocaleString()}</span>
@@ -198,7 +198,7 @@ export const ClientColumn: React.FC<ClientColumnProps> = ({ group, darkMode, set
                  <div className="flex items-center gap-2">
                   <AlertTriangle size={12} className="text-orange-500 opacity-70" />
                   <span className={`text-[10px] font-black uppercase tracking-wider ${darkMode ? 'text-white/60' : 'text-slate-600'}`}>
-                    PEND
+                    A PRODUCIR
                   </span>
                 </div>
                 <span className="text-sm font-black text-orange-500 tabular-nums">{totalPending.toLocaleString()}</span>
