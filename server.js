@@ -3,9 +3,13 @@ const express = require('express');
 const cors = require('cors');
 const bodyParser = require('body-parser');
 const { Pool } = require('pg');
+const path = require('path');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
+
+// CONFIGURACIÓN CRÍTICA: Decirle a Express que trate .ts y .tsx como JavaScript
+express.static.mime.define({'application/javascript': ['ts', 'tsx']});
 
 const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
@@ -16,7 +20,7 @@ app.use(cors());
 app.use(bodyParser.json({ limit: '50mb' }));
 app.use(express.static(__dirname));
 
-// --- 1. ESQUEMA DE BASE DE DATOS PROFESIONAL ---
+// --- 1. ESQUEMA DE BASE DE DATOS ---
 const initDB = async () => {
   try {
     await pool.query(`
@@ -41,7 +45,7 @@ const initDB = async () => {
         client_count INTEGER DEFAULT 0
       );
     `);
-    console.log('✅ Base de datos sincronizada.');
+    console.log('✅ Base de Datos Postgres Lista.');
   } catch (err) {
     console.error('❌ Error DB:', err);
   }
@@ -61,7 +65,7 @@ const notify = (data) => clients.forEach(c => c.write(`data: ${JSON.stringify(da
 
 // --- 3. ENDPOINTS API ---
 
-// Obtener datos agrupados por cliente (Lógica en SQL)
+// Obtener datos agrupados por cliente desde SQL (La fuente de la verdad)
 app.get('/api/data', async (req, res) => {
   try {
     const query = `
@@ -95,7 +99,7 @@ app.get('/api/stats', async (req, res) => {
   }
 });
 
-// Endpoint del Escáner (Suma al inventario persistente)
+// Endpoint del Escáner
 app.post('/api/scan', async (req, res) => {
   const { codigo, cantidad } = req.body;
   try {
@@ -111,7 +115,7 @@ app.post('/api/scan', async (req, res) => {
   }
 });
 
-// Webhook de Make (Actualiza pedidos y estadísticas)
+// Webhook de Make
 app.post('/api/webhook', async (req, res) => {
   const { zonas } = req.body;
   try {
@@ -151,4 +155,4 @@ app.post('/api/webhook', async (req, res) => {
   }
 });
 
-app.listen(PORT, () => console.log(`🚀 Servidor en puerto ${PORT}`));
+app.listen(PORT, () => console.log(`🚀 FactoryServer activo en puerto ${PORT}`));
