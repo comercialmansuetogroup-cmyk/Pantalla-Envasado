@@ -22,6 +22,26 @@
     .custom-scroll::-webkit-scrollbar { width: 4px; height: 4px; }
     .custom-scroll::-webkit-scrollbar-thumb { background: #dc2626; border-radius: 4px; }
     .custom-scroll::-webkit-scrollbar-track { background: rgba(0,0,0,0.1); }
+
+    /* ESTILOS DE IMPRESIÓN PARA PDF */
+    @media print {
+      @page { margin: 1cm; size: landscape; }
+      body { 
+        background-color: white !important; 
+        color: black !important; 
+        overflow: visible !important; 
+        height: auto !important; 
+        width: 100% !important;
+      }
+      header, nav, .no-print, button, ::-webkit-scrollbar { 
+        display: none !important; 
+      }
+      /* Forzar colores de fondo para gráficas */
+      * { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
+      
+      /* Ajustes específicos para el dashboard al imprimir */
+      main { overflow: visible !important; position: static !important; }
+    }
   </style>
 <script type="importmap">
 {

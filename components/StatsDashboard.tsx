@@ -54,7 +54,6 @@ export const StatsDashboard: React.FC<StatsDashboardProps> = ({ darkMode, data }
         const res = await fetch(`/api/history?period=${filter}`);
         if (res.ok) {
           const json = await res.json();
-          // Si no hay datos suficientes, mostrar mensaje o array vacío
           setHistoryData(json);
         } else {
           console.error("Error fetching history");
@@ -69,8 +68,59 @@ export const StatsDashboard: React.FC<StatsDashboardProps> = ({ darkMode, data }
     fetchHistory();
   }, [filter]);
 
+  // --- LÓGICA DE EXPORTACIÓN ---
+  const downloadCSV = () => {
+    // BOM para que Excel reconozca UTF-8 correctamente
+    const BOM = "\uFEFF"; 
+    let csvContent = BOM;
+    
+    // Encabezado
+    csvContent += `REPORTE DE ANALITICA INDUSTRIAL - ANSUETO\n`;
+    csvContent += `Fecha Generacion;${new Date().toLocaleString()}\n`;
+    csvContent += `Filtro Temporal;${filter.toUpperCase()}\n\n`;
+
+    // Sección KPIs
+    csvContent += "RESUMEN EJECUTIVO\n";
+    csvContent += "Indicador;Valor\n";
+    csvContent += `Unidades Producidas;${totalProduction}\n`;
+    csvContent += `Eficiencia Global;${efficiency}%\n`;
+    csvContent += `Regiones Activas;${activeZones}\n`;
+    csvContent += `Promedio por Zona;${averagePerZone}\n\n`;
+
+    // Sección Histórico
+    csvContent += `HISTORICO DE PRODUCCION (${filter.toUpperCase()})\n`;
+    csvContent += "Periodo;Produccion\n";
+    historyData.forEach(row => {
+      csvContent += `${row.date} (${row.fullDate ? row.fullDate.split('T')[0] : ''});${row.produccion}\n`;
+    });
+    csvContent += "\n";
+
+    // Sección Top Productos
+    csvContent += "TOP 10 PRODUCTOS\n";
+    csvContent += "Producto;Cantidad Total\n";
+    topItems.forEach(item => {
+      csvContent += `${item.name};${item.qty}\n`;
+    });
+
+    // Crear Blob y descargar
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.setAttribute('download', `Reporte_Ansueto_${filter}_${new Date().toISOString().slice(0,10)}.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
+
   const exportData = (type: 'csv' | 'pdf') => {
-    alert(`Generando reporte ${type.toUpperCase()} con los filtros actuales...`);
+    if (type === 'csv') {
+      downloadCSV();
+    } else {
+      // Para PDF, invocamos la impresión del navegador.
+      // Los estilos CSS en index.html (@media print) se encargarán de ocultar botones y dejarlo limpio.
+      window.print();
+    }
   };
 
   // Estilos
@@ -83,24 +133,24 @@ export const StatsDashboard: React.FC<StatsDashboardProps> = ({ darkMode, data }
   const tooltipBg = darkMode ? '#0a0c10' : '#ffffff';
   const tooltipBorder = darkMode ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.1)';
 
-  // Determinamos el título de la gráfica según el filtro
   const chartTitle = filter === 'week' ? 'Últimas 4 Semanas' 
                    : filter === 'month' ? 'Últimos 12 Meses'
                    : filter === 'quarter' ? 'Evolución Trimestral'
                    : 'Histórico Anual';
 
   return (
-    <div className={`p-16 h-full overflow-y-auto space-y-16 custom-scroll transition-colors duration-300 ${bgClass}`}>
+    <div className={`p-16 h-full overflow-y-auto space-y-16 custom-scroll transition-colors duration-300 ${bgClass} print:p-0 print:overflow-visible print:bg-white print:h-auto`}>
       {/* Header Analítica */}
-      <div className={`flex justify-between items-end border-b pb-10 transition-colors ${darkMode ? 'border-white/5' : 'border-slate-200'}`}>
+      <div className={`flex justify-between items-end border-b pb-10 transition-colors ${darkMode ? 'border-white/5' : 'border-slate-200'} print:border-slate-900`}>
         <div>
-          <h2 className={`text-7xl font-black uppercase italic tracking-tighter ${textTitleClass}`}>Analítica Industrial</h2>
+          <h2 className={`text-7xl font-black uppercase italic tracking-tighter ${textTitleClass} print:text-black`}>Analítica Industrial</h2>
           <div className="text-sm font-bold text-red-600 uppercase tracking-[0.5em] mt-4 flex items-center gap-3">
             <div className="w-12 h-0.5 bg-red-600"></div> Intelligence Node v18
           </div>
         </div>
         
-        <div className="flex gap-6">
+        {/* Ocultar botones en impresión */}
+        <div className="flex gap-6 print:hidden">
           <div className={`flex p-1.5 border rounded-sm ${darkMode ? 'bg-white/5 border-white/10' : 'bg-white border-slate-200'}`}>
             {(['week', 'month', 'quarter', 'year'] as TimeFilter[]).map(f => (
               <button key={f} onClick={() => setFilter(f)} className={`px-8 py-3 text-[12px] font-black uppercase transition-all ${filter === f ? 'bg-red-600 text-white shadow-lg' : (darkMode ? 'text-white opacity-40 hover:opacity-100' : 'text-slate-600 opacity-60 hover:opacity-100 hover:bg-slate-100')}`}>
@@ -127,7 +177,7 @@ export const StatsDashboard: React.FC<StatsDashboardProps> = ({ darkMode, data }
           { label: 'Regiones Activas', val: `${activeZones}`, icon: Users, color: 'text-blue-500', trend: 'Estable', trendUp: null },
           { label: 'Media Por Zona', val: averagePerZone.toLocaleString(), icon: Calendar, color: 'text-orange-500', trend: '-1.5%', trendUp: false }
         ].map((kpi, i) => (
-          <div key={i} className={`p-12 border flex flex-col gap-6 group transition-all duration-300 ${cardBgClass} ${darkMode ? 'hover:bg-white/5' : 'hover:shadow-md'}`}>
+          <div key={i} className={`p-12 border flex flex-col gap-6 group transition-all duration-300 ${cardBgClass} ${darkMode ? 'hover:bg-white/5' : 'hover:shadow-md'} print:border-slate-300 print:bg-white print:break-inside-avoid`}>
             <div className="flex justify-between items-start">
               <kpi.icon className={kpi.color} size={40} />
               <span className={`text-3xl font-black tracking-tight ${
@@ -139,21 +189,21 @@ export const StatsDashboard: React.FC<StatsDashboardProps> = ({ darkMode, data }
               </span>
             </div>
             <div>
-              <p className={`text-[12px] font-black uppercase tracking-[0.2em] mb-2 ${textSubClass}`}>{kpi.label}</p>
-              <p className={`text-5xl font-black tabular-nums ${textTitleClass}`}>{kpi.val}</p>
+              <p className={`text-[12px] font-black uppercase tracking-[0.2em] mb-2 ${textSubClass} print:text-slate-600`}>{kpi.label}</p>
+              <p className={`text-5xl font-black tabular-nums ${textTitleClass} print:text-black`}>{kpi.val}</p>
             </div>
           </div>
         ))}
       </div>
 
       {/* Gráfica Histórica y Top */}
-      <div className="grid grid-cols-3 gap-10">
-        <div className={`col-span-2 p-12 border h-[650px] flex flex-col ${cardBgClass}`}>
+      <div className="grid grid-cols-3 gap-10 print:block print:space-y-10">
+        <div className={`col-span-2 p-12 border h-[650px] flex flex-col ${cardBgClass} print:border-slate-300 print:bg-white print:h-[500px] print:mb-8 print:break-inside-avoid`}>
           <div className="flex justify-between items-center mb-12">
-            <h3 className={`text-sm font-black uppercase tracking-[0.4em] flex items-center gap-4 ${darkMode ? 'text-white/60' : 'text-slate-500'}`}>
+            <h3 className={`text-sm font-black uppercase tracking-[0.4em] flex items-center gap-4 ${darkMode ? 'text-white/60' : 'text-slate-500'} print:text-slate-800`}>
               <div className="w-2 h-8 bg-red-600"></div> Evolución Producción ({chartTitle})
             </h3>
-            <div className={`flex gap-6 text-[10px] font-black uppercase ${darkMode ? 'text-white/40' : 'text-slate-400'}`}>
+            <div className={`flex gap-6 text-[10px] font-black uppercase ${darkMode ? 'text-white/40' : 'text-slate-400'} print:text-slate-600`}>
                <div className="flex items-center gap-2"><div className="w-3 h-3 bg-red-600"></div> VOLUMEN</div>
             </div>
           </div>
@@ -178,10 +228,6 @@ export const StatsDashboard: React.FC<StatsDashboardProps> = ({ darkMode, data }
                   <CartesianGrid strokeDasharray="3 3" stroke={gridColor} vertical={false} />
                   <XAxis dataKey="date" stroke={axisColor} fontSize={11} axisLine={false} tickLine={false} fontWeight={700} />
                   <YAxis stroke={axisColor} fontSize={11} axisLine={false} tickLine={false} fontWeight={700} />
-                  <Tooltip 
-                    contentStyle={{ background: tooltipBg, border: `1px solid ${tooltipBorder}`, borderRadius: '4px', boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1)' }}
-                    itemStyle={{ fontWeight: '900', fontSize: '12px', textTransform: 'uppercase', color: darkMode ? '#fff' : '#1e293b' }}
-                  />
                   <Area type="monotone" dataKey="produccion" stroke="#dc2626" strokeWidth={5} fillOpacity={1} fill="url(#prodColor)" />
                 </AreaChart>
               </ResponsiveContainer>
@@ -190,11 +236,11 @@ export const StatsDashboard: React.FC<StatsDashboardProps> = ({ darkMode, data }
         </div>
 
         {/* Top 10 Productos */}
-        <div className={`p-12 border h-[650px] flex flex-col ${cardBgClass}`}>
-          <h3 className={`text-sm font-black uppercase tracking-[0.4em] flex items-center gap-4 mb-12 ${darkMode ? 'text-white/60' : 'text-slate-500'}`}>
+        <div className={`p-12 border h-[650px] flex flex-col ${cardBgClass} print:border-slate-300 print:bg-white print:h-auto print:break-inside-avoid`}>
+          <h3 className={`text-sm font-black uppercase tracking-[0.4em] flex items-center gap-4 mb-12 ${darkMode ? 'text-white/60' : 'text-slate-500'} print:text-slate-800`}>
             <div className="w-2 h-8 bg-blue-600"></div> TOP PRODUCTOS (VOLUMEN)
           </h3>
-          <div className="flex-1 overflow-y-auto space-y-8 custom-scroll pr-4">
+          <div className="flex-1 overflow-y-auto space-y-8 custom-scroll pr-4 print:overflow-visible print:h-auto">
             {topItems.length === 0 ? (
                <div className="h-full flex items-center justify-center opacity-40 text-xs font-black uppercase text-center">
                  Esperando datos...
@@ -202,19 +248,19 @@ export const StatsDashboard: React.FC<StatsDashboardProps> = ({ darkMode, data }
             ) : topItems.map((item, i) => (
               <div key={i} className="space-y-3 group">
                 <div className="flex justify-between items-end">
-                  <span className={`text-[12px] font-black uppercase truncate max-w-[200px] transition-colors ${darkMode ? 'text-white/80 group-hover:text-red-500' : 'text-slate-700 group-hover:text-red-600'}`}>{item.name}</span>
+                  <span className={`text-[12px] font-black uppercase truncate max-w-[200px] transition-colors ${darkMode ? 'text-white/80 group-hover:text-red-500' : 'text-slate-700 group-hover:text-red-600'} print:text-slate-800`}>{item.name}</span>
                   <span className="text-lg font-black text-red-600 tabular-nums">{item.qty.toLocaleString()}</span>
                 </div>
-                <div className={`h-2 w-full relative ${darkMode ? 'bg-white/5' : 'bg-slate-100'}`}>
+                <div className={`h-2 w-full relative ${darkMode ? 'bg-white/5' : 'bg-slate-100'} print:bg-slate-100`}>
                   <div 
-                    className="h-full bg-blue-600 transition-all duration-1000 ease-out" 
-                    style={{ width: `${(item.qty / topItems[0].qty) * 100}%` }} 
+                    className="h-full bg-blue-600 transition-all duration-1000 ease-out print:bg-blue-600" 
+                    style={{ width: `${(item.qty / topItems[0].qty) * 100}%`, printColorAdjust: 'exact' }} 
                   />
                 </div>
               </div>
             ))}
           </div>
-          <button className={`mt-10 w-full py-4 text-[10px] font-black uppercase tracking-widest hover:bg-red-600 hover:text-white transition-all flex items-center justify-center gap-3 ${darkMode ? 'bg-white/5 text-white' : 'bg-slate-100 text-slate-800'}`}>
+          <button className={`mt-10 w-full py-4 text-[10px] font-black uppercase tracking-widest hover:bg-red-600 hover:text-white transition-all flex items-center justify-center gap-3 ${darkMode ? 'bg-white/5 text-white' : 'bg-slate-100 text-slate-800'} print:hidden`}>
             <Share2 size={14} /> Compartir Informe Semanal
           </button>
         </div>
