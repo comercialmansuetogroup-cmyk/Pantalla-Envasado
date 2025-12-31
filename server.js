@@ -1,6 +1,5 @@
 
 const express = require('express');
-const path = require('path');
 const cors = require('cors');
 const bodyParser = require('body-parser');
 const { Pool } = require('pg');
@@ -8,7 +7,6 @@ const { Pool } = require('pg');
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-// Configuración de PostgreSQL - Usa la variable de Railway
 const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
   ssl: { rejectUnauthorized: false }
@@ -18,15 +16,10 @@ app.use(cors());
 app.use(bodyParser.json({ limit: '50mb' }));
 app.use(express.static(__dirname));
 
-/**
- * 1. INICIALIZACIÓN DE TABLAS
- * Este bloque crea las tablas si no existen.
- * 'orders' se limpia con cada webhook de Make.
- * 'inventory' es PERMANENTE (tu stock acumulado).
- */
+// --- 1. BASE DE DATOS: ESQUEMA COMPLETO ---
 const initDB = async () => {
   try {
-    // Tabla de Pedidos (Lo que hay que producir)
+    // Pedidos activos
     await pool.query(`
       CREATE TABLE IF NOT EXISTS orders (
         id SERIAL PRIMARY KEY,
@@ -39,7 +32,7 @@ const initDB = async () => {
       )
     `);
 
-    // Tabla de Inventario (Lo que ya se ha escaneado)
+    // Inventario físico acumulado
     await pool.query(`
       CREATE TABLE IF NOT EXISTS inventory (
         product_code TEXT PRIMARY KEY,
@@ -48,16 +41,25 @@ const initDB = async () => {
       )
     `);
 
-    console.log('✅ PostgreSQL: Estructura de tablas verificada.');
+    // Histórico para Estadísticas
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS daily_stats (
+        id SERIAL PRIMARY KEY,
+        log_date DATE DEFAULT CURRENT_DATE,
+        total_units NUMERIC,
+        client_count INTEGER,
+        UNIQUE(log_date)
+      )
+    `);
+
+    console.log('✅ PostgreSQL: Esquema de 3 tablas listo.');
   } catch (err) {
-    console.error('❌ Error inicializando DB:', err);
+    console.error('❌ Error DB:', err);
   }
 };
 initDB();
 
-/**
- * 2. REAL-TIME ENGINE (SSE)
- */
+// --- 2. SSE (TIEMPO REAL) ---
 let clients = [];
 app.get('/api/events', (req, res) => {
   res.setHeader('Content-Type', 'text/event-stream');
@@ -67,108 +69,85 @@ app.get('/api/events', (req, res) => {
   req.on('close', () => { clients = clients.filter(c => c !== res); });
 });
 
-const broadcast = (data) => clients.forEach(c => c.write(`data: ${JSON.stringify(data)}\n\n`));
+const notify = (data) => clients.forEach(c => c.write(`data: ${JSON.stringify(data)}\n\n`));
 
-/**
- * 3. ENDPOINTS DE NEGOCIO
- */
+// --- 3. ENDPOINTS ---
 
-// Obtener datos combinados: Pedidos + Stock Real
+// Dashboard Principal
 app.get('/api/data', async (req, res) => {
   try {
-    // Consulta SQL que une pedidos con stock físico mediante LEFT JOIN
     const query = `
-      SELECT 
-        o.agent_code,
-        o.client_name,
-        o.product_name,
-        o.product_code,
-        o.quantity as pedido_qty,
-        COALESCE(i.stock_qty, 0) as stock_real
+      SELECT o.*, COALESCE(i.stock_qty, 0) as stock_real
       FROM orders o
       LEFT JOIN inventory i ON o.product_code = i.product_code
-      ORDER BY o.agent_code ASC, o.product_name ASC
+      ORDER BY o.agent_code, o.product_name
     `;
     const result = await pool.query(query);
-    
-    // Agrupamos por agente para el Dashboard
-    const zones = {};
-    result.rows.forEach(row => {
-      if (!zones[row.agent_code]) {
-        zones[row.agent_code] = {
-          codigo_agente: row.agent_code,
-          nombre_agente: row.client_name,
-          productos: []
-        };
-      }
-      zones[row.agent_code].productos.push({
-        codigo: row.product_code,
-        nombre: row.product_name,
-        cantidad: Number(row.pedido_qty),
-        stock_fisico: Number(row.stock_real)
-      });
-    });
-
-    res.json({ zonas: Object.values(zones) });
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
+    res.json(result.rows);
+  } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
-// ESCÁNER: Sumar stock físico a la base de datos
+// Datos Estadísticos
+app.get('/api/stats', async (req, res) => {
+  try {
+    const result = await pool.query('SELECT * FROM daily_stats ORDER BY log_date DESC LIMIT 30');
+    res.json(result.rows);
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// Escáner
 app.post('/api/scan', async (req, res) => {
   const { codigo, cantidad } = req.body;
-  const pCode = String(codigo).toUpperCase();
-  const qty = Number(cantidad);
-
-  if (!pCode || isNaN(qty)) return res.status(400).json({ error: 'Datos de escaneo inválidos' });
-
   try {
-    // UPSERT: Si el producto existe, suma la cantidad. Si no, lo crea.
     await pool.query(`
-      INSERT INTO inventory (product_code, stock_qty, last_update)
-      VALUES ($1, $2, CURRENT_TIMESTAMP)
-      ON CONFLICT (product_code) 
-      DO UPDATE SET 
-        stock_qty = inventory.stock_qty + EXCLUDED.stock_qty,
-        last_update = CURRENT_TIMESTAMP
-    `, [pCode, qty]);
-
-    broadcast({ type: 'update', updatedCode: pCode });
-    res.json({ status: 'success', message: `Stock de ${pCode} actualizado` });
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
+      INSERT INTO inventory (product_code, stock_qty) 
+      VALUES ($1, $2)
+      ON CONFLICT (product_code) DO UPDATE SET stock_qty = inventory.stock_qty + EXCLUDED.stock_qty
+    `, [String(codigo).toUpperCase(), Number(cantidad)]);
+    notify({ type: 'update', updatedCode: codigo });
+    res.json({ status: 'ok' });
+  } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
-// MAKE WEBHOOK: Reemplaza la lista de pedidos diaria
+// Make Webhook
 app.post('/api/webhook', async (req, res) => {
   const { zonas } = req.body;
-  if (!zonas || !Array.isArray(zonas)) return res.status(400).json({ error: 'Formato de Make inválido' });
-
   try {
     await pool.query('BEGIN');
-    await pool.query('DELETE FROM orders'); // Borramos pedidos viejos, pero el 'inventory' se queda intacto
+    await pool.query('DELETE FROM orders');
+    
+    let totalUnits = 0;
+    const clientSet = new Set();
 
-    for (const zona of zonas) {
-      const code = zona.codigo_agente || '0';
-      const name = zona.nombre_agente || 'CLIENTE';
-      if (Array.isArray(zona.productos)) {
-        for (const p of zona.productos) {
+    for (const z of zonas) {
+      clientSet.add(z.codigo_agente);
+      if (z.productos) {
+        for (const p of z.productos) {
+          totalUnits += Number(p.cantidad);
           await pool.query(
             'INSERT INTO orders (agent_code, client_name, product_code, product_name, quantity) VALUES ($1, $2, $3, $4, $5)',
-            [code, name, String(p.codigo).toUpperCase(), p.nombre || 'Producto', p.cantidad || 0]
+            [z.codigo_agente, z.nombre_agente, String(p.codigo).toUpperCase(), p.nombre || 'Producto', p.cantidad]
           );
         }
       }
     }
+
+    // Actualizar histórico diario
+    await pool.query(`
+      INSERT INTO daily_stats (log_date, total_units, client_count)
+      VALUES (CURRENT_DATE, $1, $2)
+      ON CONFLICT (log_date) DO UPDATE SET 
+        total_units = EXCLUDED.total_units,
+        client_count = EXCLUDED.client_count
+    `, [totalUnits, clientSet.size]);
+
     await pool.query('COMMIT');
-    broadcast({ type: 'update' });
-    res.json({ status: 'ok', message: 'Pedidos sincronizados en PostgreSQL' });
+    notify({ type: 'update' });
+    res.json({ status: 'orders_and_stats_updated' });
   } catch (err) {
     await pool.query('ROLLBACK');
     res.status(500).json({ error: err.message });
   }
 });
 
-app.listen(PORT, () => console.log(`🚀 Factory Engine (Postgres Ready) en puerto ${PORT}`));
+app.listen(PORT, () => console.log(`🔥 Servidor corriendo en puerto ${PORT}`));

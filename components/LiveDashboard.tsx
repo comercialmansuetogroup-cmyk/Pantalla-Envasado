@@ -21,9 +21,10 @@ export const LiveDashboard: React.FC<LiveDashboardProps> = ({ data, darkMode, se
         3xl:grid-cols-5
       `}>
         {data.map((clientGroup) => (
+          /* Fix: Changed prop 'data' to 'group' to match ClientColumn's expected interface */
           <ClientColumn 
             key={clientGroup.clientId || clientGroup.name} 
-            data={clientGroup} 
+            group={clientGroup} 
             darkMode={darkMode}
             settings={settings}
             highlightedCode={highlightedCode}

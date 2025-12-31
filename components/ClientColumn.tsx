@@ -1,83 +1,57 @@
+
 import React from 'react';
-import { VisualSettings, ClientData } from '../types';
-import { TrendBadge } from './TrendBadge';
-import { ProductRow } from './ProductRow';
-import { roundSafe } from '../utils';
+import { Package, CheckCircle } from 'lucide-react';
 
-interface ClientColumnProps {
-    data: ClientData;
-    darkMode: boolean;
-    settings: VisualSettings;
-    highlightedCode: string | null;
-}
-
-export const ClientColumn: React.FC<ClientColumnProps> = ({ data, darkMode, settings, highlightedCode }) => {
-  const productCount = data.productsArray.length; // Use the processed array, not the map
-  const maxRows = settings.maxRowsPerCol;
-  const numCols = Math.ceil(productCount / maxRows) || 1;
-  const columns = [];
-  
-  for (let i = 0; i < numCols; i++) {
-      columns.push(data.productsArray.slice(i * maxRows, (i + 1) * maxRows));
-  }
-
-  // ANCHO FIJO: Forzamos un ancho que el navegador no pueda reducir
-  const SINGLE_COL_WIDTH = 450;
-  const columnWidth = numCols * SINGLE_COL_WIDTH;
+export const ClientColumn = ({ group, darkMode, settings, highlightedCode }) => {
+  const total = group.products.reduce((acc, p) => acc + p.cantidad, 0);
+  const done = group.products.filter(p => p.stock >= p.cantidad).length;
 
   return (
-    <div 
-        style={{ width: `${columnWidth}px`, minWidth: `${columnWidth}px` }} 
-        className={`flex-none flex flex-col h-full border-r last:border-r-0 transition-all ${darkMode ? 'bg-slate-950 border-white/5' : 'bg-white border-gray-200'}`}
-    >
-      <div className={`px-4 py-4 border-b-2 ${darkMode ? 'bg-white/[0.01] border-white/10' : 'bg-gray-50 border-gray-200'}`}>
-        <div className="flex items-center justify-between mb-2">
-            <div className="flex items-center gap-4 overflow-hidden">
-                <h3 className={`font-black uppercase tracking-tighter truncate leading-none ${darkMode ? 'text-white' : 'text-gray-900'}`} style={{ fontSize: `${settings.clientNameFontSize}px` }}>
-                {data.name}
-                </h3>
-                <TrendBadge value={data.totalTrend} darkMode={darkMode} fontSize={settings.trendFontSize + 2} />
-            </div>
+    <div className={`flex-none w-[420px] flex flex-col h-full rounded-3xl border shadow-2xl overflow-hidden ${darkMode ? 'bg-slate-900/50 border-white/5' : 'bg-white border-gray-200'}`}>
+      <div className="p-6 border-b bg-black/10">
+        <div className="flex justify-between items-start">
+          <h3 className="text-3xl font-black uppercase tracking-tighter truncate leading-none">{group.name}</h3>
+          <span className="text-[10px] font-black bg-red-600 text-white px-2 py-1 rounded-full">{done}/{group.products.length}</span>
         </div>
-        <div className="flex w-full">
-             {Array.from({ length: numCols }).map((_, idx) => (
-                <div key={idx} style={{ width: `${100/numCols}%` }} className={`flex justify-between items-center px-4 mt-2 opacity-50 font-black uppercase tracking-wider ${idx > 0 ? 'border-l border-white/[0.05]' : ''}`}>
-                    <span className="flex-1" style={{ fontSize: `${settings.tableHeaderFontSize}px` }}>Referencia</span>
-                    <div className="grid grid-cols-3 gap-2 w-[180px] xl:w-[220px] text-right" style={{ fontSize: `${settings.tableHeaderFontSize}px` }}>
-                        <span>Stock</span>
-                        <span>Faltante</span>
-                        <span>Total</span>
-                    </div>
+        <p className="text-[10px] font-bold opacity-30 mt-2 tracking-widest uppercase">ID AGENTE: {group.code}</p>
+      </div>
+
+      <div className="flex-1 overflow-y-auto p-2 space-y-2 custom-scroll">
+        {group.products.map(p => {
+          const lack = Math.max(0, p.cantidad - p.stock);
+          const isFinished = lack <= 0;
+          const isHigh = highlightedCode === p.codigo;
+
+          return (
+            <div key={p.codigo} className={`p-4 rounded-2xl border transition-all duration-500 ${isHigh ? 'bg-green-500/20 scale-[1.02]' : (isFinished ? 'opacity-30' : (darkMode ? 'bg-white/5 border-white/5' : 'bg-gray-50 border-gray-100'))}`}>
+              <div className="flex justify-between items-center mb-1">
+                <span className="font-black text-lg">#{p.codigo}</span>
+                {isFinished && <CheckCircle size={14} className="text-green-500" />}
+              </div>
+              <div className="text-[10px] font-bold opacity-50 uppercase truncate mb-3">{p.nombre}</div>
+              
+              <div className="flex justify-between items-end">
+                <div className="flex flex-col">
+                  <span className="text-[8px] font-black opacity-40 uppercase">Stock</span>
+                  <span className="font-bold text-blue-500">{p.stock}</span>
                 </div>
-             ))}
-        </div>
+                <div className="flex flex-col items-center">
+                  <span className="text-[8px] font-black opacity-40 uppercase">Falta</span>
+                  <span className={`font-black ${isFinished ? 'text-green-500' : 'text-orange-500'}`}>{isFinished ? 'OK' : lack}</span>
+                </div>
+                <div className="flex flex-col items-end">
+                  <span className="text-[8px] font-black opacity-40 uppercase">Total</span>
+                  <span className="text-2xl font-black leading-none">{p.cantidad}</span>
+                </div>
+              </div>
+            </div>
+          );
+        })}
       </div>
-      <div className="flex-1 flex overflow-hidden">
-        {columns.map((colProducts, colIdx) => (
-          <div key={colIdx} style={{ width: `${100/numCols}%` }} className={`flex flex-col p-1 ${colIdx > 0 ? 'border-l border-white/[0.05]' : ''}`}>
-            {colProducts.map((p: any) => (
-                <ProductRow 
-                    key={p.rowId} 
-                    p={p} 
-                    settings={settings} 
-                    darkMode={darkMode} 
-                    isHighlighted={highlightedCode ? p.code === highlightedCode : false}
-                />
-            ))}
-            {/* Relleno para mantener alineación vertical si la columna no está llena */}
-            {colProducts.length < maxRows && Array.from({ length: maxRows - colProducts.length }).map((_, emptyIdx) => (
-              <div key={`empty-${emptyIdx}`} className="py-2.5 px-3 border-b border-transparent opacity-0">.</div>
-            ))}
-          </div>
-        ))}
-      </div>
-      <div className={`px-8 py-6 mt-auto border-t-2 ${darkMode ? 'bg-red-600/[0.03] border-red-600/20' : 'bg-red-50 border-red-200'}`}>
-        <div className={`flex flex-col ${numCols > 1 ? 'items-center text-center' : 'items-start'}`}>
-          <span className="text-[11px] font-black uppercase text-slate-500 tracking-[0.2em] leading-none mb-2">TOTAL PEDIDOS</span>
-          <span className={`font-black text-red-600 leading-none tabular-nums tracking-tighter ${numCols > 1 ? 'text-8xl' : 'text-7xl xl:text-8xl'}`}>
-            {roundSafe(data.total).toLocaleString('es-ES')}
-          </span>
-        </div>
+
+      <div className="p-6 border-t bg-red-600/5">
+        <span className="text-[10px] font-black opacity-40 block mb-1">UNIDADES TOTALES</span>
+        <span className="text-7xl font-black text-red-600 tracking-tighter tabular-nums leading-none">{total}</span>
       </div>
     </div>
   );
