@@ -134,10 +134,11 @@ export const ClientColumn: React.FC<ClientColumnProps> = ({ group, darkMode, set
                         style={{ paddingTop: `${verticalPadding}px`, paddingBottom: `${verticalPadding}px` }}
                     >
                       
-                      {/* Columna 1: Info Producto */}
+                      {/* Columna 1: Info Producto - ALINEACIÓN CORREGIDA */}
                       <div className="flex flex-col min-w-0 pr-2">
-                        <div className="flex items-center gap-2">
-                          <span className={`font-black ${textColorBase}`} style={{ fontSize: `${settings.codeFontSize}px` }}>#{p.code}</span>
+                        <div className="flex items-center">
+                          {/* CAMBIO: Contenedor con ancho fijo para alinear los porcentajes */}
+                          <span className={`font-black ${textColorBase} w-[90px] min-w-[90px] inline-block`} style={{ fontSize: `${settings.codeFontSize}px` }}>#{p.code}</span>
                           <div className={isHigh ? 'brightness-0 invert' : ''}>
                              <TrendBadge value={p.trend || 0} darkMode={darkMode} fontSize={settings.trendFontSize} />
                           </div>

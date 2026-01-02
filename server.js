@@ -82,9 +82,6 @@ const notifyClients = (updatedCode, type = 'update') => {
 // --- API ENDPOINTS ---
 
 // 1. WEBHOOK: Entrada de NUEVOS PEDIDOS (Make)
-// LÓGICA CORREGIDA V4: UPSERT QUIRÚRGICO
-// Estrategia: "Busca y Actualiza o Inserta". NO BORRA NADA.
-// Esto permite recibir cargas parciales de Make sin destruir datos previos.
 app.post('/api/webhook', async (req, res) => {
   const { zonas } = req.body;
   
@@ -109,7 +106,6 @@ app.post('/api/webhook', async (req, res) => {
     for (const z of zonas) {
       const code = String(z.codigo_agente || '0').trim();
       const name = z.nombre_agente || 'DESCONOCIDO';
-      // Make a veces envía estructura plana o anidada, intentamos normalizar
       const topLevelProductName = z.nombre || 'PRODUCTO';
 
       if (z.productos && Array.isArray(z.productos)) {
@@ -119,7 +115,7 @@ app.post('/api/webhook', async (req, res) => {
           const finalProductName = p.nombre || topLevelProductName;
 
           if (qty > 0) {
-            // 1. Verificar si YA EXISTE este producto para este cliente HOY
+            // Verificar si YA EXISTE este producto para este cliente HOY
             const checkRes = await client.query(
               `SELECT id FROM orders 
                WHERE agent_code = $1 
@@ -129,8 +125,6 @@ app.post('/api/webhook', async (req, res) => {
             );
 
             if (checkRes.rows.length > 0) {
-              // 2A. ACTUALIZAR (Sustituir valor, NO sumar)
-              // Esto corrige el error de duplicados si Make se ejecuta dos veces
               await client.query(
                 `UPDATE orders 
                  SET quantity = $1, product_name = $2, agent_name = $3
@@ -139,7 +133,6 @@ app.post('/api/webhook', async (req, res) => {
               );
               countUpdate++;
             } else {
-              // 2B. INSERTAR NUEVO
               await client.query(
                 `INSERT INTO orders (agent_code, agent_name, product_code, product_name, quantity) 
                  VALUES ($1, $2, $3, $4, $5)`,
@@ -166,7 +159,7 @@ app.post('/api/webhook', async (req, res) => {
   }
 });
 
-// 2. SCAN: Entrada de PRODUCCIÓN (App Envasado)
+// 2. SCAN: Entrada de PRODUCCIÓN
 app.post('/api/scan', async (req, res) => {
   const authHeader = req.headers.authorization;
   if (!authHeader || authHeader !== 'Bearer DASHBOARD_V3_KEY_2025') {
@@ -208,32 +201,42 @@ app.post('/api/scan', async (req, res) => {
   }
 });
 
-// 3. GET DATA: Devuelve TOTAL HOY y TOTAL "ÚLTIMO DÍA ACTIVO" para comparar
-// CAMBIO LOGICA: No comparamos con ayer calendario, sino con el último día que tuvo registros.
+// 3. GET DATA: Comparativa Inteligente (Hoy vs Último Día Activo)
 app.get('/api/data', async (req, res) => {
   if (!process.env.DATABASE_URL) return res.json([]);
   try {
+    // NUEVA ESTRATEGIA SQL: 
+    // 1. Encontramos las últimas 2 fechas distintas que tienen datos.
+    // 2. Rango 1 = "Día Actual" (Puede ser hoy, o el último día cargado si hoy es domingo).
+    // 3. Rango 2 = "Día Anterior" (El día efectivo de trabajo anterior).
+    // NOTA: Si hoy se han cargado datos, CURRENT_DATE será Rango 1. Si no, Rango 1 será el viernes.
+    // Esto asegura que siempre comparamos "Último set de datos" contra "Penúltimo set de datos".
     const result = await pool.query(`
-      WITH DateCheck AS (
-        SELECT 
-          CURRENT_DATE as today,
-          -- Busca la fecha máxima anterior a hoy que tenga datos (Ej: Si hoy es Lunes, devolverá Viernes)
-          (SELECT MAX(received_at::DATE) FROM orders WHERE received_at::DATE < CURRENT_DATE) as last_active_date
+      WITH DateRanks AS (
+        SELECT DISTINCT 
+          received_at::DATE as active_date
+        FROM orders
+        ORDER BY active_date DESC
+        LIMIT 2
+      ),
+      PeriodData AS (
+         SELECT 
+           (SELECT active_date FROM DateRanks OFFSET 0 LIMIT 1) as current_period,
+           (SELECT active_date FROM DateRanks OFFSET 1 LIMIT 1) as previous_period
       )
       SELECT 
         o.agent_code, 
         o.agent_name, 
         o.product_code, 
         o.product_name, 
-        SUM(CASE WHEN o.received_at::DATE = (SELECT today FROM DateCheck) THEN o.quantity ELSE 0 END) as total_qty,
-        -- 'yesterday_qty' ahora contiene la cantidad del último día activo encontrado
-        SUM(CASE WHEN o.received_at::DATE = (SELECT last_active_date FROM DateCheck) THEN o.quantity ELSE 0 END) as yesterday_qty,
+        SUM(CASE WHEN o.received_at::DATE = CURRENT_DATE THEN o.quantity ELSE 0 END) as total_qty,
+        SUM(CASE WHEN o.received_at::DATE = (SELECT previous_period FROM PeriodData) THEN o.quantity ELSE 0 END) as yesterday_qty,
         COALESCE(MAX(i.stock_qty), 0) as global_stock
       FROM orders o
       LEFT JOIN inventory i ON o.product_code = i.product_code
-      -- Filtramos solo las filas que sean de HOY o del ÚLTIMO DÍA ACTIVO
-      WHERE o.received_at::DATE = (SELECT today FROM DateCheck) 
-         OR o.received_at::DATE = (SELECT last_active_date FROM DateCheck)
+      -- Traemos datos de Hoy Y del periodo anterior calculado
+      WHERE o.received_at::DATE = CURRENT_DATE 
+         OR o.received_at::DATE = (SELECT previous_period FROM PeriodData)
       GROUP BY o.agent_code, o.agent_name, o.product_code, o.product_name
       ORDER BY o.agent_code ASC
     `);
