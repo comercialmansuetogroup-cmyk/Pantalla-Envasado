@@ -1,14 +1,7 @@
-import React, { useState } from 'react';
-import { X, Server, Key, Globe, Clipboard, ArrowRight, Upload, Layout, Type, Layers, Settings, Factory } from 'lucide-react';
 
-interface VisualSettings {
-  logoLight: string | null;
-  logoDark: string | null;
-  displayMode: 'name' | 'code' | 'both';
-  maxRowsPerCol: number;
-  nameFontSize: number;
-  codeFontSize: number;
-}
+import React, { useState, useEffect } from 'react';
+import { X, Server, Key, Globe, Clipboard, ArrowRight, Upload, Layout, Type, Layers, Settings, Factory } from 'lucide-react';
+import { VisualSettings } from '../types';
 
 interface SettingsModalProps {
   isOpen: boolean;
@@ -19,6 +12,10 @@ interface SettingsModalProps {
 
 export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose, visualSettings, onSaveSettings }) => {
   const [localSettings, setLocalSettings] = useState<VisualSettings>(visualSettings);
+
+  useEffect(() => {
+    setLocalSettings(visualSettings);
+  }, [visualSettings, isOpen]);
 
   if (!isOpen) return null;
 
@@ -33,10 +30,13 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose, v
   const handleLogoUpload = (e: React.ChangeEvent<HTMLInputElement>, mode: 'light' | 'dark') => {
     const file = e.target.files?.[0];
     if (file) {
+      if (!['image/jpeg', 'image/png', 'image/jpg', 'image/webp'].includes(file.type)) {
+        alert('Formato no válido. Utilice PNG o JPG.');
+        return;
+      }
       const reader = new FileReader();
       reader.onloadend = () => {
-        const base64 = reader.result as string;
-        const newSettings = { ...localSettings, [mode === 'light' ? 'logoLight' : 'logoDark']: base64 };
+        const newSettings = { ...localSettings, [mode === 'light' ? 'logoLight' : 'logoDark']: reader.result as string };
         setLocalSettings(newSettings);
         onSaveSettings(newSettings);
       };
@@ -50,6 +50,26 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose, v
     onSaveSettings(newSettings);
   };
 
+  const handleFactoryReset = async () => {
+    if (confirm('⚠️ PELIGRO: ¿Estás seguro de borrar TODOS los datos de la base de datos?\n\nEsta acción es irreversible y reiniciará el dashboard a cero.')) {
+      try {
+        const response = await fetch('/api/reset', {
+          method: 'POST',
+        });
+        
+        if (response.ok) {
+           localStorage.clear();
+           window.location.reload();
+        } else {
+           alert('Error al intentar resetear la base de datos.');
+        }
+      } catch (error) {
+        console.error(error);
+        alert('Error de conexión con el servidor.');
+      }
+    }
+  };
+
   return (
     <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/90 backdrop-blur-md animate-fade-in">
       <div className="bg-white dark:bg-slate-900 rounded-[3rem] shadow-2xl w-full max-w-4xl border border-gray-200 dark:border-slate-800 overflow-hidden flex flex-col h-[90vh]">
@@ -57,7 +77,6 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose, v
         {/* Header */}
         <div className="px-10 py-8 border-b border-gray-100 dark:border-slate-800 flex justify-between items-center bg-red-600 flex-none">
           <div className="flex items-center gap-4 text-white">
-            {/* Fix: Added missing Settings icon to imports and using it here */}
             <Settings size={32} />
             <div>
               <h2 className="text-2xl font-black uppercase tracking-tight">Panel de Configuración</h2>
@@ -82,7 +101,6 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose, v
                 <p className="text-[10px] font-black uppercase text-slate-400">Logotipo Modo Claro</p>
                 <div className="flex items-center gap-4">
                   <div className="w-16 h-16 bg-white rounded-xl border border-slate-200 flex items-center justify-center overflow-hidden">
-                    {/* Fix: Added missing Factory icon to imports and using it here */}
                     {localSettings.logoLight ? <img src={localSettings.logoLight} className="w-full h-full object-contain" /> : <Factory className="text-slate-300" />}
                   </div>
                   <label className="flex-1 cursor-pointer py-3 px-4 bg-red-600 text-white rounded-xl text-center font-black text-xs uppercase hover:bg-red-700 transition-colors">
@@ -95,7 +113,6 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose, v
                 <p className="text-[10px] font-black uppercase text-slate-500">Logotipo Modo Oscuro</p>
                 <div className="flex items-center gap-4">
                   <div className="w-16 h-16 bg-slate-800 rounded-xl border border-slate-700 flex items-center justify-center overflow-hidden">
-                    {/* Fix: Added missing Factory icon to imports and using it here */}
                     {localSettings.logoDark ? <img src={localSettings.logoDark} className="w-full h-full object-contain" /> : <Factory className="text-slate-600" />}
                   </div>
                   <label className="flex-1 cursor-pointer py-3 px-4 bg-red-600 text-white rounded-xl text-center font-black text-xs uppercase hover:bg-red-700 transition-colors">
@@ -200,6 +217,12 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose, v
                 <ArrowRight size={20} />
                 <p className="text-xs font-bold leading-relaxed uppercase tracking-tight">Los cambios visuales se aplican instantáneamente en el dashboard principal. Asegúrate de que los logotipos tengan fondo transparente para un acabado profesional.</p>
              </div>
+          </div>
+          
+          <div className="pt-4">
+             <button onClick={handleFactoryReset} className="w-full py-3 bg-white/5 text-white/30 border border-white/5 text-[10px] font-black uppercase hover:bg-red-600 hover:text-white transition-all rounded-md">
+                Resetear Fábrica
+             </button>
           </div>
         </div>
 
