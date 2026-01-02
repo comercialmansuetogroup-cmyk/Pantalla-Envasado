@@ -4,7 +4,7 @@ const cors = require('cors');
 const bodyParser = require('body-parser');
 const { Pool } = require('pg');
 const path = require('path');
-const crypto = require('crypto'); // Necesario para generar Hash MD5
+const crypto = require('crypto');
 
 const app = express();
 const PORT = process.env.PORT || 8080;
@@ -30,7 +30,6 @@ const initDB = async () => {
     try {
       console.log('🔄 [DB] Syncing Tables...');
       await client.query(`
-        -- TABLA PRINCIPAL DE PEDIDOS (Acumulativa)
         CREATE TABLE IF NOT EXISTS orders (
           id SERIAL PRIMARY KEY,
           agent_code TEXT,
@@ -40,15 +39,10 @@ const initDB = async () => {
           quantity NUMERIC DEFAULT 0,
           received_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         );
-        
-        -- TABLA DE INVENTARIO (Scanner)
         CREATE TABLE IF NOT EXISTS inventory (
           product_code TEXT PRIMARY KEY,
           stock_qty NUMERIC DEFAULT 0
         );
-
-        -- TABLA DE MEMORIA (Idempotencia)
-        -- Evita duplicados si Make reenvía la lista completa.
         CREATE TABLE IF NOT EXISTS webhook_memory (
           line_hash TEXT PRIMARY KEY,
           created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
@@ -92,7 +86,6 @@ const notifyClients = (updatedCode, type = 'update') => {
 
 // --- API ENDPOINTS ---
 
-// 1. WEBHOOK: Entrada de NUEVOS PEDIDOS (Make)
 app.post('/api/webhook', async (req, res) => {
   const { zonas } = req.body;
   
@@ -113,17 +106,12 @@ app.post('/api/webhook', async (req, res) => {
     let lastCode = null;
     let countInsert = 0;
     let countSkipped = 0;
+    let countHealed = 0; // Contador para arreglos automáticos
     
-    // Fecha de hoy para el hash (Reset diario de memoria implícito por fecha)
     const todayStr = new Date().toISOString().split('T')[0];
-    
-    // MAPA DE OCURRENCIAS LOCALES (Por Lote)
-    // Nos permite distinguir si una línea idéntica aparece 2 veces en el mismo envío.
-    // Clave: "Agente-Producto-Cantidad" -> Valor: Contador (1, 2, 3...)
     const batchOccurrences = new Map();
 
     for (const z of zonas) {
-      // 1. Normalización
       const code = String(z.codigo_agente ?? '0').trim(); 
       const name = z.nombre_agente || 'DESCONOCIDO';
       const topLevelProductName = z.nombre || 'PRODUCTO';
@@ -135,41 +123,52 @@ app.post('/api/webhook', async (req, res) => {
           const finalProductName = p.nombre || topLevelProductName;
 
           if (qty > 0) {
-            // 2. CALCULAR OCURRENCIA EN ESTE ENVÍO
-            // Esto soluciona el problema de "Mismo producto, misma cantidad, hora posterior"
-            // Si llega [Burrata 50] y luego [Burrata 50, Burrata 50], detectará el segundo como ocurrencia #2.
+            // 1. Identificar Ocurrencia (¿Es la 1ª, 2ª, 3ª vez que viene este producto exacto en este JSON?)
             const occurrenceKey = `${code}-${lastCode}-${qty}`;
             const currentCount = (batchOccurrences.get(occurrenceKey) || 0) + 1;
             batchOccurrences.set(occurrenceKey, currentCount);
 
-            // 3. GENERAR HASH ÚNICO
-            // Incluye 'currentCount' para diferenciar filas idénticas dentro del día.
+            // 2. Generar Hash Único
             const rawString = `${code}-${lastCode}-${qty}-${todayStr}-${currentCount}`;
             const lineHash = crypto.createHash('md5').update(rawString).digest('hex');
 
-            // 4. VERIFICAR MEMORIA
-            const checkMem = await client.query(
-              'SELECT 1 FROM webhook_memory WHERE line_hash = $1', 
-              [lineHash]
-            );
+            // 3. Comprobar Memoria
+            const checkMem = await client.query('SELECT 1 FROM webhook_memory WHERE line_hash = $1', [lineHash]);
 
             if (checkMem.rows.length === 0) {
-              // INSERTAR PEDIDO
-              await client.query(
-                `INSERT INTO orders (agent_code, agent_name, product_code, product_name, quantity) 
-                 VALUES ($1, $2, $3, $4, $5)`,
-                [code, name, lastCode, finalProductName, qty]
+              // NO ESTÁ EN MEMORIA. 
+              // ¡PELIGRO! Podría estar en 'orders' si el servidor se reinició.
+              // Hacemos verificación de "Self-Healing": Contamos cuántas hay en DB hoy.
+              
+              const checkDB = await client.query(
+                `SELECT COUNT(*) as cnt FROM orders 
+                 WHERE agent_code = $1 
+                 AND product_code = $2 
+                 AND quantity = $3 
+                 AND received_at::DATE = CURRENT_DATE`,
+                [code, lastCode, qty]
               );
               
-              // GUARDAR EN MEMORIA
-              await client.query(
-                `INSERT INTO webhook_memory (line_hash) VALUES ($1)`,
-                [lineHash]
-              );
-              
-              countInsert++;
+              const existingInDB = parseInt(checkDB.rows[0].cnt || '0', 10);
+
+              // SI ya existe en DB tantas o más veces que mi número de ocurrencia actual...
+              // Significa que YA se insertó antes (aunque la memoria se borró).
+              if (existingInDB >= currentCount) {
+                 // SOLO ACTUALIZAMOS MEMORIA, NO INSERTAMOS EN ORDERS
+                 await client.query('INSERT INTO webhook_memory (line_hash) VALUES ($1)', [lineHash]);
+                 countHealed++;
+                 console.log(`🩹 [HEALED] ${lastCode} (${qty}) - Found in DB, updated memory only.`);
+              } else {
+                 // ES GENUINAMENTE NUEVO
+                 await client.query(
+                  `INSERT INTO orders (agent_code, agent_name, product_code, product_name, quantity) 
+                   VALUES ($1, $2, $3, $4, $5)`,
+                  [code, name, lastCode, finalProductName, qty]
+                 );
+                 await client.query('INSERT INTO webhook_memory (line_hash) VALUES ($1)', [lineHash]);
+                 countInsert++;
+              }
             } else {
-              // IGNORAR (Ya procesado hoy)
               countSkipped++;
             }
           }
@@ -178,24 +177,24 @@ app.post('/api/webhook', async (req, res) => {
     }
 
     await client.query('COMMIT');
-    console.log(`✅ [WEBHOOK] Processed. New: ${countInsert}, Old/Skipped: ${countSkipped}`);
+    console.log(`✅ [SYNC] New: ${countInsert}, Healed (Fixed Dupes): ${countHealed}, Skipped: ${countSkipped}`);
     
-    if (countInsert > 0) {
+    // Notificamos siempre que haya actividad (Insert o Heal) para asegurar que el frontend esté fresco
+    if (countInsert > 0 || countHealed > 0) {
        notifyClients(lastCode, 'order');
     }
     
-    res.json({ ok: true, inserted: countInsert, skipped: countSkipped });
+    res.json({ ok: true, inserted: countInsert, healed: countHealed, skipped: countSkipped });
 
   } catch (err) {
     await client.query('ROLLBACK');
-    console.error('❌ [WEBHOOK] Error:', err.message);
+    console.error('❌ [ERROR]', err.message);
     res.status(500).json({ error: err.message });
   } finally {
     client.release();
   }
 });
 
-// 2. SCAN: Entrada de PRODUCCIÓN (Verificado: Funciona Correctamente)
 app.post('/api/scan', async (req, res) => {
   const authHeader = req.headers.authorization;
   if (!authHeader || authHeader !== 'Bearer DASHBOARD_V3_KEY_2025') {
@@ -217,7 +216,6 @@ app.post('/api/scan', async (req, res) => {
     const qtyNum = Number(cantidad);
     const codeStr = String(codigo).toUpperCase().trim();
 
-    // Actualiza Stock en tabla Inventory
     await client.query(
       `INSERT INTO inventory (product_code, stock_qty) 
        VALUES ($1, $2)
@@ -226,19 +224,18 @@ app.post('/api/scan', async (req, res) => {
       [codeStr, qtyNum]
     );
 
-    console.log(`✅ [SCAN] Stock Updated: ${codeStr} +${qtyNum}`);
-    notifyClients(codeStr, 'scan'); // Notifica al frontend para refrescar visualmente
+    console.log(`✅ [SCAN] ${codeStr} +${qtyNum}`);
+    notifyClients(codeStr, 'scan');
     
     res.json({ ok: true, updated: codeStr, qty: qtyNum });
   } catch (err) {
-    console.error('❌ [SCAN] DB Error:', err.message);
+    console.error('❌ [SCAN ERROR]', err.message);
     res.status(500).json({ error: err.message });
   } finally {
     client.release();
   }
 });
 
-// 3. GET DATA: Sumatoria Total Agrupada
 app.get('/api/data', async (req, res) => {
   if (!process.env.DATABASE_URL) return res.json([]);
   try {
@@ -271,7 +268,7 @@ app.get('/api/data', async (req, res) => {
     
     res.json(result.rows);
   } catch (err) {
-    console.error('❌ [DATA] Error fetching:', err.message);
+    console.error('❌ [DATA ERROR]', err.message);
     res.status(500).json({ error: 'Database query failed' });
   }
 });
