@@ -33,11 +33,11 @@ const initDB = async () => {
       await client.query('DROP TABLE IF EXISTS daily_stats'); 
       await client.query('DROP TABLE IF EXISTS "DALL·E STATS"'); 
 
-      // 2. Tabla ORDERS con Constraint de Unicidad (El Blindaje)
+      // 2. Tabla ORDERS con Constraint de Unicidad
+      // Creamos la tabla si no existe
       await client.query(`
         CREATE TABLE IF NOT EXISTS orders (
           id SERIAL PRIMARY KEY,
-          order_hash TEXT UNIQUE, -- ESTO ES LA CLAVE: Si el hash existe, rebota.
           agent_code TEXT,
           agent_name TEXT,
           product_code TEXT,
@@ -45,6 +45,11 @@ const initDB = async () => {
           quantity NUMERIC DEFAULT 0,
           received_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         );
+      `);
+
+      // 2.1 MIGRACIÓN SEGURA: Añadir order_hash si no existe (para evitar error 500 en tablas viejas)
+      await client.query(`
+        ALTER TABLE orders ADD COLUMN IF NOT EXISTS order_hash TEXT UNIQUE;
       `);
 
       // 3. Tabla INVENTORY (Stock Físico)
@@ -93,13 +98,11 @@ const notifyClients = (updatedCode, type = 'update') => {
 
 // 1. WEBHOOK (Entrada de Pedidos - IDEMPOTENTE)
 app.post('/api/webhook', async (req, res) => {
-  // LOG PARA DEBUGGING SI FALLA MAKE
-  // console.log('Payload recibido:', JSON.stringify(req.body).substring(0, 200));
-
   const { zonas } = req.body;
   
-  // Validación básica pero permisiva para no romper Make con 400 innecesarios si llega vacío
+  // Validación estricta para Make: Si no hay zonas, devolvemos 200 OK para no parar el escenario, pero avisamos.
   if (!zonas || !Array.isArray(zonas)) {
+    console.log('⚠️ [WEBHOOK] Recibido payload vacío o inválido de Make');
     return res.status(200).json({ ok: true, message: 'No zones to process' });
   }
 
@@ -127,17 +130,18 @@ app.post('/api/webhook', async (req, res) => {
       // Extracción segura de datos del nivel superior (Zona)
       const code = String(z.codigo_agente ?? '0').trim(); 
       const name = z.nombre_agente || 'DESCONOCIDO';
-      // IMPORTANTE: En tu JSON, 'nombre' en la zona suele ser el nombre del producto
+      // Fallback: Si no hay nombre en la zona, usamos un placeholder
       const topLevelProductName = z.nombre || 'PRODUCTO GENERICO';
 
       if (z.productos && Array.isArray(z.productos)) {
         for (const p of z.productos) {
           lastCode = String(p.codigo || 'UNKNOWN').toUpperCase().trim();
           
-          // Asegurar que cantidad es un número válido
+          // Parsing numérico seguro (reemplazar comas por puntos por si acaso viene formato europeo)
           let qty = 0;
           try {
-             qty = Number(p.cantidad);
+             const cleanQty = String(p.cantidad).replace(',', '.');
+             qty = parseFloat(cleanQty);
              if (isNaN(qty)) qty = 0;
           } catch(e) { qty = 0; }
           
@@ -152,6 +156,7 @@ app.post('/api/webhook', async (req, res) => {
 
             // PROTOCOLO PASO 2: Generar HASH DETERMINISTA
             // Hash = Cliente + Producto + Cantidad + FechaHoy + NºOcurrencia
+            // Si Make envía esto mismo a las 10am y a las 2pm, el hash es IDÉNTICO.
             const rawString = `${code}-${lastCode}-${qty}-${dateKey}-${currentCount}`;
             const uniqueHash = crypto.createHash('md5').update(rawString).digest('hex');
 
@@ -184,14 +189,14 @@ app.post('/api/webhook', async (req, res) => {
   } catch (err) {
     await client.query('ROLLBACK');
     console.error('❌ [ERROR 500 HANDLED]', err.message);
-    // Devolvemos 500 pero con JSON claro para Make
+    // Devolvemos 500 pero con JSON claro para Make para que sepas qué falló
     res.status(500).json({ error: err.message });
   } finally {
     client.release();
   }
 });
 
-// 2. SCAN (Entrada de Inventario)
+// 2. SCAN (Entrada de Inventario - Sumativa)
 app.post('/api/scan', async (req, res) => {
   const authHeader = req.headers.authorization;
   if (!authHeader || authHeader !== 'Bearer DASHBOARD_V3_KEY_2025') {
