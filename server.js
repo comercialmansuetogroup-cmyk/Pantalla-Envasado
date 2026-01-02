@@ -208,23 +208,32 @@ app.post('/api/scan', async (req, res) => {
   }
 });
 
-// 3. GET DATA: Devuelve TOTAL HOY y TOTAL AYER para comparar
+// 3. GET DATA: Devuelve TOTAL HOY y TOTAL "ÚLTIMO DÍA ACTIVO" para comparar
+// CAMBIO LOGICA: No comparamos con ayer calendario, sino con el último día que tuvo registros.
 app.get('/api/data', async (req, res) => {
   if (!process.env.DATABASE_URL) return res.json([]);
   try {
-    // Obtenemos datos de HOY y de AYER en la misma consulta
     const result = await pool.query(`
+      WITH DateCheck AS (
+        SELECT 
+          CURRENT_DATE as today,
+          -- Busca la fecha máxima anterior a hoy que tenga datos (Ej: Si hoy es Lunes, devolverá Viernes)
+          (SELECT MAX(received_at::DATE) FROM orders WHERE received_at::DATE < CURRENT_DATE) as last_active_date
+      )
       SELECT 
         o.agent_code, 
         o.agent_name, 
         o.product_code, 
         o.product_name, 
-        SUM(CASE WHEN o.received_at::DATE = CURRENT_DATE THEN o.quantity ELSE 0 END) as total_qty,
-        SUM(CASE WHEN o.received_at::DATE = CURRENT_DATE - INTERVAL '1 day' THEN o.quantity ELSE 0 END) as yesterday_qty,
+        SUM(CASE WHEN o.received_at::DATE = (SELECT today FROM DateCheck) THEN o.quantity ELSE 0 END) as total_qty,
+        -- 'yesterday_qty' ahora contiene la cantidad del último día activo encontrado
+        SUM(CASE WHEN o.received_at::DATE = (SELECT last_active_date FROM DateCheck) THEN o.quantity ELSE 0 END) as yesterday_qty,
         COALESCE(MAX(i.stock_qty), 0) as global_stock
       FROM orders o
       LEFT JOIN inventory i ON o.product_code = i.product_code
-      WHERE o.received_at::DATE >= CURRENT_DATE - INTERVAL '1 day'
+      -- Filtramos solo las filas que sean de HOY o del ÚLTIMO DÍA ACTIVO
+      WHERE o.received_at::DATE = (SELECT today FROM DateCheck) 
+         OR o.received_at::DATE = (SELECT last_active_date FROM DateCheck)
       GROUP BY o.agent_code, o.agent_name, o.product_code, o.product_name
       ORDER BY o.agent_code ASC
     `);
