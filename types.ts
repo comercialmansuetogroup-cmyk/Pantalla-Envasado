@@ -59,11 +59,14 @@ export interface IncomingDataPayload {
   zonas: IncomingZona[];
 }
 
+// MAPPING ACTUALIZADO: Asegurando suma de todos los códigos de Gran Canaria
 export const CLIENT_MAPPING: Record<string, string> = {
   '24': 'FILIPPO', 
   '26': 'PINGÜINO', 
   '23': 'LA PALMA', 
   '15': 'TENERIFE NORTE',
+  
+  // GRUPO GRAN CANARIA COMPLETO
   '10': 'GRAN CANARIA', 
   '14': 'GRAN CANARIA', 
   '5': 'GRAN CANARIA', 

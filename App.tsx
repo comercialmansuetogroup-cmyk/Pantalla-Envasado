@@ -44,8 +44,12 @@ export default function App() {
           // Si el total de hoy es 0 y el de ayer también, ignoramos (a menos que haya stock)
           if (Number(row.total_qty) === 0 && Number(row.yesterday_qty) === 0 && Number(row.global_stock) === 0) return;
 
-          // Normalizar nombre de cliente
-          const clientName = CLIENT_MAPPING[row.agent_code] || row.agent_name || `ZONA ${row.agent_code}`;
+          // NORMALIZACIÓN ROBUSTA DE CÓDIGO DE AGENTE
+          // Convertimos a string y quitamos espacios para asegurar match con '8', '10', '14', etc.
+          const rawCode = String(row.agent_code || '').trim();
+          
+          // Buscar nombre de cliente usando el código limpio
+          const clientName = CLIENT_MAPPING[rawCode] || row.agent_name || `ZONA ${rawCode}`;
           
           if (!groups[clientName]) {
             groups[clientName] = { 
@@ -74,14 +78,17 @@ export default function App() {
           }
 
           // Agregar producto al grupo
-          // IMPORTANTE: Incluso si qtyToday es 0, lo agregamos si qtyYesterday > 0 para que afecte al cálculo global
+          // Si el producto ya existe (porque vino de otro código de agente del mismo grupo, ej 10 y 8), SUMAMOS
           const existingProd = groups[clientName].products.find((p: any) => p.code === row.product_code);
+          
           if (existingProd) {
              existingProd.qty += qtyToday;
              existingProd.yesterdayQty += qtyYesterday;
-             // Recalcular tendencia del producto si ya existía
+             // Recalcular tendencia global del producto (sumando ambos agentes)
              if (existingProd.yesterdayQty > 0) {
                 existingProd.trend = ((existingProd.qty - existingProd.yesterdayQty) / existingProd.yesterdayQty) * 100;
+             } else if (existingProd.qty > 0) {
+                existingProd.trend = 100;
              }
           } else {
             groups[clientName].products.push({
@@ -133,9 +140,7 @@ export default function App() {
          client.products.sort((a: any, b: any) => b.qty - a.qty);
       });
 
-      // 4. FILTRAR CLIENTES VACÍOS DE HOY (La solicitud del usuario)
-      // Si el cliente no tiene producción HOY (totalToday == 0), no mostramos la columna,
-      // independientemente de si tuvo datos ayer.
+      // 4. FILTRAR CLIENTES VACÍOS DE HOY
       const activeClientsToday = sortedClients.filter(c => c.totalToday > 0);
 
       setData(activeClientsToday);

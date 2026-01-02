@@ -1,7 +1,8 @@
+
 import { IncomingDataPayload } from './types';
 
 // Client Mapping based on Agent Codes
-// Filippo 24, Pingüino 26, La Palma 23, Tenerife norte 15, Gran canaria 10, 14, 5, 0
+// Sincronizado: 10, 14, 5, 0, 8 -> GRAN CANARIA
 export const CLIENT_MAPPING: Record<string, string> = {
   '24': 'FILIPPO',
   '26': 'PINGÜINO',
@@ -11,6 +12,7 @@ export const CLIENT_MAPPING: Record<string, string> = {
   '14': 'GRAN CANARIA',
   '5': 'GRAN CANARIA',
   '0': 'GRAN CANARIA',
+  '8': 'GRAN CANARIA'
 };
 
 // Colors for charts
@@ -29,7 +31,7 @@ export const generateMockData = (): IncomingDataPayload => {
     'Monster Energy'
   ];
 
-  const agentCodes = ['24', '26', '23', '15', '10', '14', '5', '0'];
+  const agentCodes = ['24', '26', '23', '15', '10', '14', '5', '0', '8'];
 
   const zones = Array.from({ length: 15 }).map(() => {
     const randomProduct = productNames[Math.floor(Math.random() * productNames.length)];
