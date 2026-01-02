@@ -19,24 +19,22 @@ const pool = new Pool({
 app.use(cors());
 app.use(bodyParser.json({ limit: '50mb' }));
 
-// Inicialización DB
+// --- PROTOCOLO DE INICIALIZACIÓN ROBUSTA ---
 const initDB = async () => {
   if (!process.env.DATABASE_URL) {
-    console.log('⚠️ [SYSTEM] Running without Database Connection (Memory Mode - Data will not persist)');
+    console.log('⚠️ [SYSTEM] Running without Database (Memory Mode)');
     return;
   }
   try {
     const client = await pool.connect();
     try {
-      console.log('🔄 [DB] Syncing Tables & Cleaning...');
-      
-      // 1. Limpieza de tablas basura si existen
+      // 1. Limpieza de tablas antiguas
+      await client.query('DROP TABLE IF EXISTS webhook_memory'); 
       await client.query('DROP TABLE IF EXISTS daily_stats'); 
       await client.query('DROP TABLE IF EXISTS "DALL·E STATS"'); 
 
-      // 2. Creación de tablas Core
+      // 2. Tabla ORDERS con Constraint de Unicidad
       await client.query(`
-        -- TABLA 1: LIBRO DE PEDIDOS (La Realidad)
         CREATE TABLE IF NOT EXISTS orders (
           id SERIAL PRIMARY KEY,
           agent_code TEXT,
@@ -46,24 +44,26 @@ const initDB = async () => {
           quantity NUMERIC DEFAULT 0,
           received_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         );
-        
-        -- TABLA 2: ALMACÉN (El Escáner)
+      `);
+
+      // 2.1 MIGRACIÓN SEGURA: Añadir order_hash si no existe
+      await client.query(`
+        ALTER TABLE orders ADD COLUMN IF NOT EXISTS order_hash TEXT UNIQUE;
+      `);
+
+      // 3. Tabla INVENTORY (Stock Físico)
+      await client.query(`
         CREATE TABLE IF NOT EXISTS inventory (
           product_code TEXT PRIMARY KEY,
           stock_qty NUMERIC DEFAULT 0
         );
-        
-        -- TABLA 3: EL PORTERO (Memoria de Duplicados)
-        CREATE TABLE IF NOT EXISTS webhook_memory (
-          line_hash TEXT PRIMARY KEY,
-          created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-        );
       `);
-      console.log('✅ [DB] System Ready. Tables: orders, inventory, webhook_memory');
+      
+      console.log('✅ [DB] Schema Verified. Unique Constraints Active.');
     } finally {
       client.release();
     }
-  } catch (err) { console.error('❌ [DB] Connection Error:', err.message); }
+  } catch (err) { console.error('❌ [DB] Init Error:', err.message); }
 };
 initDB();
 
@@ -77,9 +77,7 @@ app.get('/api/events', (req, res) => {
   res.flushHeaders(); 
 
   const clientId = Date.now();
-  const newClient = { id: clientId, res };
-  clients.push(newClient);
-
+  clients.push({ id: clientId, res });
   res.write(': connected\n\n');
 
   req.on('close', () => {
@@ -97,16 +95,17 @@ const notifyClients = (updatedCode, type = 'update') => {
 
 // --- API ENDPOINTS ---
 
+// 1. WEBHOOK (Entrada de Pedidos - IDEMPOTENTE CON UPDATE)
 app.post('/api/webhook', async (req, res) => {
   const { zonas } = req.body;
   
   if (!zonas || !Array.isArray(zonas)) {
-    console.error('❌ [WEBHOOK] Invalid Body');
-    return res.status(400).json({ error: 'Invalid data format' });
+    console.log('⚠️ [WEBHOOK] Recibido payload vacío o inválido de Make');
+    return res.status(200).json({ ok: true, message: 'No zones to process' });
   }
 
   if (!process.env.DATABASE_URL) {
-    notifyClients('TEST-CODE');
+    notifyClients('TEST');
     return res.json({ ok: true, mode: 'no-db' });
   }
 
@@ -114,76 +113,68 @@ app.post('/api/webhook', async (req, res) => {
   try {
     await client.query('BEGIN');
     
+    let inserted = 0;
+    let updated = 0; // Contador para actualizaciones de nombre
     let lastCode = null;
-    let countInsert = 0;
-    let countSkipped = 0;
     
-    // TRUCO: Usamos una fecha "fija" por día basada en UTC para evitar errores de zona horaria
+    // FECHA NORMALIZADA: Usamos YYYY-MM-DD del servidor (UTC) para consistencia absoluta
     const now = new Date();
-    const todayHashStr = `${now.getUTCFullYear()}-${now.getUTCMonth() + 1}-${now.getUTCDate()}`;
+    const dateKey = `${now.getUTCFullYear()}-${now.getUTCMonth() + 1}-${now.getUTCDate()}`;
 
-    // Mapa para contar ocurrencias DENTRO de este mismo envío (ej: 2 filas iguales de Burrata)
+    // CONTADOR DE OCURRENCIAS LOCAL
     const batchOccurrences = new Map();
 
     for (const z of zonas) {
       const code = String(z.codigo_agente ?? '0').trim(); 
       const name = z.nombre_agente || 'DESCONOCIDO';
-      const topLevelProductName = z.nombre || 'PRODUCTO';
+      const topLevelProductName = z.nombre || 'PRODUCTO GENERICO';
 
       if (z.productos && Array.isArray(z.productos)) {
         for (const p of z.productos) {
           lastCode = String(p.codigo || 'UNKNOWN').toUpperCase().trim();
-          const qty = Number(p.cantidad) || 0;
+          
+          let qty = 0;
+          try {
+             const cleanQty = String(p.cantidad).replace(',', '.');
+             qty = parseFloat(cleanQty);
+             if (isNaN(qty)) qty = 0;
+          } catch(e) { qty = 0; }
+          
+          // Nombre final que queremos validar/actualizar
           const finalProductName = p.nombre || topLevelProductName;
 
           if (qty > 0) {
-            // 1. Identificar si es la 1ª, 2ª o 3ª vez que aparece ESTE producto idéntico en el array
+            // PROTOCOLO PASO 1: Identificar Ocurrencia Única
             const occurrenceKey = `${code}-${lastCode}-${qty}`;
             const currentCount = (batchOccurrences.get(occurrenceKey) || 0) + 1;
             batchOccurrences.set(occurrenceKey, currentCount);
 
-            // 2. Crear HUELLA DIGITAL (Hash)
-            // Agente + Producto + Cantidad + FechaUTC + Nº Ocurrencia
-            const rawString = `${code}-${lastCode}-${qty}-${todayHashStr}-${currentCount}`;
-            const lineHash = crypto.createHash('md5').update(rawString).digest('hex');
+            // PROTOCOLO PASO 2: Generar HASH ESTRUCTURAL
+            // NOTA: No incluimos el nombre en el Hash, porque queremos encontrar este registro
+            // incluso si el nombre ha cambiado, para poder actualizarlo.
+            const rawString = `${code}-${lastCode}-${qty}-${dateKey}-${currentCount}`;
+            const uniqueHash = crypto.createHash('md5').update(rawString).digest('hex');
 
-            // 3. Preguntar al Portero (Memoria)
-            const checkMem = await client.query('SELECT 1 FROM webhook_memory WHERE line_hash = $1', [lineHash]);
+            // PROTOCOLO PASO 3: UPSERT (Insertar o Actualizar si hay conflicto)
+            // Si el Hash existe, ACTUALIZAMOS el nombre del producto y agente.
+            // Si no existe, INSERTAMOS.
+            const upsertQuery = `
+              INSERT INTO orders (order_hash, agent_code, agent_name, product_code, product_name, quantity)
+              VALUES ($1, $2, $3, $4, $5, $6)
+              ON CONFLICT (order_hash) 
+              DO UPDATE SET 
+                product_name = EXCLUDED.product_name,
+                agent_name = EXCLUDED.agent_name
+              RETURNING (xmax = 0) AS is_insert;
+            `;
 
-            if (checkMem.rows.length === 0) {
-              // -> NO ESTÁ EN MEMORIA. Es nuevo.
-              
-              // Verificación extra de seguridad: ¿Existe ya en 'orders' aunque no esté en memoria? (Por si se borró la memoria)
-              // Buscamos filas idénticas insertadas HOY (usando fecha servidor)
-              const checkDB = await client.query(
-                `SELECT COUNT(*) as cnt FROM orders 
-                 WHERE agent_code = $1 
-                 AND product_code = $2 
-                 AND quantity = $3 
-                 AND received_at >= CURRENT_DATE`, // Postgres CURRENT_DATE es seguro
-                [code, lastCode, qty]
-              );
-              
-              const existingInDB = parseInt(checkDB.rows[0].cnt || '0', 10);
-
-              if (existingInDB >= currentCount) {
-                 // YA ESTÁ EN ORDERS. Solo actualizamos la memoria para que no vuelva a molestar.
-                 await client.query('INSERT INTO webhook_memory (line_hash) VALUES ($1) ON CONFLICT DO NOTHING', [lineHash]);
-                 countSkipped++; // Lo contamos como skippeado porque no sumó cantidad real
-              } else {
-                 // NO ESTÁ EN ORDERS. Insertamos de verdad.
-                 await client.query(
-                  `INSERT INTO orders (agent_code, agent_name, product_code, product_name, quantity) 
-                   VALUES ($1, $2, $3, $4, $5)`,
-                  [code, name, lastCode, finalProductName, qty]
-                 );
-                 // Y guardamos la huella
-                 await client.query('INSERT INTO webhook_memory (line_hash) VALUES ($1)', [lineHash]);
-                 countInsert++;
-              }
+            const resQuery = await client.query(upsertQuery, [uniqueHash, code, name, lastCode, finalProductName, qty]);
+            
+            // Verificamos si fue Insert o Update
+            if (resQuery.rows[0].is_insert) {
+              inserted++;
             } else {
-              // -> YA ESTÁ EN MEMORIA.
-              countSkipped++;
+              updated++;
             }
           }
         }
@@ -191,22 +182,25 @@ app.post('/api/webhook', async (req, res) => {
     }
 
     await client.query('COMMIT');
-    console.log(`✅ [SYNC] New Lines Inserted: ${countInsert} | Skipped (Already Exists): ${countSkipped}`);
+    console.log(`✅ [SYNC] Date: ${dateKey} | Inserted: ${inserted} | Updated (Name Fixes): ${updated}`);
     
-    // SIEMPRE notificamos, incluso si countInsert es 0, para asegurar que el frontend está despierto
-    notifyClients(lastCode, 'order');
+    // Si hubo actualizaciones o inserciones, notificamos al frontend
+    if (inserted > 0 || updated > 0) {
+      notifyClients(lastCode, 'order');
+    }
     
-    res.json({ ok: true, inserted: countInsert, skipped: countSkipped });
+    res.json({ ok: true, inserted, updated });
 
   } catch (err) {
     await client.query('ROLLBACK');
-    console.error('❌ [ERROR]', err.message);
+    console.error('❌ [ERROR 500 HANDLED]', err.message);
     res.status(500).json({ error: err.message });
   } finally {
     client.release();
   }
 });
 
+// 2. SCAN (Entrada de Inventario)
 app.post('/api/scan', async (req, res) => {
   const authHeader = req.headers.authorization;
   if (!authHeader || authHeader !== 'Bearer DASHBOARD_V3_KEY_2025') {
@@ -241,32 +235,25 @@ app.post('/api/scan', async (req, res) => {
   }
 });
 
+// 3. GET DATA
 app.get('/api/data', async (req, res) => {
   if (!process.env.DATABASE_URL) return res.json([]);
   try {
     const result = await pool.query(`
-      WITH RankedDates AS (
-        SELECT DISTINCT received_at::DATE as r_date
-        FROM orders
-        ORDER BY r_date DESC
-        LIMIT 2
-      ),
-      TargetDates AS (
-        SELECT 
-          (SELECT r_date FROM RankedDates OFFSET 0 LIMIT 1) as date_today,
-          (SELECT r_date FROM RankedDates OFFSET 1 LIMIT 1) as date_yesterday
+      WITH Dates AS (
+        SELECT CURRENT_DATE as today, CURRENT_DATE - INTERVAL '1 day' as yesterday
       )
       SELECT 
         o.agent_code, 
         o.agent_name, 
         o.product_code, 
         o.product_name, 
-        SUM(CASE WHEN o.received_at::DATE = (SELECT date_today FROM TargetDates) THEN o.quantity ELSE 0 END) as total_qty,
-        SUM(CASE WHEN o.received_at::DATE = (SELECT date_yesterday FROM TargetDates) THEN o.quantity ELSE 0 END) as yesterday_qty,
+        SUM(CASE WHEN o.received_at::DATE = (SELECT today FROM Dates) THEN o.quantity ELSE 0 END) as total_qty,
+        SUM(CASE WHEN o.received_at::DATE = (SELECT yesterday FROM Dates) THEN o.quantity ELSE 0 END) as yesterday_qty,
         COALESCE(MAX(i.stock_qty), 0) as global_stock
       FROM orders o
       LEFT JOIN inventory i ON o.product_code = i.product_code
-      WHERE o.received_at::DATE IN (SELECT r_date FROM RankedDates)
+      WHERE o.received_at >= CURRENT_DATE - INTERVAL '2 days'
       GROUP BY o.agent_code, o.agent_name, o.product_code, o.product_name
       ORDER BY o.agent_code ASC
     `);
@@ -277,6 +264,7 @@ app.get('/api/data', async (req, res) => {
   }
 });
 
+// 4. HISTORY
 app.get('/api/history', async (req, res) => {
   if (!process.env.DATABASE_URL) return res.json([]);
   const { period } = req.query; 
@@ -326,14 +314,20 @@ app.get('/api/history', async (req, res) => {
   }
 });
 
+// 5. RESET
 app.post('/api/reset', async (req, res) => {
   if (!process.env.DATABASE_URL) return res.json({ ok: true });
+  const client = await pool.connect();
   try {
-    await pool.query('DELETE FROM orders; DELETE FROM inventory; DELETE FROM webhook_memory;');
-    console.log('⚠️ [RESET] All tables cleared.');
+    await client.query('TRUNCATE TABLE orders, inventory RESTART IDENTITY CASCADE');
+    console.log('⚠️ [RESET] SYSTEM FACTORY RESET EXECUTED');
     notifyClients('RESET');
     res.json({ ok: true });
-  } catch (err) { res.status(500).json({ error: err.message }); }
+  } catch (err) { 
+    res.status(500).json({ error: err.message }); 
+  } finally {
+    client.release();
+  }
 });
 
 if (process.env.NODE_ENV === 'production') {
