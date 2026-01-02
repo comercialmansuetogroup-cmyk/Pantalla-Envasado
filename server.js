@@ -243,6 +243,12 @@ app.post('/api/scan', async (req, res) => {
 
 app.get('/api/data', async (req, res) => {
   if (!process.env.DATABASE_URL) return res.json([]);
+  
+  // FIX: Forzar no-cache para evitar que el navegador muestre datos borrados tras un reset
+  res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
+  res.setHeader('Pragma', 'no-cache');
+  res.setHeader('Expires', '0');
+  
   try {
     const result = await pool.query(`
       WITH RankedDates AS (
@@ -328,12 +334,21 @@ app.get('/api/history', async (req, res) => {
 
 app.post('/api/reset', async (req, res) => {
   if (!process.env.DATABASE_URL) return res.json({ ok: true });
+  
+  // Conexión dedicada para el reset
+  const client = await pool.connect();
   try {
-    await pool.query('DELETE FROM orders; DELETE FROM inventory; DELETE FROM webhook_memory;');
-    console.log('⚠️ [RESET] All tables cleared.');
+    // FIX: TRUNCATE CASCADE para un borrado instantáneo y total
+    await client.query('TRUNCATE TABLE orders, inventory, webhook_memory RESTART IDENTITY CASCADE');
+    console.log('⚠️ [RESET] SYSTEM FACTORY RESET EXECUTED');
     notifyClients('RESET');
     res.json({ ok: true });
-  } catch (err) { res.status(500).json({ error: err.message }); }
+  } catch (err) { 
+    console.error('Reset Error:', err);
+    res.status(500).json({ error: err.message }); 
+  } finally {
+    client.release();
+  }
 });
 
 if (process.env.NODE_ENV === 'production') {
