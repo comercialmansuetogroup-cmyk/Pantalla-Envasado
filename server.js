@@ -95,6 +95,35 @@ const notifyClients = (updatedCode, type = 'update') => {
   clients.forEach(c => c.res.write(`data: ${JSON.stringify({type, code: updatedCode})}\n\n`));
 };
 
+// --- LOGICA DE NEGOCIO: EXTRACCIÓN Y LIMPIEZA DE DECIMALES ---
+const extractUnitsServer = (desc, rawQty) => {
+  const numericQty = Number(rawQty) || 0;
+  
+  // Si no hay descripción, aplicamos floor directo (2.8 -> 2)
+  if (!desc) return Math.floor(numericQty);
+
+  // Regex para detectar: 1kg, 1 kg, 1.5 KG, 1,2 Kilos, 500 gramos, etc.
+  const regex = /(\d+[.,]?\d*)\s*(KG|KILO|K|G|GR|GRAMOS)/i;
+  const match = desc.match(regex);
+  
+  if (match) {
+      let unitW = parseFloat(match[1].replace(',', '.'));
+      const type = match[2].toUpperCase();
+      
+      // Normalizar a Kilos
+      if (type.startsWith('G')) unitW /= 1000;
+      
+      if (unitW > 0) {
+          // REGLA USUARIO STRICT: Redondear siempre hacia abajo (Floor)
+          // 3.37kg de 1kg -> 3 unidades
+          return Math.floor(numericQty / unitW);
+      }
+  }
+  
+  // Si no se encontró patrón de peso, redondeamos hacia abajo el valor original (2.8 -> 2)
+  return Math.floor(numericQty);
+};
+
 // --- API ENDPOINTS ---
 
 app.post('/api/webhook', async (req, res) => {
@@ -122,7 +151,7 @@ app.post('/api/webhook', async (req, res) => {
     const now = new Date();
     const todayHashStr = `${now.getUTCFullYear()}-${now.getUTCMonth() + 1}-${now.getUTCDate()}`;
 
-    // Mapa para contar ocurrencias DENTRO de este mismo envío (ej: 2 filas iguales de Burrata)
+    // Mapa para contar ocurrencias DENTRO de este mismo envío
     const batchOccurrences = new Map();
 
     for (const z of zonas) {
@@ -133,17 +162,18 @@ app.post('/api/webhook', async (req, res) => {
       if (z.productos && Array.isArray(z.productos)) {
         for (const p of z.productos) {
           lastCode = String(p.codigo || 'UNKNOWN').toUpperCase().trim();
-          const qty = Number(p.cantidad) || 0;
           const finalProductName = p.nombre || topLevelProductName;
 
+          // APLICAR LÓGICA STRICT: DECIMALES -> FLOOR
+          const qty = extractUnitsServer(finalProductName, p.cantidad);
+
           if (qty > 0) {
-            // 1. Identificar si es la 1ª, 2ª o 3ª vez que aparece ESTE producto idéntico en el array
+            // 1. Identificar si es la 1ª, 2ª o 3ª vez que aparece ESTE producto idéntico
             const occurrenceKey = `${code}-${lastCode}-${qty}`;
             const currentCount = (batchOccurrences.get(occurrenceKey) || 0) + 1;
             batchOccurrences.set(occurrenceKey, currentCount);
 
-            // 2. Crear HUELLA DIGITAL (Hash)
-            // Agente + Producto + Cantidad + FechaUTC + Nº Ocurrencia
+            // 2. Crear HUELLA DIGITAL (Hash) con la cantidad YA REDONDEADA
             const rawString = `${code}-${lastCode}-${qty}-${todayHashStr}-${currentCount}`;
             const lineHash = crypto.createHash('md5').update(rawString).digest('hex');
 
@@ -151,38 +181,31 @@ app.post('/api/webhook', async (req, res) => {
             const checkMem = await client.query('SELECT 1 FROM webhook_memory WHERE line_hash = $1', [lineHash]);
 
             if (checkMem.rows.length === 0) {
-              // -> NO ESTÁ EN MEMORIA. Es nuevo.
-              
-              // Verificación extra de seguridad: ¿Existe ya en 'orders' aunque no esté en memoria? (Por si se borró la memoria)
-              // Buscamos filas idénticas insertadas HOY (usando fecha servidor)
+              // Verificación extra de seguridad
               const checkDB = await client.query(
                 `SELECT COUNT(*) as cnt FROM orders 
                  WHERE agent_code = $1 
                  AND product_code = $2 
                  AND quantity = $3 
-                 AND received_at >= CURRENT_DATE`, // Postgres CURRENT_DATE es seguro
+                 AND received_at >= CURRENT_DATE`,
                 [code, lastCode, qty]
               );
               
               const existingInDB = parseInt(checkDB.rows[0].cnt || '0', 10);
 
               if (existingInDB >= currentCount) {
-                 // YA ESTÁ EN ORDERS. Solo actualizamos la memoria para que no vuelva a molestar.
                  await client.query('INSERT INTO webhook_memory (line_hash) VALUES ($1) ON CONFLICT DO NOTHING', [lineHash]);
-                 countSkipped++; // Lo contamos como skippeado porque no sumó cantidad real
+                 countSkipped++;
               } else {
-                 // NO ESTÁ EN ORDERS. Insertamos de verdad.
                  await client.query(
                   `INSERT INTO orders (agent_code, agent_name, product_code, product_name, quantity) 
                    VALUES ($1, $2, $3, $4, $5)`,
                   [code, name, lastCode, finalProductName, qty]
                  );
-                 // Y guardamos la huella
                  await client.query('INSERT INTO webhook_memory (line_hash) VALUES ($1)', [lineHash]);
                  countInsert++;
               }
             } else {
-              // -> YA ESTÁ EN MEMORIA.
               countSkipped++;
             }
           }
@@ -191,9 +214,8 @@ app.post('/api/webhook', async (req, res) => {
     }
 
     await client.query('COMMIT');
-    console.log(`✅ [SYNC] New Lines Inserted: ${countInsert} | Skipped (Already Exists): ${countSkipped}`);
+    console.log(`✅ [SYNC] New Lines Inserted: ${countInsert} | Skipped: ${countSkipped}`);
     
-    // SIEMPRE notificamos, incluso si countInsert es 0, para asegurar que el frontend está despierto
     notifyClients(lastCode, 'order');
     
     res.json({ ok: true, inserted: countInsert, skipped: countSkipped });
@@ -244,7 +266,6 @@ app.post('/api/scan', async (req, res) => {
 app.get('/api/data', async (req, res) => {
   if (!process.env.DATABASE_URL) return res.json([]);
   
-  // FIX: Forzar no-cache para evitar que el navegador muestre datos borrados tras un reset
   res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
   res.setHeader('Pragma', 'no-cache');
   res.setHeader('Expires', '0');
@@ -335,10 +356,8 @@ app.get('/api/history', async (req, res) => {
 app.post('/api/reset', async (req, res) => {
   if (!process.env.DATABASE_URL) return res.json({ ok: true });
   
-  // Conexión dedicada para el reset
   const client = await pool.connect();
   try {
-    // FIX: TRUNCATE CASCADE para un borrado instantáneo y total
     await client.query('TRUNCATE TABLE orders, inventory, webhook_memory RESTART IDENTITY CASCADE');
     console.log('⚠️ [RESET] SYSTEM FACTORY RESET EXECUTED');
     notifyClients('RESET');
