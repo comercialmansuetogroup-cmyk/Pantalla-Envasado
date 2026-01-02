@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect } from 'react';
-import { X, Upload, Settings as SettingsIcon, Type, Layout, TrendingUp, Image, MoveHorizontal, ArrowUpDown, Columns, RectangleHorizontal, PanelBottom } from 'lucide-react';
+import { X, Upload, Settings as SettingsIcon, Type, Layout, TrendingUp, Image, MoveHorizontal, ArrowUpDown, Columns, RectangleHorizontal, PanelBottom, Trash2, Globe, Clipboard } from 'lucide-react';
 import { VisualSettings } from '../types';
 
 interface SettingsModalProps {
@@ -19,7 +19,14 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose, v
 
   if (!isOpen) return null;
 
-  // SOLICITUD 2: Logos PNG/JPG para versión blanca y oscura
+  const railwayBaseUrl = window.location.origin;
+  const webhookUrl = `${railwayBaseUrl}/api/webhook`;
+  const authToken = 'DASHBOARD_V3_KEY_2025';
+
+  const copyToClipboard = (text: string) => {
+    navigator.clipboard.writeText(text);
+  };
+
   const handleLogoUpload = (e: React.ChangeEvent<HTMLInputElement>, mode: 'light' | 'dark') => {
     const file = e.target.files?.[0];
     if (file) {
@@ -41,6 +48,29 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose, v
     const newSettings = { ...localSettings, [key]: value };
     setLocalSettings(newSettings);
     onSaveSettings(newSettings);
+  };
+
+  // LÓGICA DE RESET REAL (CONECTADA A SERVIDOR)
+  const handleFactoryReset = async () => {
+    if (confirm('⚠️ PELIGRO CRÍTICO\n\n¿Estás seguro de borrar TODOS los pedidos e inventario de la base de datos?\n\nEsta acción es irreversible.')) {
+      try {
+        const response = await fetch('/api/reset', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' }
+        });
+        
+        if (response.ok) {
+           localStorage.clear();
+           // Forzar recarga desde el servidor ignorando caché
+           window.location.reload();
+        } else {
+           alert('Error: El servidor no pudo borrar los datos.');
+        }
+      } catch (error) {
+        console.error(error);
+        alert('Error de conexión con el servidor. Verifica tu internet.');
+      }
+    }
   };
 
   return (
@@ -204,9 +234,29 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose, v
 
           </section>
 
-          <div className="pt-4">
-             <button onClick={() => { if(confirm('¿Reiniciar todo?')) { localStorage.clear(); location.reload(); } }} className="w-full py-3 bg-white/5 text-white/30 border border-white/5 text-[10px] font-black uppercase hover:bg-red-600 hover:text-white transition-all rounded-md">
-                Resetear Fábrica
+          {/* SECCIÓN 3: CONEXIÓN MAKE (EXISTENTE) */}
+          <section className="space-y-6 pt-6 border-t border-white/5">
+            <h3 className="text-xs font-black uppercase text-slate-400 tracking-[0.4em] flex items-center gap-2">
+              <Globe size={16} className="text-red-600" /> Conexión HTTP (Make)
+            </h3>
+            <div className="grid grid-cols-1 gap-6">
+              <div className="space-y-3">
+                <label className="text-[10px] font-black uppercase text-slate-500">Endpoint URL</label>
+                <div className="flex gap-2">
+                  <code className="flex-1 px-4 py-3 bg-black/20 rounded-xl font-mono text-[10px] text-red-600 truncate font-bold border border-white/5">
+                    {webhookUrl}
+                  </code>
+                  <button onClick={() => copyToClipboard(webhookUrl)} className="p-3 bg-red-600 text-white rounded-xl hover:bg-red-700 transition-all active:scale-90">
+                    <Clipboard size={16} />
+                  </button>
+                </div>
+              </div>
+            </div>
+          </section>
+
+          <div className="pt-4 pb-4">
+             <button onClick={handleFactoryReset} className="group w-full py-4 bg-red-900/10 text-red-500 border border-red-900/20 text-[10px] font-black uppercase hover:bg-red-600 hover:text-white transition-all rounded-xl flex items-center justify-center gap-3">
+                <Trash2 size={16} className="group-hover:animate-bounce" /> ELIMINAR BASE DE DATOS (FACTORY RESET)
              </button>
           </div>
         </div>

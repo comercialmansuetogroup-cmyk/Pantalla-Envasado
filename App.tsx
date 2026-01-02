@@ -30,7 +30,8 @@ export default function App() {
       setIsConnecting(true);
       setErrorMsg(null);
       
-      const res = await fetch('/api/data');
+      // FIX: Añadido { cache: 'no-store' } para evitar datos fantasma tras reset
+      const res = await fetch('/api/data', { cache: 'no-store' });
       if (!res.ok) throw new Error(`API Error: ${res.status}`);
       
       const raw = await res.json();
