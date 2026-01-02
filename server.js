@@ -28,8 +28,6 @@ const initDB = async () => {
   try {
     const client = await pool.connect();
     try {
-      console.log('🔄 [DB] Applying Strict Schema...');
-      
       // 1. Limpieza de tablas antiguas o redundantes
       await client.query('DROP TABLE IF EXISTS webhook_memory'); 
       await client.query('DROP TABLE IF EXISTS daily_stats'); 
@@ -95,10 +93,14 @@ const notifyClients = (updatedCode, type = 'update') => {
 
 // 1. WEBHOOK (Entrada de Pedidos - IDEMPOTENTE)
 app.post('/api/webhook', async (req, res) => {
+  // LOG PARA DEBUGGING SI FALLA MAKE
+  // console.log('Payload recibido:', JSON.stringify(req.body).substring(0, 200));
+
   const { zonas } = req.body;
   
+  // Validación básica pero permisiva para no romper Make con 400 innecesarios si llega vacío
   if (!zonas || !Array.isArray(zonas)) {
-    return res.status(400).json({ error: 'Invalid data format' });
+    return res.status(200).json({ ok: true, message: 'No zones to process' });
   }
 
   if (!process.env.DATABASE_URL) {
@@ -114,42 +116,46 @@ app.post('/api/webhook', async (req, res) => {
     let ignored = 0;
     let lastCode = null;
     
-    // FECHA NORMALIZADA: Usamos YYYY-MM-DD del servidor para agrupar todo lo que entre "hoy".
+    // FECHA NORMALIZADA: Usamos YYYY-MM-DD del servidor.
     const now = new Date();
     const dateKey = `${now.getFullYear()}-${now.getMonth() + 1}-${now.getDate()}`;
 
-    // CONTADOR DE OCURRENCIAS LOCAL
-    // Reiniciamos el mapa por cada llamada. Esto es clave:
-    // Si Make envía [Burrata, Burrata], detectamos Burrata#1 y Burrata#2.
+    // CONTADOR DE OCURRENCIAS LOCAL (Por si Make envía duplicados en el mismo array)
     const batchOccurrences = new Map();
 
     for (const z of zonas) {
+      // Extracción segura de datos del nivel superior (Zona)
       const code = String(z.codigo_agente ?? '0').trim(); 
       const name = z.nombre_agente || 'DESCONOCIDO';
-      const topLevelProductName = z.nombre || 'PRODUCTO';
+      // IMPORTANTE: En tu JSON, 'nombre' en la zona suele ser el nombre del producto
+      const topLevelProductName = z.nombre || 'PRODUCTO GENERICO';
 
       if (z.productos && Array.isArray(z.productos)) {
         for (const p of z.productos) {
           lastCode = String(p.codigo || 'UNKNOWN').toUpperCase().trim();
-          const qty = Number(p.cantidad) || 0;
+          
+          // Asegurar que cantidad es un número válido
+          let qty = 0;
+          try {
+             qty = Number(p.cantidad);
+             if (isNaN(qty)) qty = 0;
+          } catch(e) { qty = 0; }
+          
+          // Determinar nombre final: Si el objeto producto tiene nombre, úsalo. Si no, usa el de la zona.
           const finalProductName = p.nombre || topLevelProductName;
 
           if (qty > 0) {
             // PROTOCOLO PASO 1: Identificar Ocurrencia Única
-            // Clave: Cliente + Producto + Cantidad
             const occurrenceKey = `${code}-${lastCode}-${qty}`;
             const currentCount = (batchOccurrences.get(occurrenceKey) || 0) + 1;
             batchOccurrences.set(occurrenceKey, currentCount);
 
             // PROTOCOLO PASO 2: Generar HASH DETERMINISTA
-            // Este hash será IDÉNTICO si Make envía la misma lista 50 veces hoy.
             // Hash = Cliente + Producto + Cantidad + FechaHoy + NºOcurrencia
             const rawString = `${code}-${lastCode}-${qty}-${dateKey}-${currentCount}`;
             const uniqueHash = crypto.createHash('md5').update(rawString).digest('hex');
 
             // PROTOCOLO PASO 3: Intentar Insertar con Blindaje
-            // "ON CONFLICT DO NOTHING" es la instrucción mágica de SQL.
-            // Si el hash ya existe (porque Make se ejecutó hace 10 min), no hace NADA. Cero error, cero duplicado.
             const insertQuery = `
               INSERT INTO orders (order_hash, agent_code, agent_name, product_code, product_name, quantity)
               VALUES ($1, $2, $3, $4, $5, $6)
@@ -172,21 +178,20 @@ app.post('/api/webhook', async (req, res) => {
     await client.query('COMMIT');
     console.log(`✅ [SYNC] Date: ${dateKey} | Inserted: ${inserted} | Ignored (Dupes): ${ignored}`);
     
-    // Siempre notificamos para refrescar la UI, por si acaso
     notifyClients(lastCode, 'order');
-    
     res.json({ ok: true, inserted, ignored });
 
   } catch (err) {
     await client.query('ROLLBACK');
-    console.error('❌ [ERROR]', err.message);
+    console.error('❌ [ERROR 500 HANDLED]', err.message);
+    // Devolvemos 500 pero con JSON claro para Make
     res.status(500).json({ error: err.message });
   } finally {
     client.release();
   }
 });
 
-// 2. SCAN (Entrada de Inventario - Sumativa)
+// 2. SCAN (Entrada de Inventario)
 app.post('/api/scan', async (req, res) => {
   const authHeader = req.headers.authorization;
   if (!authHeader || authHeader !== 'Bearer DASHBOARD_V3_KEY_2025') {
@@ -203,7 +208,6 @@ app.post('/api/scan', async (req, res) => {
     const qtyNum = Number(cantidad);
     const codeStr = String(codigo).toUpperCase().trim();
 
-    // El inventario SIEMPRE suma, no depende de Hashes. Es físico.
     await client.query(
       `INSERT INTO inventory (product_code, stock_qty) 
        VALUES ($1, $2)
@@ -222,12 +226,10 @@ app.post('/api/scan', async (req, res) => {
   }
 });
 
-// 3. GET DATA (Lectura)
+// 3. GET DATA
 app.get('/api/data', async (req, res) => {
   if (!process.env.DATABASE_URL) return res.json([]);
   try {
-    // Consulta optimizada: Compara "Hoy" vs "Ayer"
-    // Usamos received_at::DATE para agrupar por fechas reales de inserción
     const result = await pool.query(`
       WITH Dates AS (
         SELECT CURRENT_DATE as today, CURRENT_DATE - INTERVAL '1 day' as yesterday
@@ -253,7 +255,7 @@ app.get('/api/data', async (req, res) => {
   }
 });
 
-// 4. HISTORY (Gráficas)
+// 4. HISTORY
 app.get('/api/history', async (req, res) => {
   if (!process.env.DATABASE_URL) return res.json([]);
   const { period } = req.query; 
@@ -284,7 +286,6 @@ app.get('/api/history', async (req, res) => {
       const d = new Date(row.date_period);
       let label = '';
       if (period === 'week') {
-         // Cálculo número de semana ISO
          const onejan = new Date(d.getFullYear(), 0, 1);
          const weekNum = Math.ceil((((d.getTime() - onejan.getTime()) / 86400000) + onejan.getDay() + 1) / 7);
          label = `S${weekNum}`;
@@ -309,7 +310,6 @@ app.post('/api/reset', async (req, res) => {
   if (!process.env.DATABASE_URL) return res.json({ ok: true });
   const client = await pool.connect();
   try {
-    // TRUNCATE es más rápido y seguro para resets completos
     await client.query('TRUNCATE TABLE orders, inventory RESTART IDENTITY CASCADE');
     console.log('⚠️ [RESET] SYSTEM FACTORY RESET EXECUTED');
     notifyClients('RESET');
