@@ -1,3 +1,4 @@
+
 import { CLIENT_MAPPING } from '../constants.ts';
 
 /**
@@ -12,9 +13,10 @@ export const processIncomingData = (data) => {
 
   data.zonas.forEach((zona) => {
     // 1. Identificar Cliente (Agent Code Mapping)
-    const agentCodeRaw = String(zona.codigo_agente || '').trim();
+    // FIX: Usar ?? para que el número 0 no sea tratado como false y pase a string "0"
+    const agentCodeRaw = String(zona.codigo_agente ?? '').trim();
     
-    // El cliente es la entidad que agrupa varios códigos (Ej: 10, 14, 5 -> Gran Canaria)
+    // El cliente es la entidad que agrupa varios códigos (Ej: 10, 14, 5, 0, 8 -> Gran Canaria)
     const clientName = CLIENT_MAPPING[agentCodeRaw] || `Zona ${agentCodeRaw}`;
     const mapKey = clientName;
 

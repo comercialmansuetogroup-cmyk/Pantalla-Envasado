@@ -45,10 +45,11 @@ export default function App() {
           if (Number(row.total_qty) === 0 && Number(row.yesterday_qty) === 0 && Number(row.global_stock) === 0) return;
 
           // NORMALIZACIÓN ROBUSTA DE CÓDIGO DE AGENTE
-          // Convertimos a string y quitamos espacios para asegurar match con '8', '10', '14', etc.
-          const rawCode = String(row.agent_code || '').trim();
+          // FIX CRÍTICO: Usamos '??' porque si row.agent_code es 0 (número), el operador '||' lo convierte en '' y falla el mapeo.
+          // Con '??', el 0 se mantiene, se pasa a String "0", y el trim() lo deja listo para el MAPPING.
+          const rawCode = String(row.agent_code ?? '').trim();
           
-          // Buscar nombre de cliente usando el código limpio
+          // Buscar nombre de cliente usando el código limpio (El '0' ahora sí encontrará 'GRAN CANARIA')
           const clientName = CLIENT_MAPPING[rawCode] || row.agent_name || `ZONA ${rawCode}`;
           
           if (!groups[clientName]) {

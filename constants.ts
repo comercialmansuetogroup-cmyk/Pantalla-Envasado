@@ -2,10 +2,11 @@
 import { IncomingDataPayload } from './types';
 
 // Client Mapping based on Agent Codes
-// Sincronizado: 10, 14, 5, 0, 8 -> GRAN CANARIA
+// Sincronizado V3: 27 Pingüino, 26 Tenerife Sur. GC: 10,14,5,0,8
 export const CLIENT_MAPPING: Record<string, string> = {
   '24': 'FILIPPO',
-  '26': 'PINGÜINO',
+  '27': 'PINGÜINO',
+  '26': 'TENERIFE SUR',
   '23': 'LA PALMA',
   '15': 'TENERIFE NORTE',
   '10': 'GRAN CANARIA',
@@ -31,9 +32,10 @@ export const generateMockData = (): IncomingDataPayload => {
     'Monster Energy'
   ];
 
-  const agentCodes = ['24', '26', '23', '15', '10', '14', '5', '0', '8'];
+  // Updated mock codes to test new mapping
+  const agentCodes = ['24', '27', '26', '23', '15', '10', '14', '5', '0', '8'];
 
-  const zones = Array.from({ length: 15 }).map(() => {
+  const zones = Array.from({ length: 20 }).map(() => {
     const randomProduct = productNames[Math.floor(Math.random() * productNames.length)];
     const randomAgent = agentCodes[Math.floor(Math.random() * agentCodes.length)];
     
