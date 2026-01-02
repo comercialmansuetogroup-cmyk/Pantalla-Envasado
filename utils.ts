@@ -1,3 +1,4 @@
+
 import { CLIENT_MAPPING } from './types';
 
 // Evita decimales extraños en javascript
@@ -10,21 +11,32 @@ export const roundSafe = (num: any): number => {
 export const extractUnitsFromDescription = (description: string, totalWeight: any): number => {
   const numericWeight = Number(totalWeight) || 0;
   if (numericWeight === 0) return 0;
+  
+  // Si no hay descripción, devolvemos el entero redondeado estándar
   if (!description) return Math.round(numericWeight);
 
+  // Regex mejorado para detectar: 1kg, 1 kg, 1.5 KG, 1,2 Kilos, 500 gramos, etc.
   const weightRegex = /(\d+[.,]?\d*)\s*(KG|KILO|K|G|GR|GRAMOS)/i;
   const match = description.match(weightRegex);
 
   if (match) {
     let unitWeight = parseFloat(match[1].replace(',', '.'));
     const unitType = match[2].toUpperCase();
+    
+    // Normalizar todo a Kilos si viene en gramos
     if (unitType.startsWith('G')) {
       unitWeight = unitWeight / 1000;
     }
+    
     if (unitWeight > 0) {
-      return Math.round(numericWeight / unitWeight);
+      // REGLA DE NEGOCIO ACTUALIZADA: 
+      // Si son 3.80kg de 1kg, son 3 unidades (Redondeo hacia abajo).
+      // Se evita Math.round para cumplir que "3 con algo son 3 unidades".
+      return Math.floor(numericWeight / unitWeight);
     }
   }
+  
+  // Si no se detecta patrón de peso, asumimos que ya son unidades y limpiamos decimales estándar
   return Math.round(numericWeight);
 };
 
@@ -77,6 +89,7 @@ export const processDataWithTrends = (rawZones: any[], completedItems: Set<strin
           const rawQty = isProductArray ? p.cantidad : z.cantidad;
           const rawStock = isProductArray ? p.stock_fisico : z.stock_fisico;
 
+          // APLICACIÓN DE LA REGLA DE KILOS A UNIDADES
           const qty = extractUnitsFromDescription(specificDesc, rawQty);
           const stock = extractUnitsFromDescription(specificDesc, rawStock);
           
