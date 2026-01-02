@@ -95,35 +95,6 @@ const notifyClients = (updatedCode, type = 'update') => {
   clients.forEach(c => c.res.write(`data: ${JSON.stringify({type, code: updatedCode})}\n\n`));
 };
 
-// --- LOGICA DE NEGOCIO: EXTRACCIÓN DE UNIDADES ---
-// Esta función replica la lógica de frontend para asegurar integridad en DB
-const extractUnitsServer = (desc, rawQty) => {
-  const numericWeight = Number(rawQty) || 0;
-  if (numericWeight === 0) return 0;
-  if (!desc) return Math.round(numericWeight); // Default behavior
-
-  // Regex para detectar: 1kg, 1 kg, 1.5 KG, 1,2 Kilos, 500 gramos, etc.
-  const regex = /(\d+[.,]?\d*)\s*(KG|KILO|K|G|GR|GRAMOS)/i;
-  const match = desc.match(regex);
-  
-  if (match) {
-      let unitWeight = parseFloat(match[1].replace(',', '.'));
-      const type = match[2].toUpperCase();
-      
-      // Normalizar a Kilos
-      if (type.startsWith('G')) { // Gramos
-          unitWeight = unitWeight / 1000;
-      }
-      
-      if (unitWeight > 0) {
-          // REGLA USUARIO: Redondear siempre hacia abajo (Floor)
-          // 3.37kg de 1kg -> 3 unidades (3.37 / 1 = 3.37 -> floor = 3)
-          return Math.floor(numericWeight / unitWeight);
-      }
-  }
-  return Math.round(numericWeight);
-};
-
 // --- API ENDPOINTS ---
 
 app.post('/api/webhook', async (req, res) => {
@@ -162,12 +133,8 @@ app.post('/api/webhook', async (req, res) => {
       if (z.productos && Array.isArray(z.productos)) {
         for (const p of z.productos) {
           lastCode = String(p.codigo || 'UNKNOWN').toUpperCase().trim();
-          let rawQty = Number(p.cantidad) || 0;
+          const qty = Number(p.cantidad) || 0;
           const finalProductName = p.nombre || topLevelProductName;
-
-          // APLICAR LÓGICA DE LIMPIEZA DE UNIDADES (Kilos -> Unidades Enteras)
-          // Esto garantiza que en la DB se guarden enteros limpios según la descripción
-          const qty = extractUnitsServer(finalProductName, rawQty);
 
           if (qty > 0) {
             // 1. Identificar si es la 1ª, 2ª o 3ª vez que aparece ESTE producto idéntico en el array
