@@ -133,7 +133,12 @@ app.post('/api/webhook', async (req, res) => {
       if (z.productos && Array.isArray(z.productos)) {
         for (const p of z.productos) {
           lastCode = String(p.codigo || 'UNKNOWN').toUpperCase().trim();
-          const qty = Number(p.cantidad) || 0;
+          
+          // --- LOGICA DE REDONDEO ESTRICTO (SOLICITUD V4) ---
+          // Si llega decimal (ej: 3.8), se corta a entero (3). 
+          // Se aplica ANTES de cualquier cálculo para asegurar integridad.
+          const qty = Math.floor(Number(p.cantidad) || 0); 
+          
           const finalProductName = p.nombre || topLevelProductName;
 
           if (qty > 0) {
