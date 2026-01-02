@@ -1,4 +1,3 @@
-
 import { CLIENT_MAPPING } from './types';
 
 // Evita decimales extraños en javascript
@@ -8,13 +7,10 @@ export const roundSafe = (num: any): number => {
 };
 
 // Lógica compleja para extraer pesos (KG, Gramos) de descripciones de texto
-// REGLA STRICT: Redondeo siempre hacia abajo (Math.floor)
 export const extractUnitsFromDescription = (description: string, totalWeight: any): number => {
   const numericWeight = Number(totalWeight) || 0;
   if (numericWeight === 0) return 0;
-  
-  // Si no hay descripción, aplicamos floor directo al número
-  if (!description) return Math.floor(numericWeight);
+  if (!description) return Math.round(numericWeight);
 
   const weightRegex = /(\d+[.,]?\d*)\s*(KG|KILO|K|G|GR|GRAMOS)/i;
   const match = description.match(weightRegex);
@@ -26,12 +22,10 @@ export const extractUnitsFromDescription = (description: string, totalWeight: an
       unitWeight = unitWeight / 1000;
     }
     if (unitWeight > 0) {
-      // 3.37 / 1 = 3.37 -> Floor = 3
-      return Math.floor(numericWeight / unitWeight);
+      return Math.round(numericWeight / unitWeight);
     }
   }
-  // Si no es por peso, simplemente quitamos decimales hacia abajo (2.8 -> 2)
-  return Math.floor(numericWeight);
+  return Math.round(numericWeight);
 };
 
 // EL CEREBRO DE DATOS: Transforma los datos crudos del servidor en la estructura visual
