@@ -83,6 +83,7 @@ const notifyClients = (updatedCode, type = 'update') => {
 
 // 1. WEBHOOK: Entrada de NUEVOS PEDIDOS (Make)
 app.post('/api/webhook', async (req, res) => {
+  // Los datos llegan dentro de la propiedad 'zonas'
   const { zonas } = req.body;
   
   if (!zonas || !Array.isArray(zonas)) {
@@ -104,6 +105,9 @@ app.post('/api/webhook', async (req, res) => {
     let countUpdate = 0;
 
     for (const z of zonas) {
+      // PROCESAMIENTO ROBUSTO DEL JSON:
+      // Usamos los campos específicos: codigo_agente y nombre_agente.
+      // Si codigo_agente viene vacío o null, se asume '0' (Gran Canaria por defecto).
       const code = String(z.codigo_agente || '0').trim();
       const name = z.nombre_agente || 'DESCONOCIDO';
       const topLevelProductName = z.nombre || 'PRODUCTO';
@@ -201,15 +205,10 @@ app.post('/api/scan', async (req, res) => {
   }
 });
 
-// 3. GET DATA: Comparativa Estricta (Última Carga vs Penúltima Carga)
+// 3. GET DATA: Comparativa Estricta
 app.get('/api/data', async (req, res) => {
   if (!process.env.DATABASE_URL) return res.json([]);
   try {
-    // LÓGICA DE ORO:
-    // 1. Obtener las 2 fechas DISTINTAS más recientes que existen en la tabla orders.
-    // 2. La más reciente (Limit 1 Offset 0) es "HOY" (o el último día cargado).
-    // 3. La segunda más reciente (Limit 1 Offset 1) es "AYER" (o el último día activo anterior).
-    // Esto funciona perfecto para Lunes vs Viernes, o Festivos.
     const result = await pool.query(`
       WITH RankedDates AS (
         SELECT DISTINCT received_at::DATE as r_date
@@ -227,14 +226,11 @@ app.get('/api/data', async (req, res) => {
         o.agent_name, 
         o.product_code, 
         o.product_name, 
-        -- Sumar Cantidad SI la fecha coincide con la Fecha 1 (Hoy/Último)
         SUM(CASE WHEN o.received_at::DATE = (SELECT date_today FROM TargetDates) THEN o.quantity ELSE 0 END) as total_qty,
-        -- Sumar Cantidad SI la fecha coincide con la Fecha 2 (Ayer/Anterior)
         SUM(CASE WHEN o.received_at::DATE = (SELECT date_yesterday FROM TargetDates) THEN o.quantity ELSE 0 END) as yesterday_qty,
         COALESCE(MAX(i.stock_qty), 0) as global_stock
       FROM orders o
       LEFT JOIN inventory i ON o.product_code = i.product_code
-      -- Traemos filas que coincidan con CUALQUIERA de las dos fechas para tener la foto completa
       WHERE o.received_at::DATE IN (SELECT r_date FROM RankedDates)
       GROUP BY o.agent_code, o.agent_name, o.product_code, o.product_name
       ORDER BY o.agent_code ASC

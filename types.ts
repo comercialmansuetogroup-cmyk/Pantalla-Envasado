@@ -60,21 +60,20 @@ export interface IncomingDataPayload {
 }
 
 // MAPPING ACTUALIZADO SEGÚN SOLICITUD V3
-// Pingüino pasa a 27. Tenerife Sur entra con 26.
-// Gran Canaria suma estrictamente: 10, 14, 5, 0, 8.
+// Se han añadido variantes con cero a la izquierda ('05', '08') por seguridad.
 export const CLIENT_MAPPING: Record<string, string> = {
   '24': 'FILIPPO', 
-  '27': 'PINGÜINO',      // CAMBIO: Antes 26
-  '26': 'TENERIFE SUR',  // CAMBIO: Nuevo código asignado
+  '27': 'PINGÜINO',      
+  '26': 'TENERIFE SUR',  
   '23': 'LA PALMA', 
   '15': 'TENERIFE NORTE',
   
-  // GRUPO GRAN CANARIA COMPLETO
+  // GRUPO GRAN CANARIA COMPLETO (Suma de códigos: 10, 14, 5, 0, 8)
   '10': 'GRAN CANARIA', 
   '14': 'GRAN CANARIA', 
-  '5': 'GRAN CANARIA', 
-  '0': 'GRAN CANARIA',   // IMPORTANTE: El código 0 debe tratarse como string para no perderse
-  '8': 'GRAN CANARIA'
+  '5': 'GRAN CANARIA', '05': 'GRAN CANARIA', // Variante por si llega con cero
+  '0': 'GRAN CANARIA', '00': 'GRAN CANARIA',
+  '8': 'GRAN CANARIA', '08': 'GRAN CANARIA'  // Variante por si llega con cero
 };
 
 export const DEFAULT_SETTINGS: VisualSettings = {

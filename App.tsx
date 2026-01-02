@@ -35,7 +35,7 @@ export default function App() {
       
       const raw = await res.json();
       
-      // 1. Agrupar filas por Cliente
+      // 1. Agrupar filas por Cliente (Mapping Estricto)
       const groups: Record<string, any> = {};
       const globalStockMap = new Map<string, number>();
 
@@ -45,11 +45,11 @@ export default function App() {
           if (Number(row.total_qty) === 0 && Number(row.yesterday_qty) === 0 && Number(row.global_stock) === 0) return;
 
           // NORMALIZACIÓN ROBUSTA DE CÓDIGO DE AGENTE
-          // FIX CRÍTICO: Usamos '??' porque si row.agent_code es 0 (número), el operador '||' lo convierte en '' y falla el mapeo.
-          // Con '??', el 0 se mantiene, se pasa a String "0", y el trim() lo deja listo para el MAPPING.
+          // Convertimos a string y quitamos espacios. El operador ?? asegura que el número 0 no se pierda.
           const rawCode = String(row.agent_code ?? '').trim();
           
-          // Buscar nombre de cliente usando el código limpio (El '0' ahora sí encontrará 'GRAN CANARIA')
+          // Buscar nombre de cliente usando el MAPA. 
+          // Si el código es 10, 14, 5, 0 o 8 -> "GRAN CANARIA"
           const clientName = CLIENT_MAPPING[rawCode] || row.agent_name || `ZONA ${rawCode}`;
           
           if (!groups[clientName]) {
@@ -61,7 +61,7 @@ export default function App() {
             };
           }
           
-          // Guardar Stock Global (viene repetido en cada fila, tomamos el valor)
+          // Guardar Stock Global
           const pCode = row.product_code;
           const stock = Number(row.global_stock);
           globalStockMap.set(pCode, stock);
@@ -69,8 +69,7 @@ export default function App() {
           const qtyToday = Number(row.total_qty);
           const qtyYesterday = Number(row.yesterday_qty);
 
-          // Calcular tendencia individual del producto
-          // Si ayer fue 0, y hoy > 0, es 100%
+          // Calcular tendencia individual de este registro
           let trend = 0;
           if (qtyYesterday > 0) {
             trend = ((qtyToday - qtyYesterday) / qtyYesterday) * 100;
@@ -78,31 +77,34 @@ export default function App() {
             trend = 100;
           }
 
-          // Agregar producto al grupo
-          // Si el producto ya existe (porque vino de otro código de agente del mismo grupo, ej 10 y 8), SUMAMOS
+          // LÓGICA DE SUMATORIA:
+          // Verificar si el producto YA existe en este grupo (por ejemplo, si vino del código 10 y ahora viene del 8)
           const existingProd = groups[clientName].products.find((p: any) => p.code === row.product_code);
           
           if (existingProd) {
+             // SI EXISTE: SUMAMOS la cantidad al existente.
              existingProd.qty += qtyToday;
              existingProd.yesterdayQty += qtyYesterday;
-             // Recalcular tendencia global del producto (sumando ambos agentes)
+             
+             // Recalcular tendencia del producto unificado
              if (existingProd.yesterdayQty > 0) {
                 existingProd.trend = ((existingProd.qty - existingProd.yesterdayQty) / existingProd.yesterdayQty) * 100;
              } else if (existingProd.qty > 0) {
                 existingProd.trend = 100;
              }
           } else {
+            // SI NO EXISTE: Lo añadimos nuevo.
             groups[clientName].products.push({
               code: row.product_code,
               name: row.product_name,
               qty: qtyToday,
-              yesterdayQty: qtyYesterday, // Guardamos dato de ayer para cálculos internos
+              yesterdayQty: qtyYesterday, 
               stock: 0, 
               trend: trend
             });
           }
 
-          // Acumuladores de Cliente (Aquí es donde se define la tendencia global real)
+          // Acumuladores Totales de Cliente
           groups[clientName].totalToday += qtyToday;
           groups[clientName].totalYesterday += qtyYesterday;
         });
@@ -117,7 +119,7 @@ export default function App() {
 
       // 3. CALCULAR TENDENCIA GLOBAL DEL CLIENTE Y DISTRIBUIR STOCK
       sortedClients.forEach(client => {
-         // Tendencia Global del Cliente
+         // Tendencia Global
          let clientTrend = 0;
          if (client.totalYesterday > 0) {
             clientTrend = ((client.totalToday - client.totalYesterday) / client.totalYesterday) * 100;
@@ -129,7 +131,7 @@ export default function App() {
          // Algoritmo de Consumo de Stock
          client.products.forEach((p: any) => {
              const available = globalStockMap.get(p.code) || 0;
-             const needed = p.qty; // Usamos el qty de HOY para consumir stock
+             const needed = p.qty;
              
              const assigned = Math.min(needed, available);
              p.stock = assigned; 
@@ -141,7 +143,7 @@ export default function App() {
          client.products.sort((a: any, b: any) => b.qty - a.qty);
       });
 
-      // 4. FILTRAR CLIENTES VACÍOS DE HOY
+      // 4. FILTRAR CLIENTES VACÍOS
       const activeClientsToday = sortedClients.filter(c => c.totalToday > 0);
 
       setData(activeClientsToday);

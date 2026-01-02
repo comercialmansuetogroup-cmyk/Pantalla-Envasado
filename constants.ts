@@ -11,9 +11,9 @@ export const CLIENT_MAPPING: Record<string, string> = {
   '15': 'TENERIFE NORTE',
   '10': 'GRAN CANARIA',
   '14': 'GRAN CANARIA',
-  '5': 'GRAN CANARIA',
-  '0': 'GRAN CANARIA',
-  '8': 'GRAN CANARIA'
+  '5': 'GRAN CANARIA', '05': 'GRAN CANARIA',
+  '0': 'GRAN CANARIA', '00': 'GRAN CANARIA',
+  '8': 'GRAN CANARIA', '08': 'GRAN CANARIA'
 };
 
 // Colors for charts
