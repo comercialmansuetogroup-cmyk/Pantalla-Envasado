@@ -65,7 +65,7 @@ export default function App() {
           const qtyYesterday = Number(row.yesterday_qty);
 
           // Calcular tendencia individual del producto
-          // Si ayer fue 0, y hoy > 0, es 100% (o infinito, lo marcamos como 100)
+          // Si ayer fue 0, y hoy > 0, es 100%
           let trend = 0;
           if (qtyYesterday > 0) {
             trend = ((qtyToday - qtyYesterday) / qtyYesterday) * 100;
@@ -74,6 +74,7 @@ export default function App() {
           }
 
           // Agregar producto al grupo
+          // IMPORTANTE: Incluso si qtyToday es 0, lo agregamos si qtyYesterday > 0 para que afecte al cálculo global
           const existingProd = groups[clientName].products.find((p: any) => p.code === row.product_code);
           if (existingProd) {
              existingProd.qty += qtyToday;
@@ -87,13 +88,13 @@ export default function App() {
               code: row.product_code,
               name: row.product_name,
               qty: qtyToday,
-              yesterdayQty: qtyYesterday, // Guardamos dato de ayer para cálculos internos si hiciera falta
+              yesterdayQty: qtyYesterday, // Guardamos dato de ayer para cálculos internos
               stock: 0, 
               trend: trend
             });
           }
 
-          // Acumuladores de Cliente
+          // Acumuladores de Cliente (Aquí es donde se define la tendencia global real)
           groups[clientName].totalToday += qtyToday;
           groups[clientName].totalYesterday += qtyYesterday;
         });
@@ -128,13 +129,16 @@ export default function App() {
              globalStockMap.set(p.code, Math.max(0, available - assigned));
          });
          
-         // Filtrar: Solo mostrar productos si Hoy > 0 o si tiene pendiente (lógica de ClientColumn)
-         // De momento los mandamos todos y que ClientColumn filtre.
          // Ordenar productos por cantidad descendente
          client.products.sort((a: any, b: any) => b.qty - a.qty);
       });
 
-      setData(sortedClients);
+      // 4. FILTRAR CLIENTES VACÍOS DE HOY (La solicitud del usuario)
+      // Si el cliente no tiene producción HOY (totalToday == 0), no mostramos la columna,
+      // independientemente de si tuvo datos ayer.
+      const activeClientsToday = sortedClients.filter(c => c.totalToday > 0);
+
+      setData(activeClientsToday);
 
     } catch (e: any) { 
       console.warn('Connection failed:', e);

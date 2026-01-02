@@ -201,42 +201,41 @@ app.post('/api/scan', async (req, res) => {
   }
 });
 
-// 3. GET DATA: Comparativa Inteligente (Hoy vs Último Día Activo)
+// 3. GET DATA: Comparativa Estricta (Última Carga vs Penúltima Carga)
 app.get('/api/data', async (req, res) => {
   if (!process.env.DATABASE_URL) return res.json([]);
   try {
-    // NUEVA ESTRATEGIA SQL: 
-    // 1. Encontramos las últimas 2 fechas distintas que tienen datos.
-    // 2. Rango 1 = "Día Actual" (Puede ser hoy, o el último día cargado si hoy es domingo).
-    // 3. Rango 2 = "Día Anterior" (El día efectivo de trabajo anterior).
-    // NOTA: Si hoy se han cargado datos, CURRENT_DATE será Rango 1. Si no, Rango 1 será el viernes.
-    // Esto asegura que siempre comparamos "Último set de datos" contra "Penúltimo set de datos".
+    // LÓGICA DE ORO:
+    // 1. Obtener las 2 fechas DISTINTAS más recientes que existen en la tabla orders.
+    // 2. La más reciente (Limit 1 Offset 0) es "HOY" (o el último día cargado).
+    // 3. La segunda más reciente (Limit 1 Offset 1) es "AYER" (o el último día activo anterior).
+    // Esto funciona perfecto para Lunes vs Viernes, o Festivos.
     const result = await pool.query(`
-      WITH DateRanks AS (
-        SELECT DISTINCT 
-          received_at::DATE as active_date
+      WITH RankedDates AS (
+        SELECT DISTINCT received_at::DATE as r_date
         FROM orders
-        ORDER BY active_date DESC
+        ORDER BY r_date DESC
         LIMIT 2
       ),
-      PeriodData AS (
-         SELECT 
-           (SELECT active_date FROM DateRanks OFFSET 0 LIMIT 1) as current_period,
-           (SELECT active_date FROM DateRanks OFFSET 1 LIMIT 1) as previous_period
+      TargetDates AS (
+        SELECT 
+          (SELECT r_date FROM RankedDates OFFSET 0 LIMIT 1) as date_today,
+          (SELECT r_date FROM RankedDates OFFSET 1 LIMIT 1) as date_yesterday
       )
       SELECT 
         o.agent_code, 
         o.agent_name, 
         o.product_code, 
         o.product_name, 
-        SUM(CASE WHEN o.received_at::DATE = CURRENT_DATE THEN o.quantity ELSE 0 END) as total_qty,
-        SUM(CASE WHEN o.received_at::DATE = (SELECT previous_period FROM PeriodData) THEN o.quantity ELSE 0 END) as yesterday_qty,
+        -- Sumar Cantidad SI la fecha coincide con la Fecha 1 (Hoy/Último)
+        SUM(CASE WHEN o.received_at::DATE = (SELECT date_today FROM TargetDates) THEN o.quantity ELSE 0 END) as total_qty,
+        -- Sumar Cantidad SI la fecha coincide con la Fecha 2 (Ayer/Anterior)
+        SUM(CASE WHEN o.received_at::DATE = (SELECT date_yesterday FROM TargetDates) THEN o.quantity ELSE 0 END) as yesterday_qty,
         COALESCE(MAX(i.stock_qty), 0) as global_stock
       FROM orders o
       LEFT JOIN inventory i ON o.product_code = i.product_code
-      -- Traemos datos de Hoy Y del periodo anterior calculado
-      WHERE o.received_at::DATE = CURRENT_DATE 
-         OR o.received_at::DATE = (SELECT previous_period FROM PeriodData)
+      -- Traemos filas que coincidan con CUALQUIERA de las dos fechas para tener la foto completa
+      WHERE o.received_at::DATE IN (SELECT r_date FROM RankedDates)
       GROUP BY o.agent_code, o.agent_name, o.product_code, o.product_name
       ORDER BY o.agent_code ASC
     `);
