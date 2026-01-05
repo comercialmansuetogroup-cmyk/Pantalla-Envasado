@@ -53,7 +53,7 @@ const initDB = async () => {
           stock_qty NUMERIC DEFAULT 0
         );
         
-        -- TABLA 3: EL PORTERO (Memoria de Duplicados)
+        -- TABLA 3: EL PORTERO (Memoria de Duplicados - Legacy, mantenida por compatibilidad)
         CREATE TABLE IF NOT EXISTS webhook_memory (
           line_hash TEXT PRIMARY KEY,
           created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
@@ -115,93 +115,87 @@ app.post('/api/webhook', async (req, res) => {
     await client.query('BEGIN');
     
     let lastCode = null;
-    let countInsert = 0;
-    let countSkipped = 0;
+    let countUpsert = 0;
     
-    // TRUCO: Usamos una fecha "fija" por día basada en UTC para evitar errores de zona horaria
-    const now = new Date();
-    const todayHashStr = `${now.getUTCFullYear()}-${now.getUTCMonth() + 1}-${now.getUTCDate()}`;
-
-    // Mapa para contar ocurrencias DENTRO de este mismo envío (ej: 2 filas iguales de Burrata)
-    const batchOccurrences = new Map();
-
+    // Iteramos por cada zona (Agente)
     for (const z of zonas) {
-      const code = String(z.codigo_agente ?? '0').trim(); 
-      const name = z.nombre_agente || 'DESCONOCIDO';
+      const agentCode = String(z.codigo_agente ?? '0').trim(); 
+      const agentName = z.nombre_agente || 'DESCONOCIDO';
       const topLevelProductName = z.nombre || 'PRODUCTO';
+      
+      // Lista para rastrear qué productos vinieron en ESTE webhook
+      // Cualquier producto que esté en la DB para este agente hoy, pero NO en esta lista, será borrado.
+      const incomingProductCodes = [];
 
       if (z.productos && Array.isArray(z.productos)) {
         for (const p of z.productos) {
-          lastCode = String(p.codigo || 'UNKNOWN').toUpperCase().trim();
+          const prodCode = String(p.codigo || 'UNKNOWN').toUpperCase().trim();
+          const prodName = p.nombre || topLevelProductName;
           
-          // --- LOGICA DE REDONDEO ESTRICTO (SOLICITUD V4) ---
-          // Si llega decimal (ej: 3.8), se corta a entero (3). 
-          // Se aplica ANTES de cualquier cálculo para asegurar integridad.
-          const qty = Math.floor(Number(p.cantidad) || 0); 
+          // REGLA DE ORO: Redondear hacia abajo SIEMPRE antes de escribir
+          const qty = Math.floor(Number(p.cantidad) || 0);
           
-          const finalProductName = p.nombre || topLevelProductName;
+          lastCode = prodCode;
+          incomingProductCodes.push(prodCode);
 
-          if (qty > 0) {
-            // 1. Identificar si es la 1ª, 2ª o 3ª vez que aparece ESTE producto idéntico en el array
-            const occurrenceKey = `${code}-${lastCode}-${qty}`;
-            const currentCount = (batchOccurrences.get(occurrenceKey) || 0) + 1;
-            batchOccurrences.set(occurrenceKey, currentCount);
+          if (qty >= 0) { // Permitimos 0 por si quieren dejar la línea a cero sin borrarla explícitamente
+            
+            // 1. INTENTAR ACTUALIZAR (Si ya existe la línea hoy)
+            // Esto maneja la EDICIÓN de cantidades en tiempo real
+            const updateResult = await client.query(
+               `UPDATE orders 
+                SET quantity = $1, product_name = $2
+                WHERE agent_code = $3 
+                  AND product_code = $4 
+                  AND received_at::DATE = CURRENT_DATE`,
+               [qty, prodName, agentCode, prodCode]
+            );
 
-            // 2. Crear HUELLA DIGITAL (Hash)
-            // Agente + Producto + Cantidad + FechaUTC + Nº Ocurrencia
-            const rawString = `${code}-${lastCode}-${qty}-${todayHashStr}-${currentCount}`;
-            const lineHash = crypto.createHash('md5').update(rawString).digest('hex');
-
-            // 3. Preguntar al Portero (Memoria)
-            const checkMem = await client.query('SELECT 1 FROM webhook_memory WHERE line_hash = $1', [lineHash]);
-
-            if (checkMem.rows.length === 0) {
-              // -> NO ESTÁ EN MEMORIA. Es nuevo.
-              
-              // Verificación extra de seguridad: ¿Existe ya en 'orders' aunque no esté en memoria? (Por si se borró la memoria)
-              // Buscamos filas idénticas insertadas HOY (usando fecha servidor)
-              const checkDB = await client.query(
-                `SELECT COUNT(*) as cnt FROM orders 
-                 WHERE agent_code = $1 
-                 AND product_code = $2 
-                 AND quantity = $3 
-                 AND received_at >= CURRENT_DATE`, // Postgres CURRENT_DATE es seguro
-                [code, lastCode, qty]
+            // 2. SI NO EXISTE, INSERTAR (Nueva Línea)
+            if (updateResult.rowCount === 0 && qty > 0) {
+              await client.query(
+                `INSERT INTO orders (agent_code, agent_name, product_code, product_name, quantity) 
+                 VALUES ($1, $2, $3, $4, $5)`,
+                [agentCode, agentName, prodCode, prodName, qty]
               );
-              
-              const existingInDB = parseInt(checkDB.rows[0].cnt || '0', 10);
-
-              if (existingInDB >= currentCount) {
-                 // YA ESTÁ EN ORDERS. Solo actualizamos la memoria para que no vuelva a molestar.
-                 await client.query('INSERT INTO webhook_memory (line_hash) VALUES ($1) ON CONFLICT DO NOTHING', [lineHash]);
-                 countSkipped++; // Lo contamos como skippeado porque no sumó cantidad real
-              } else {
-                 // NO ESTÁ EN ORDERS. Insertamos de verdad.
-                 await client.query(
-                  `INSERT INTO orders (agent_code, agent_name, product_code, product_name, quantity) 
-                   VALUES ($1, $2, $3, $4, $5)`,
-                  [code, name, lastCode, finalProductName, qty]
-                 );
-                 // Y guardamos la huella
-                 await client.query('INSERT INTO webhook_memory (line_hash) VALUES ($1)', [lineHash]);
-                 countInsert++;
-              }
-            } else {
-              // -> YA ESTÁ EN MEMORIA.
-              countSkipped++;
             }
+            countUpsert++;
           }
         }
+      }
+
+      // 3. ELIMINAR LÍNEAS HUÉRFANAS (Si se borró una línea en Make)
+      // Borramos de la DB cualquier producto de ESTE agente HOY que NO esté en la lista que acabamos de recibir.
+      if (incomingProductCodes.length > 0) {
+          // Generamos los placeholders ($2, $3, etc) para el array
+          const placeholders = incomingProductCodes.map((_, i) => `$${i + 2}`).join(',');
+          
+          await client.query(
+            `DELETE FROM orders 
+             WHERE agent_code = $1 
+               AND received_at::DATE = CURRENT_DATE
+               AND product_code NOT IN (${placeholders})`,
+            [agentCode, ...incomingProductCodes]
+          );
+      } else {
+          // Si la lista de productos viene vacía, significa que el usuario borró TODO para este agente hoy.
+          // Borramos todas las líneas de hoy para este agente.
+          await client.query(
+            `DELETE FROM orders 
+             WHERE agent_code = $1 
+               AND received_at::DATE = CURRENT_DATE`,
+            [agentCode]
+          );
       }
     }
 
     await client.query('COMMIT');
-    console.log(`✅ [SYNC] New Lines Inserted: ${countInsert} | Skipped (Already Exists): ${countSkipped}`);
+    console.log(`✅ [SYNC] Processed Agent Updates. Total Ops: ${countUpsert}`);
     
-    // SIEMPRE notificamos, incluso si countInsert es 0, para asegurar que el frontend está despierto
+    // Notificamos al frontend para que refresque inmediatamente
     notifyClients(lastCode, 'order');
     
-    res.json({ ok: true, inserted: countInsert, skipped: countSkipped });
+    res.json({ ok: true, processed: countUpsert });
 
   } catch (err) {
     await client.query('ROLLBACK');
@@ -249,7 +243,6 @@ app.post('/api/scan', async (req, res) => {
 app.get('/api/data', async (req, res) => {
   if (!process.env.DATABASE_URL) return res.json([]);
   
-  // FIX: Forzar no-cache para evitar que el navegador muestre datos borrados tras un reset
   res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
   res.setHeader('Pragma', 'no-cache');
   res.setHeader('Expires', '0');
