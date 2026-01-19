@@ -126,6 +126,10 @@ export const ClientColumn: React.FC<ClientColumnProps> = ({ group, darkMode, set
                     ? 'bg-green-500 shadow-xl z-20 scale-[1.02] border-green-600' 
                     : (darkMode ? 'border-white/5 hover:bg-white/2' : 'border-slate-100 hover:bg-slate-50');
 
+                  // Display Modes
+                  const showCode = settings.displayMode === 'code' || settings.displayMode === 'both';
+                  const showName = settings.displayMode === 'name' || settings.displayMode === 'both';
+
                   return (
                     // Ajuste dinámico de padding con style
                     <div 
@@ -134,19 +138,34 @@ export const ClientColumn: React.FC<ClientColumnProps> = ({ group, darkMode, set
                         style={{ paddingTop: `${verticalPadding}px`, paddingBottom: `${verticalPadding}px` }}
                     >
                       
-                      {/* Columna 1: Info Producto - ALINEACIÓN CORREGIDA */}
+                      {/* Columna 1: Info Producto - ALINEACIÓN CORREGIDA + MODOS DE VISUALIZACIÓN */}
                       <div className="flex flex-col min-w-0 pr-2">
-                        <div className="flex items-center">
-                          {/* CAMBIO: Contenedor con ancho fijo para alinear los porcentajes */}
-                          <span className={`font-black ${textColorBase} w-[90px] min-w-[90px] inline-block`} style={{ fontSize: `${settings.codeFontSize}px` }}>#{p.code}</span>
-                          <div className={isHigh ? 'brightness-0 invert' : ''}>
-                             <TrendBadge value={p.trend || 0} darkMode={darkMode} fontSize={settings.trendFontSize} />
+                        
+                        {/* MODO: CÓDIGO (arriba) */}
+                        {showCode && (
+                          <div className="flex items-center">
+                            {/* Contenedor con ancho fijo para alinear los porcentajes */}
+                            <span className={`font-black ${textColorBase} w-[90px] min-w-[90px] inline-block`} style={{ fontSize: `${settings.codeFontSize}px` }}>#{p.code}</span>
+                            <div className={isHigh ? 'brightness-0 invert' : ''}>
+                              <TrendBadge value={p.trend || 0} darkMode={darkMode} fontSize={settings.trendFontSize} />
+                            </div>
                           </div>
-                        </div>
-                        {/* TRUNCATE + WHITESPACE-NOWRAP: Garantiza 1 sola línea */}
-                        <span className={`font-bold opacity-50 uppercase mt-0.5 truncate whitespace-nowrap leading-tight ${isHigh ? 'text-white opacity-80' : (darkMode ? 'text-white' : 'text-slate-500')}`} style={{ fontSize: `${settings.nameFontSize}px` }}>
-                          {p.name}
-                        </span>
+                        )}
+
+                        {/* MODO: NOMBRE (abajo o solo) */}
+                        {showName && (
+                          <div className={`flex items-center ${showCode ? 'mt-0.5' : ''}`}>
+                            <span className={`font-bold opacity-50 uppercase truncate whitespace-nowrap leading-tight ${isHigh ? 'text-white opacity-80' : (darkMode ? 'text-white' : 'text-slate-500')}`} style={{ fontSize: `${settings.nameFontSize}px` }}>
+                              {p.name}
+                            </span>
+                            {/* Si SOLO se muestra nombre, agregamos el badge aquí para no perder la info de tendencia */}
+                            {!showCode && (
+                                <div className={`ml-2 ${isHigh ? 'brightness-0 invert' : ''}`}>
+                                  <TrendBadge value={p.trend || 0} darkMode={darkMode} fontSize={settings.trendFontSize} />
+                                </div>
+                            )}
+                          </div>
+                        )}
                       </div>
                       
                       <div className={`text-right font-bold tabular-nums text-sm ${stockColor}`}>{p.stock}</div>
