@@ -84,9 +84,16 @@ const notifyClients = (updatedCode, type = 'update') => {
 // --- API ENDPOINTS ---
 
 app.post('/api/webhook', async (req, res) => {
+  // 1. SEGURIDAD: Validación estricta del Token
+  const authHeader = req.headers.authorization;
+  if (!authHeader || authHeader !== 'Bearer DASHBOARD_V3_KEY_2025') {
+    console.warn('⛔ [SECURITY] Intento de acceso no autorizado al Webhook');
+    return res.status(401).json({ error: 'Unauthorized: Invalid Token' });
+  }
+
   const { zonas } = req.body;
   
-  // Validación estricta
+  // 2. VALIDACIÓN JSON
   if (!zonas || !Array.isArray(zonas)) {
     console.error('❌ [WEBHOOK] Invalid Body Format');
     return res.status(400).json({ error: 'Invalid JSON format' });
@@ -105,14 +112,12 @@ app.post('/api/webhook', async (req, res) => {
     let countUpsert = 0;
     
     // Iteramos por cada objeto "zona" que envía Make.
-    // Según tu JSON, cada objeto 'zona' representa una línea de pedido.
     for (const z of zonas) {
       
-      // 1. Mapeo de Variables EXACTO según tu JSON y captura
       const agentCode = String(z.codigo_agente ?? '0').trim(); 
       const agentName = String(z.nombre_agente || 'DESCONOCIDO').toUpperCase();
       
-      // CRÍTICO: El nombre del producto viene en z.nombre según tu estructura
+      // CRÍTICO: El nombre del producto viene en z.nombre según tu estructura JSON
       const prodName = String(z.nombre || 'PRODUCTO').trim().toUpperCase();
       
       // Lista para rastrear productos en este paquete
@@ -125,21 +130,18 @@ app.post('/api/webhook', async (req, res) => {
           const qty = Math.floor(Number(p.cantidad) || 0);
           const stockFisico = Number(p.stock_fisico); // Capturamos stock si viene
 
-          // LÓGICA DE RECUPERACIÓN DE CÓDIGO (Sin inventar hashes)
-          // Si el código viene vacío, usamos el NOMBRE como código.
-          // Esto es lo que hacía que funcionara antes: la unicidad la da el nombre.
+          // LÓGICA DE RECUPERACIÓN DE CÓDIGO
+          // Si el código viene vacío (típico en Make), usamos el NOMBRE como identificador único.
           if (prodCode === '' || prodCode === 'UNKNOWN') {
              prodCode = prodName; 
           }
           
-          // Guardamos referencia para notificaciones
           lastCode = prodCode;
           incomingProductCodes.push(prodCode);
 
           if (qty >= 0) {
             
             // A. ACTUALIZAR PEDIDOS (Upsert)
-            // Usamos prodCode (que puede ser el nombre) para diferenciar filas
             const updateResult = await client.query(
                `UPDATE orders 
                 SET quantity = $1, product_name = $2, agent_name = $5
@@ -158,7 +160,6 @@ app.post('/api/webhook', async (req, res) => {
             }
 
             // B. ACTUALIZAR STOCK (Si viene en el JSON)
-            // Si Make envía el stock físico, actualizamos el inventario directamente
             if (!isNaN(stockFisico)) {
                await client.query(
                  `INSERT INTO inventory (product_code, stock_qty) 
@@ -174,8 +175,7 @@ app.post('/api/webhook', async (req, res) => {
         }
       }
 
-      // 3. ELIMINAR LÍNEAS HUÉRFANAS (Cleanup)
-      // Si en este envío del agente faltan productos que antes estaban, se borran.
+      // 3. CLEANUP: ELIMINAR LÍNEAS HUÉRFANAS
       if (incomingProductCodes.length > 0) {
           const placeholders = incomingProductCodes.map((_, i) => `$${i + 2}`).join(',');
           await client.query(
@@ -203,7 +203,7 @@ app.post('/api/webhook', async (req, res) => {
   }
 });
 
-// Endpoint Scan (Pistola) - Se mantiene por si se usa hardware aparte
+// Endpoint Scan (Pistola)
 app.post('/api/scan', async (req, res) => {
   const authHeader = req.headers.authorization;
   if (!authHeader || authHeader !== 'Bearer DASHBOARD_V3_KEY_2025') {
@@ -241,7 +241,6 @@ app.get('/api/data', async (req, res) => {
   res.setHeader('Cache-Control', 'no-store, no-cache');
   
   try {
-    // Consulta SQL optimizada para obtener lo de HOY y AYER
     const result = await pool.query(`
       WITH RankedDates AS (
         SELECT DISTINCT received_at::DATE as r_date
@@ -275,7 +274,6 @@ app.get('/api/data', async (req, res) => {
   }
 });
 
-// Histórico para analítica
 app.get('/api/history', async (req, res) => {
   if (!process.env.DATABASE_URL) return res.json([]);
   const { period } = req.query; 
