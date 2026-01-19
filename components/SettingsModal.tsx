@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect } from 'react';
-import { X, Server, Key, Globe, Clipboard, ArrowRight, Upload, Layout, Type, Layers, Settings, Factory } from 'lucide-react';
+import { X, Save, RotateCcw, Upload, Monitor, Type, Layout, Database } from 'lucide-react';
 import { VisualSettings } from '../types';
 
 interface SettingsModalProps {
@@ -19,30 +19,10 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose, v
 
   if (!isOpen) return null;
 
-  // ACTUALIZACIÓN: URL de Producción Fija y Token Verificado
-  const webhookUrl = 'https://pantalla-envasado-production.up.railway.app/api/webhook';
+  // Variables de entorno para mostrar en la UI
+  const railwayBaseUrl = window.location.origin;
+  const webhookUrl = `${railwayBaseUrl}/api/webhook`;
   const authToken = 'DASHBOARD_V3_KEY_2025';
-
-  const copyToClipboard = (text: string) => {
-    navigator.clipboard.writeText(text);
-  };
-
-  const handleLogoUpload = (e: React.ChangeEvent<HTMLInputElement>, mode: 'light' | 'dark') => {
-    const file = e.target.files?.[0];
-    if (file) {
-      if (!['image/jpeg', 'image/png', 'image/jpg', 'image/webp'].includes(file.type)) {
-        alert('Formato no válido. Utilice PNG o JPG.');
-        return;
-      }
-      const reader = new FileReader();
-      reader.onloadend = () => {
-        const newSettings = { ...localSettings, [mode === 'light' ? 'logoLight' : 'logoDark']: reader.result as string };
-        setLocalSettings(newSettings);
-        onSaveSettings(newSettings);
-      };
-      reader.readAsDataURL(file);
-    }
-  };
 
   const updateSetting = (key: keyof VisualSettings, value: any) => {
     const newSettings = { ...localSettings, [key]: value };
@@ -50,191 +30,192 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose, v
     onSaveSettings(newSettings);
   };
 
+  const handleLogoUpload = (e: React.ChangeEvent<HTMLInputElement>, mode: 'light' | 'dark') => {
+    const file = e.target.files?.[0];
+    if (file) {
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        updateSetting(mode === 'light' ? 'logoLight' : 'logoDark', reader.result as string);
+      };
+      reader.readAsDataURL(file);
+    }
+  };
+
   const handleFactoryReset = async () => {
-    if (confirm('⚠️ PELIGRO: ¿Estás seguro de borrar TODOS los datos de la base de datos?\n\nEsta acción es irreversible y reiniciará el dashboard a cero.')) {
-      try {
-        const response = await fetch('/api/reset', {
-          method: 'POST',
-        });
-        
-        if (response.ok) {
-           localStorage.clear();
-           window.location.reload();
-        } else {
-           alert('Error al intentar resetear la base de datos.');
-        }
-      } catch (error) {
-        console.error(error);
-        alert('Error de conexión con el servidor.');
-      }
+    if (confirm('⚠️ ¿BORRAR TODA LA BASE DE DATOS?\nEsta acción es irreversible.')) {
+        try {
+            await fetch('/api/reset', { method: 'POST' });
+            localStorage.clear();
+            window.location.reload();
+        } catch(e) { alert('Error de conexión'); }
     }
   };
 
   return (
-    <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/90 backdrop-blur-md animate-fade-in">
-      <div className="bg-white dark:bg-slate-900 rounded-[3rem] shadow-2xl w-full max-w-4xl border border-gray-200 dark:border-slate-800 overflow-hidden flex flex-col h-[90vh]">
+    <div className="fixed inset-0 z-[200] flex justify-end">
+      {/* Backdrop */}
+      <div className="absolute inset-0 bg-black/60 backdrop-blur-sm transition-opacity" onClick={onClose} />
+
+      {/* Side Panel */}
+      <div className="relative w-full max-w-md bg-white dark:bg-[#1a1d24] h-full shadow-2xl flex flex-col border-l dark:border-white/10 animate-slide-in-right">
         
         {/* Header */}
-        <div className="px-10 py-8 border-b border-gray-100 dark:border-slate-800 flex justify-between items-center bg-red-600 flex-none">
-          <div className="flex items-center gap-4 text-white">
-            <Settings size={32} />
-            <div>
-              <h2 className="text-2xl font-black uppercase tracking-tight">Panel de Configuración</h2>
-              <p className="text-xs font-bold uppercase opacity-80">Gestión Visual y de Datos V4</p>
-            </div>
+        <div className="p-6 border-b border-gray-200 dark:border-white/10 flex items-center justify-between bg-white dark:bg-[#1a1d24] z-10">
+          <div>
+            <h2 className="text-xl font-black uppercase tracking-tighter dark:text-white text-slate-900">Configuración</h2>
+            <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Sistema V3.5</p>
           </div>
-          <button onClick={onClose} className="p-3 bg-white/10 hover:bg-white/20 rounded-full text-white transition-colors">
-            <X size={24} />
+          <button onClick={onClose} className="p-2 hover:bg-gray-100 dark:hover:bg-white/10 rounded-full transition-colors dark:text-white">
+            <X size={20} />
           </button>
         </div>
 
-        {/* Content */}
-        <div className="p-10 space-y-12 overflow-y-auto flex-1">
+        {/* Scrollable Content */}
+        <div className="flex-1 overflow-y-auto p-6 space-y-8 custom-scroll">
           
-          {/* SECCIÓN 1: IDENTIDAD VISUAL (LOGOS) */}
-          <section className="space-y-6">
-            <h3 className="text-xs font-black uppercase text-slate-400 tracking-[0.4em] flex items-center gap-2">
-              <Upload size={16} className="text-red-600" /> Identidad Visual
+          {/* SECCIÓN 1: MODO DE VISUALIZACIÓN (LO QUE PEDISTE) */}
+          <section>
+            <h3 className="text-xs font-black uppercase text-red-600 tracking-widest mb-4 flex items-center gap-2">
+              <Monitor size={14} /> Visualización de Producto
             </h3>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-              <div className="p-6 bg-slate-50 dark:bg-slate-800/50 rounded-3xl border border-slate-100 dark:border-slate-800 space-y-4">
-                <p className="text-[10px] font-black uppercase text-slate-400">Logotipo Modo Claro</p>
-                <div className="flex items-center gap-4">
-                  <div className="w-16 h-16 bg-white rounded-xl border border-slate-200 flex items-center justify-center overflow-hidden">
-                    {localSettings.logoLight ? <img src={localSettings.logoLight} className="w-full h-full object-contain" /> : <Factory className="text-slate-300" />}
-                  </div>
-                  <label className="flex-1 cursor-pointer py-3 px-4 bg-red-600 text-white rounded-xl text-center font-black text-xs uppercase hover:bg-red-700 transition-colors">
-                    Subir Imagen
-                    <input type="file" accept="image/*" className="hidden" onChange={(e) => handleLogoUpload(e, 'light')} />
-                  </label>
-                </div>
+            <div className="space-y-3">
+              <div className="grid grid-cols-3 gap-2">
+                {[
+                  { id: 'both', label: 'AMBOS', sub: 'Código + Nombre' },
+                  { id: 'code', label: 'CÓDIGO', sub: 'Solo Referencia' },
+                  { id: 'name', label: 'NOMBRE', sub: 'Solo Descripción' }
+                ].map((mode) => (
+                  <button
+                    key={mode.id}
+                    onClick={() => updateSetting('displayMode', mode.id)}
+                    className={`p-3 rounded-lg border text-center transition-all ${
+                      localSettings.displayMode === mode.id 
+                        ? 'bg-red-600 border-red-600 text-white shadow-md' 
+                        : 'bg-gray-50 dark:bg-white/5 border-gray-200 dark:border-white/10 hover:border-red-400 dark:text-gray-300'
+                    }`}
+                  >
+                    <div className="text-xs font-black">{mode.label}</div>
+                    <div className="text-[9px] opacity-70 mt-1 leading-tight">{mode.sub}</div>
+                  </button>
+                ))}
               </div>
-              <div className="p-6 bg-slate-950 dark:bg-slate-900 rounded-3xl border border-slate-800 space-y-4">
-                <p className="text-[10px] font-black uppercase text-slate-500">Logotipo Modo Oscuro</p>
-                <div className="flex items-center gap-4">
-                  <div className="w-16 h-16 bg-slate-800 rounded-xl border border-slate-700 flex items-center justify-center overflow-hidden">
-                    {localSettings.logoDark ? <img src={localSettings.logoDark} className="w-full h-full object-contain" /> : <Factory className="text-slate-600" />}
-                  </div>
-                  <label className="flex-1 cursor-pointer py-3 px-4 bg-red-600 text-white rounded-xl text-center font-black text-xs uppercase hover:bg-red-700 transition-colors">
-                    Subir Imagen
-                    <input type="file" accept="image/*" className="hidden" onChange={(e) => handleLogoUpload(e, 'dark')} />
-                  </label>
-                </div>
-              </div>
+              <p className="text-[10px] text-gray-400 italic mt-2">
+                * "Ambos" es la vista recomendada: Muestra el código en negrita arriba y el nombre debajo.
+              </p>
             </div>
           </section>
 
-          {/* SECCIÓN 2: VISUALIZACIÓN DE PRODUCTOS */}
-          <section className="space-y-6">
-            <h3 className="text-xs font-black uppercase text-slate-400 tracking-[0.4em] flex items-center gap-2">
-              <Layout size={16} className="text-red-600" /> Estructura de Datos
+          <hr className="border-gray-100 dark:border-white/5" />
+
+          {/* SECCIÓN 2: IDENTIDAD VISUAL */}
+          <section>
+            <h3 className="text-xs font-black uppercase text-gray-400 tracking-widest mb-4 flex items-center gap-2">
+              <Upload size={14} /> Logotipos
             </h3>
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-              <div className="p-6 bg-slate-50 dark:bg-slate-800/30 rounded-3xl border border-slate-100 dark:border-slate-800 space-y-4">
-                <p className="text-[10px] font-black uppercase text-slate-400">Modo de Visualización</p>
-                <div className="flex flex-col gap-2">
-                  {['name', 'code', 'both'].map((m) => (
-                    <button
-                      key={m}
-                      onClick={() => updateSetting('displayMode', m)}
-                      className={`py-3 px-4 rounded-xl text-xs font-black uppercase transition-all ${localSettings.displayMode === m ? 'bg-red-600 text-white shadow-lg' : 'bg-slate-200 dark:bg-slate-800 text-slate-500 hover:bg-slate-300 dark:hover:bg-slate-700'}`}
-                    >
-                      {m === 'name' ? 'Solo Nombre' : m === 'code' ? 'Solo Código' : 'Código + Nombre'}
-                    </button>
-                  ))}
-                </div>
-              </div>
-              <div className="p-6 bg-slate-50 dark:bg-slate-800/30 rounded-3xl border border-slate-100 dark:border-slate-800 space-y-4">
-                <p className="text-[10px] font-black uppercase text-slate-400">Max Productos por Columna</p>
-                <div className="flex flex-col gap-4">
-                  <input 
-                    type="range" min="5" max="40" step="1"
-                    value={localSettings.maxRowsPerCol}
-                    onChange={(e) => updateSetting('maxRowsPerCol', parseInt(e.target.value))}
-                    className="accent-red-600"
-                  />
-                  <div className="flex justify-between items-center font-black text-xl">
-                    <span className="text-red-600">{localSettings.maxRowsPerCol}</span>
-                    <span className="text-slate-400 text-xs">FILAS</span>
-                  </div>
-                </div>
-              </div>
-              <div className="p-6 bg-slate-50 dark:bg-slate-800/30 rounded-3xl border border-slate-100 dark:border-slate-800 space-y-4">
-                <p className="text-[10px] font-black uppercase text-slate-400">Tamaño Tipografía (PX)</p>
-                <div className="space-y-4">
-                  <div className="space-y-1">
-                    <span className="text-[8px] font-black text-slate-400 uppercase">Nombre</span>
-                    <div className="flex items-center gap-3">
-                      <input type="number" value={localSettings.nameFontSize} onChange={(e) => updateSetting('nameFontSize', parseInt(e.target.value))} className="w-16 bg-slate-200 dark:bg-slate-900 border-none rounded-lg p-2 text-xs font-black" />
-                      <div className="h-1 bg-slate-200 dark:bg-slate-800 flex-1 rounded-full"><div className="h-full bg-red-600 rounded-full" style={{ width: `${(localSettings.nameFontSize/32)*100}%` }} /></div>
-                    </div>
-                  </div>
-                  <div className="space-y-1">
-                    <span className="text-[8px] font-black text-slate-400 uppercase">Código</span>
-                    <div className="flex items-center gap-3">
-                      <input type="number" value={localSettings.codeFontSize} onChange={(e) => updateSetting('codeFontSize', parseInt(e.target.value))} className="w-16 bg-slate-200 dark:bg-slate-900 border-none rounded-lg p-2 text-xs font-black" />
-                      <div className="h-1 bg-slate-200 dark:bg-slate-800 flex-1 rounded-full"><div className="h-full bg-red-600 rounded-full" style={{ width: `${(localSettings.codeFontSize/32)*100}%` }} /></div>
-                    </div>
-                  </div>
-                </div>
-              </div>
+            <div className="grid grid-cols-2 gap-4">
+               {/* Logo Light */}
+               <div className="space-y-2">
+                  <label className="text-[9px] font-bold uppercase dark:text-gray-500">Modo Claro</label>
+                  <label className="block h-20 border-2 border-dashed border-gray-200 dark:border-white/10 rounded-lg cursor-pointer hover:border-red-400 transition-colors relative flex items-center justify-center bg-gray-50 dark:bg-black/20">
+                     {localSettings.logoLight ? (
+                        <img src={localSettings.logoLight} className="h-16 w-auto object-contain" />
+                     ) : <span className="text-[9px] text-gray-400">SUBIR PNG</span>}
+                     <input type="file" className="hidden" accept="image/*" onChange={(e) => handleLogoUpload(e, 'light')} />
+                  </label>
+               </div>
+               {/* Logo Dark */}
+               <div className="space-y-2">
+                  <label className="text-[9px] font-bold uppercase dark:text-gray-500">Modo Oscuro</label>
+                  <label className="block h-20 border-2 border-dashed border-gray-200 dark:border-white/10 rounded-lg cursor-pointer hover:border-red-400 transition-colors relative flex items-center justify-center bg-gray-900">
+                     {localSettings.logoDark ? (
+                        <img src={localSettings.logoDark} className="h-16 w-auto object-contain" />
+                     ) : <span className="text-[9px] text-gray-500">SUBIR PNG</span>}
+                     <input type="file" className="hidden" accept="image/*" onChange={(e) => handleLogoUpload(e, 'dark')} />
+                  </label>
+               </div>
             </div>
           </section>
 
-          {/* SECCIÓN 3: CONEXIÓN MAKE (ACTUALIZADA) */}
-          <section className="space-y-6">
-            <h3 className="text-xs font-black uppercase text-slate-400 tracking-[0.4em] flex items-center gap-2">
-              <Globe size={16} className="text-red-600" /> Conexión HTTP (Make)
+          <hr className="border-gray-100 dark:border-white/5" />
+
+          {/* SECCIÓN 3: TIPOGRAFÍA */}
+          <section>
+             <h3 className="text-xs font-black uppercase text-gray-400 tracking-widest mb-4 flex items-center gap-2">
+              <Type size={14} /> Tamaños de Fuente
             </h3>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-              <div className="space-y-3">
-                <label className="text-[10px] font-black uppercase text-slate-500">Endpoint URL (Production)</label>
-                <div className="flex gap-2">
-                  <code className="flex-1 px-4 py-3 bg-slate-100 dark:bg-slate-800 rounded-xl font-mono text-[10px] text-red-600 truncate font-bold border border-slate-200 dark:border-slate-700">
+            <div className="space-y-4 bg-gray-50 dark:bg-white/5 p-4 rounded-lg">
+               <div>
+                  <div className="flex justify-between text-[10px] font-bold uppercase mb-1 dark:text-gray-300">
+                     <span>Tamaño Código</span>
+                     <span>{localSettings.codeFontSize}px</span>
+                  </div>
+                  <input type="range" min="10" max="32" value={localSettings.codeFontSize} onChange={(e) => updateSetting('codeFontSize', Number(e.target.value))} className="w-full accent-red-600 h-1 bg-gray-200 rounded-lg appearance-none cursor-pointer" />
+               </div>
+               <div>
+                  <div className="flex justify-between text-[10px] font-bold uppercase mb-1 dark:text-gray-300">
+                     <span>Tamaño Nombre</span>
+                     <span>{localSettings.nameFontSize}px</span>
+                  </div>
+                  <input type="range" min="8" max="24" value={localSettings.nameFontSize} onChange={(e) => updateSetting('nameFontSize', Number(e.target.value))} className="w-full accent-red-600 h-1 bg-gray-200 rounded-lg appearance-none cursor-pointer" />
+               </div>
+               <div>
+                  <div className="flex justify-between text-[10px] font-bold uppercase mb-1 dark:text-gray-300">
+                     <span>Cabecera Clientes</span>
+                     <span>{localSettings.clientNameFontSize}px</span>
+                  </div>
+                  <input type="range" min="20" max="80" value={localSettings.clientNameFontSize} onChange={(e) => updateSetting('clientNameFontSize', Number(e.target.value))} className="w-full accent-red-600 h-1 bg-gray-200 rounded-lg appearance-none cursor-pointer" />
+               </div>
+            </div>
+          </section>
+
+          <hr className="border-gray-100 dark:border-white/5" />
+
+          {/* SECCIÓN 4: ESTRUCTURA */}
+          <section>
+             <h3 className="text-xs font-black uppercase text-gray-400 tracking-widest mb-4 flex items-center gap-2">
+              <Layout size={14} /> Estructura Grid
+            </h3>
+            <div className="space-y-4">
+               <div>
+                  <div className="flex justify-between text-[10px] font-bold uppercase mb-1 dark:text-gray-300">
+                     <span>Filas por Columna</span>
+                     <span>{localSettings.maxRowsPerCol}</span>
+                  </div>
+                  <input type="range" min="5" max="50" value={localSettings.maxRowsPerCol} onChange={(e) => updateSetting('maxRowsPerCol', Number(e.target.value))} className="w-full accent-red-600 h-1 bg-gray-200 rounded-lg appearance-none cursor-pointer" />
+               </div>
+            </div>
+          </section>
+
+           <hr className="border-gray-100 dark:border-white/5" />
+
+           {/* SECCIÓN 5: INTEGRACIÓN */}
+           <section>
+              <h3 className="text-xs font-black uppercase text-gray-400 tracking-widest mb-4 flex items-center gap-2">
+               <Database size={14} /> Integración Make
+              </h3>
+              <div className="space-y-2">
+                 <div className="bg-gray-100 dark:bg-black/30 p-3 rounded text-[9px] font-mono break-all dark:text-gray-400 border dark:border-white/5">
                     {webhookUrl}
-                  </code>
-                  <button onClick={() => copyToClipboard(webhookUrl)} className="p-3 bg-red-600 text-white rounded-xl hover:bg-red-700 transition-all active:scale-90">
-                    <Clipboard size={16} />
-                  </button>
-                </div>
+                 </div>
+                 <div className="flex items-center gap-2">
+                    <span className="text-[9px] font-bold bg-green-100 text-green-700 px-2 py-1 rounded">ONLINE</span>
+                    <span className="text-[9px] text-gray-400">Token: ...KEY_2025</span>
+                 </div>
               </div>
-              <div className="space-y-3">
-                <label className="text-[10px] font-black uppercase text-slate-500">Authorization Header</label>
-                <div className="flex gap-2">
-                  <code className="flex-1 px-4 py-3 bg-slate-100 dark:bg-slate-800 rounded-xl font-mono text-[10px] text-slate-600 dark:text-slate-400 truncate font-bold border border-slate-200 dark:border-slate-700">
-                    Bearer {authToken}
-                  </code>
-                  <button onClick={() => copyToClipboard(`Bearer ${authToken}`)} className="p-3 bg-red-600 text-white rounded-xl hover:bg-red-700 transition-all active:scale-90">
-                    <Clipboard size={16} />
-                  </button>
-                </div>
-              </div>
-            </div>
-          </section>
+           </section>
 
-          <div className="p-6 bg-red-600/5 border border-red-600/10 rounded-3xl">
-             <div className="flex items-center gap-4 text-red-600">
-                <ArrowRight size={20} />
-                <p className="text-xs font-bold leading-relaxed uppercase tracking-tight">Los cambios visuales se aplican instantáneamente en el dashboard principal. Asegúrate de que los logotipos tengan fondo transparente para un acabado profesional.</p>
-             </div>
-          </div>
-          
-          <div className="pt-4">
-             <button onClick={handleFactoryReset} className="w-full py-3 bg-white/5 text-white/30 border border-white/5 text-[10px] font-black uppercase hover:bg-red-600 hover:text-white transition-all rounded-md">
-                Resetear Fábrica
-             </button>
-          </div>
         </div>
 
-        {/* Footer */}
-        <div className="p-10 bg-slate-50 dark:bg-slate-800/50 border-t border-slate-100 dark:border-slate-800 flex-none">
-          <button 
-            onClick={onClose} 
-            className="w-full py-6 bg-slate-900 dark:bg-white text-white dark:text-gray-900 rounded-3xl font-black uppercase tracking-[0.3em] text-sm shadow-2xl hover:scale-[1.01] transition-all"
-          >
-            Guardar y Cerrar
-          </button>
+        {/* Footer Actions */}
+        <div className="p-6 border-t border-gray-200 dark:border-white/10 bg-gray-50 dark:bg-[#15171c]">
+           <button 
+             onClick={handleFactoryReset}
+             className="w-full flex items-center justify-center gap-2 py-3 border border-red-200 dark:border-red-900/30 text-red-600 dark:text-red-500 rounded-lg text-xs font-black uppercase hover:bg-red-50 dark:hover:bg-red-900/10 transition-colors"
+           >
+              <RotateCcw size={14} /> Resetear Fábrica
+           </button>
         </div>
+
       </div>
     </div>
   );

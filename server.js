@@ -23,21 +23,16 @@ const initDB = async () => {
   try {
     const client = await pool.connect();
     try {
-      // 1. MIGRACIÓN AUTOMÁTICA DE ESQUEMA (FIX ERROR 500)
-      // Verificamos si existe la tabla 'orders' con la columna antigua 'id'.
-      // Si existe, borramos las tablas para recrearlas con la estructura correcta (Composite Key).
       const checkOldSchema = await client.query(
         "SELECT column_name FROM information_schema.columns WHERE table_name='orders' AND column_name='id'"
       );
       
       if (checkOldSchema.rowCount > 0) {
-        console.warn('⚠️ [DB] Esquema antiguo detectado. Ejecutando migración (DROP & RECREATE)...');
+        console.warn('⚠️ [DB] Esquema antiguo detectado. Ejecutando migración...');
         await client.query('DROP TABLE IF EXISTS orders CASCADE');
         await client.query('DROP TABLE IF EXISTS inventory CASCADE');
       }
 
-      // 2. CREACIÓN DE TABLAS (ESTRUCTURA CORRECTA)
-      // orders: PK compuesta (agent_code, product_code) para permitir ON CONFLICT UPDATE
       await client.query(`
         CREATE TABLE IF NOT EXISTS orders (
           agent_code TEXT NOT NULL,
@@ -78,23 +73,19 @@ const notifyClients = (code, type = 'update') => clients.forEach(c => c.res.writ
 
 // --- WEBHOOK MAKE ---
 app.post('/api/webhook', async (req, res) => {
-  // 1. Verificación de Token
   const authHeader = req.headers.authorization;
   if (!authHeader || authHeader !== 'Bearer DASHBOARD_V3_KEY_2025') {
-    return res.status(401).json({ error: 'Unauthorized. Check Token.' });
+    return res.status(401).json({ error: 'Unauthorized.' });
   }
 
   const { zonas } = req.body;
-  
-  // Validación básica del payload
   if (!zonas || !Array.isArray(zonas)) {
-    console.error('❌ [WEBHOOK] Invalid JSON received:', JSON.stringify(req.body).substring(0, 100));
-    return res.status(400).json({ error: 'Invalid JSON Structure. Expected "zonas" array.' });
+    return res.status(400).json({ error: 'Invalid JSON Structure' });
   }
 
   if (!process.env.DATABASE_URL) {
     notifyClients('TEST');
-    return res.json({ ok: true, mode: 'memory_only_no_db' });
+    return res.json({ ok: true, mode: 'memory_only' });
   }
 
   const client = await pool.connect();
@@ -105,25 +96,28 @@ app.post('/api/webhook', async (req, res) => {
     let lastCode = null;
     
     for (const z of zonas) {
-      // Normalización de datos del Agente
       const agentCode = String(z.codigo_agente ?? '0').trim(); 
       const agentName = String(z.nombre_agente || z.nombre || 'DESCONOCIDO').toUpperCase();
       
       if (z.productos && Array.isArray(z.productos)) {
         for (const p of z.productos) {
           
-          // A) Normalización de Producto
           const prodCode = String(p.codigo || '').trim().toUpperCase();
-          
-          // Si no hay código, saltamos (no podemos guardar basura)
           if (!prodCode || prodCode === 'UNKNOWN') continue;
 
-          // Nombre: Prioridad p.nombre > p.descripcion > prodCode
-          let prodName = p.nombre || p.descripcion || ''; 
-          if (!prodName) prodName = prodCode;
+          // CAPTURA MEJORADA DE NOMBRES
+          // 1. Intentamos sacar nombre de 'nombre' o 'descripcion'
+          let prodName = (p.nombre || p.descripcion || '').trim();
+          
+          // 2. Si no hay nombre, o el nombre es igual al código, intentamos un fallback
+          if (!prodName || prodName === prodCode) {
+             // Si el JSON viene malo, usamos el código temporalmente, 
+             // pero el ON CONFLICT tratará de preservar el nombre antiguo si ya existía uno bueno.
+             prodName = prodCode;
+          } else {
+             prodName = prodName.toUpperCase();
+          }
 
-          // B) Limpieza de Números (Manejo de comas decimales europeas)
-          // Make a veces envía "10,5" que falla en Number(). Reemplazamos coma por punto.
           const cleanQty = String(p.cantidad || '0').replace(',', '.');
           const cleanStock = String(p.stock_fisico !== undefined && p.stock_fisico !== null ? p.stock_fisico : '').replace(',', '.');
           
@@ -132,22 +126,25 @@ app.post('/api/webhook', async (req, res) => {
 
           lastCode = prodCode;
 
-          // C) LÓGICA DE PEDIDOS (UPSERT ACUMULATIVO)
           if (qty > 0) {
+            // Lógica UPSERT inteligente para nombres:
+            // Si el nuevo nombre es igual al código (malo), mantenemos el nombre viejo si existe.
             await client.query(`
               INSERT INTO orders (agent_code, agent_name, product_code, product_name, quantity)
               VALUES ($1, $2, $3, $4, $5)
               ON CONFLICT (agent_code, product_code)
               DO UPDATE SET 
                 quantity = orders.quantity + EXCLUDED.quantity,
-                product_name = EXCLUDED.product_name,
+                product_name = CASE 
+                                 WHEN EXCLUDED.product_name = EXCLUDED.product_code AND orders.product_name != orders.product_code THEN orders.product_name
+                                 ELSE EXCLUDED.product_name 
+                               END,
                 received_at = CURRENT_TIMESTAMP
             `, [agentCode, agentName, prodCode, prodName, qty]);
             
             processedCount++;
           }
 
-          // D) LÓGICA DE STOCK (SOBRESCRIBIR)
           if (!isNaN(stockFisico)) {
             await client.query(`
               INSERT INTO inventory (product_code, stock_qty)
@@ -162,20 +159,18 @@ app.post('/api/webhook', async (req, res) => {
 
     await client.query('COMMIT');
     console.log(`✅ [WEBHOOK] Processed ${processedCount} operations.`);
-    
     notifyClients(lastCode, 'order');
     res.json({ ok: true, processed: processedCount });
 
   } catch (err) {
     await client.query('ROLLBACK');
-    console.error('❌ [WEBHOOK ERROR]', err); // Log completo del error
-    res.status(500).json({ error: err.message, detail: 'Check server logs for schema issues' });
+    console.error('❌ [WEBHOOK ERROR]', err); 
+    res.status(500).json({ error: err.message });
   } finally {
     client.release();
   }
 });
 
-// Endpoint SCAN (Pistola)
 app.post('/api/scan', async (req, res) => {
   const authHeader = req.headers.authorization;
   if (!authHeader || authHeader !== 'Bearer DASHBOARD_V3_KEY_2025') return res.status(401).json({error:'Auth'});
@@ -207,7 +202,6 @@ app.post('/api/scan', async (req, res) => {
 app.get('/api/data', async (req, res) => {
   if (!process.env.DATABASE_URL) return res.json([]);
   res.setHeader('Cache-Control', 'no-store');
-  
   try {
     const result = await pool.query(`
       SELECT 
@@ -222,9 +216,7 @@ app.get('/api/data', async (req, res) => {
       WHERE o.quantity > 0
       ORDER BY o.agent_code ASC, o.product_name ASC
     `);
-    
-    const rows = result.rows.map(r => ({ ...r, yesterday_qty: 0 }));
-    res.json(rows);
+    res.json(result.rows.map(r => ({ ...r, yesterday_qty: 0 })));
   } catch (err) {
     res.status(500).json({ error: 'DB Query Failed' });
   }
