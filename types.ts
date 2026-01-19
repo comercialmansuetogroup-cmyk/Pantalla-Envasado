@@ -16,6 +16,9 @@ export interface ClientGroup {
   products: Product[];
   clientId?: string;
   code?: string;
+  totalToday: number;
+  totalYesterday: number;
+  trend: number;
 }
 
 export interface VisualSettings {
@@ -27,40 +30,38 @@ export interface VisualSettings {
   codeFontSize: number;      
   clientNameFontSize: number; 
   
-  // Nuevos campos para control de %
-  trendFontSize: number;       // Para productos
-  clientTrendFontSize: number; // Para cabecera de cliente
+  trendFontSize: number;       
+  clientTrendFontSize: number; 
   
   headerFontSize: number;
 
-  // Nuevos campos de Estructura (Solicitud Usuario V2)
-  colWidthSingle: number;    // Ancho para clientes de 1 columna (Pingüino)
-  colWidthMulti: number;     // Ancho para clientes de 2+ columnas (Gran Canaria)
-  rowVerticalPadding: number; // Separación vertical entre filas
+  colWidthSingle: number;    
+  colWidthMulti: number;     
+  rowVerticalPadding: number; 
   
-  // NUEVO: Control de Pie de Página
-  footerTotalFontSize: number;   // Tamaño del Número Grande Rojo
-  footerMetricsFontSize: number; // Tamaño base de la sección derecha (Productos, Stock, etc)
+  footerTotalFontSize: number;   
+  footerMetricsFontSize: number; 
 }
 
-export interface IncomingProduct {
+export interface IncomingProductPayload {
   codigo: string;
   cantidad: number;
+  stock_fisico?: number;
 }
 
-export interface IncomingZona {
+export interface IncomingZonePayload {
   nombre: string;
   codigo_agente: string;
   nombre_agente: string;
-  productos: IncomingProduct[];
+  productos: IncomingProductPayload[];
+  cantidad?: number;
+  stock_fisico?: number;
 }
 
 export interface IncomingDataPayload {
-  zonas: IncomingZona[];
+  zonas: IncomingZonePayload[];
 }
 
-// MAPPING ACTUALIZADO SEGÚN SOLICITUD V3
-// Se han añadido variantes con cero a la izquierda ('05', '08') por seguridad.
 export const CLIENT_MAPPING: Record<string, string> = {
   '24': 'FILIPPO', 
   '27': 'PINGÜINO',      
@@ -68,12 +69,15 @@ export const CLIENT_MAPPING: Record<string, string> = {
   '23': 'LA PALMA', 
   '15': 'TENERIFE NORTE',
   
-  // GRUPO GRAN CANARIA COMPLETO (Suma de códigos: 10, 14, 5, 0, 8)
+  // TRANSPORTES
+  'INTEGRA': 'INTEGRA TRANSPORTE',
+  
+  // GRUPO GRAN CANARIA
   '10': 'GRAN CANARIA', 
   '14': 'GRAN CANARIA', 
-  '5': 'GRAN CANARIA', '05': 'GRAN CANARIA', // Variante por si llega con cero
+  '5': 'GRAN CANARIA', '05': 'GRAN CANARIA',
   '0': 'GRAN CANARIA', '00': 'GRAN CANARIA',
-  '8': 'GRAN CANARIA', '08': 'GRAN CANARIA'  // Variante por si llega con cero
+  '8': 'GRAN CANARIA', '08': 'GRAN CANARIA'
 };
 
 export const DEFAULT_SETTINGS: VisualSettings = {
@@ -88,12 +92,10 @@ export const DEFAULT_SETTINGS: VisualSettings = {
   clientTrendFontSize: 18,
   headerFontSize: 16,
   
-  // Valores por defecto ajustados
   colWidthSingle: 340, 
   colWidthMulti: 520,  
   rowVerticalPadding: 8,
 
-  // Defaults Pie de Página
-  footerTotalFontSize: 60, // Tamaño del número rojo grande
-  footerMetricsFontSize: 11 // Tamaño de las etiquetas de métricas (los números serán un poco más grandes proporcionalmente)
+  footerTotalFontSize: 60, 
+  footerMetricsFontSize: 11 
 };

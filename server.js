@@ -4,7 +4,6 @@ const cors = require('cors');
 const bodyParser = require('body-parser');
 const { Pool } = require('pg');
 const path = require('path');
-const crypto = require('crypto');
 
 const app = express();
 const PORT = process.env.PORT || 8080;
@@ -28,15 +27,9 @@ const initDB = async () => {
   try {
     const client = await pool.connect();
     try {
-      console.log('🔄 [DB] Syncing Tables & Cleaning...');
+      console.log('🔄 [DB] Syncing Tables...');
       
-      // 1. Limpieza de tablas basura si existen
-      await client.query('DROP TABLE IF EXISTS daily_stats'); 
-      await client.query('DROP TABLE IF EXISTS "DALL·E STATS"'); 
-
-      // 2. Creación de tablas Core
       await client.query(`
-        -- TABLA 1: LIBRO DE PEDIDOS (La Realidad)
         CREATE TABLE IF NOT EXISTS orders (
           id SERIAL PRIMARY KEY,
           agent_code TEXT,
@@ -47,19 +40,12 @@ const initDB = async () => {
           received_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         );
         
-        -- TABLA 2: ALMACÉN (El Escáner)
         CREATE TABLE IF NOT EXISTS inventory (
           product_code TEXT PRIMARY KEY,
           stock_qty NUMERIC DEFAULT 0
         );
-        
-        -- TABLA 3: EL PORTERO (Memoria de Duplicados - Legacy, mantenida por compatibilidad)
-        CREATE TABLE IF NOT EXISTS webhook_memory (
-          line_hash TEXT PRIMARY KEY,
-          created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-        );
       `);
-      console.log('✅ [DB] System Ready. Tables: orders, inventory, webhook_memory');
+      console.log('✅ [DB] System Ready.');
     } finally {
       client.release();
     }
@@ -100,9 +86,10 @@ const notifyClients = (updatedCode, type = 'update') => {
 app.post('/api/webhook', async (req, res) => {
   const { zonas } = req.body;
   
+  // Validación estricta
   if (!zonas || !Array.isArray(zonas)) {
-    console.error('❌ [WEBHOOK] Invalid Body');
-    return res.status(400).json({ error: 'Invalid data format' });
+    console.error('❌ [WEBHOOK] Invalid Body Format');
+    return res.status(400).json({ error: 'Invalid JSON format' });
   }
 
   if (!process.env.DATABASE_URL) {
@@ -117,41 +104,51 @@ app.post('/api/webhook', async (req, res) => {
     let lastCode = null;
     let countUpsert = 0;
     
-    // Iteramos por cada zona (Agente)
+    // Iteramos por cada objeto "zona" que envía Make.
+    // Según tu JSON, cada objeto 'zona' representa una línea de pedido.
     for (const z of zonas) {
-      const agentCode = String(z.codigo_agente ?? '0').trim(); 
-      const agentName = z.nombre_agente || 'DESCONOCIDO';
-      const topLevelProductName = z.nombre || 'PRODUCTO';
       
-      // Lista para rastrear qué productos vinieron en ESTE webhook
-      // Cualquier producto que esté en la DB para este agente hoy, pero NO en esta lista, será borrado.
+      // 1. Mapeo de Variables EXACTO según tu JSON y captura
+      const agentCode = String(z.codigo_agente ?? '0').trim(); 
+      const agentName = String(z.nombre_agente || 'DESCONOCIDO').toUpperCase();
+      
+      // CRÍTICO: El nombre del producto viene en z.nombre según tu estructura
+      const prodName = String(z.nombre || 'PRODUCTO').trim().toUpperCase();
+      
+      // Lista para rastrear productos en este paquete
       const incomingProductCodes = [];
 
       if (z.productos && Array.isArray(z.productos)) {
         for (const p of z.productos) {
-          const prodCode = String(p.codigo || 'UNKNOWN').toUpperCase().trim();
-          const prodName = p.nombre || topLevelProductName;
           
-          // REGLA DE ORO: Redondear hacia abajo SIEMPRE antes de escribir
+          let prodCode = String(p.codigo || '').trim().toUpperCase();
           const qty = Math.floor(Number(p.cantidad) || 0);
+          const stockFisico = Number(p.stock_fisico); // Capturamos stock si viene
+
+          // LÓGICA DE RECUPERACIÓN DE CÓDIGO (Sin inventar hashes)
+          // Si el código viene vacío, usamos el NOMBRE como código.
+          // Esto es lo que hacía que funcionara antes: la unicidad la da el nombre.
+          if (prodCode === '' || prodCode === 'UNKNOWN') {
+             prodCode = prodName; 
+          }
           
+          // Guardamos referencia para notificaciones
           lastCode = prodCode;
           incomingProductCodes.push(prodCode);
 
-          if (qty >= 0) { // Permitimos 0 por si quieren dejar la línea a cero sin borrarla explícitamente
+          if (qty >= 0) {
             
-            // 1. INTENTAR ACTUALIZAR (Si ya existe la línea hoy)
-            // Esto maneja la EDICIÓN de cantidades en tiempo real
+            // A. ACTUALIZAR PEDIDOS (Upsert)
+            // Usamos prodCode (que puede ser el nombre) para diferenciar filas
             const updateResult = await client.query(
                `UPDATE orders 
-                SET quantity = $1, product_name = $2
+                SET quantity = $1, product_name = $2, agent_name = $5
                 WHERE agent_code = $3 
                   AND product_code = $4 
                   AND received_at::DATE = CURRENT_DATE`,
-               [qty, prodName, agentCode, prodCode]
+               [qty, prodName, agentCode, prodCode, agentName]
             );
 
-            // 2. SI NO EXISTE, INSERTAR (Nueva Línea)
             if (updateResult.rowCount === 0 && qty > 0) {
               await client.query(
                 `INSERT INTO orders (agent_code, agent_name, product_code, product_name, quantity) 
@@ -159,17 +156,28 @@ app.post('/api/webhook', async (req, res) => {
                 [agentCode, agentName, prodCode, prodName, qty]
               );
             }
+
+            // B. ACTUALIZAR STOCK (Si viene en el JSON)
+            // Si Make envía el stock físico, actualizamos el inventario directamente
+            if (!isNaN(stockFisico)) {
+               await client.query(
+                 `INSERT INTO inventory (product_code, stock_qty) 
+                  VALUES ($1, $2)
+                  ON CONFLICT (product_code) 
+                  DO UPDATE SET stock_qty = $2`,
+                 [prodCode, stockFisico]
+               );
+            }
+
             countUpsert++;
           }
         }
       }
 
-      // 3. ELIMINAR LÍNEAS HUÉRFANAS (Si se borró una línea en Make)
-      // Borramos de la DB cualquier producto de ESTE agente HOY que NO esté en la lista que acabamos de recibir.
+      // 3. ELIMINAR LÍNEAS HUÉRFANAS (Cleanup)
+      // Si en este envío del agente faltan productos que antes estaban, se borran.
       if (incomingProductCodes.length > 0) {
-          // Generamos los placeholders ($2, $3, etc) para el array
           const placeholders = incomingProductCodes.map((_, i) => `$${i + 2}`).join(',');
-          
           await client.query(
             `DELETE FROM orders 
              WHERE agent_code = $1 
@@ -177,24 +185,13 @@ app.post('/api/webhook', async (req, res) => {
                AND product_code NOT IN (${placeholders})`,
             [agentCode, ...incomingProductCodes]
           );
-      } else {
-          // Si la lista de productos viene vacía, significa que el usuario borró TODO para este agente hoy.
-          // Borramos todas las líneas de hoy para este agente.
-          await client.query(
-            `DELETE FROM orders 
-             WHERE agent_code = $1 
-               AND received_at::DATE = CURRENT_DATE`,
-            [agentCode]
-          );
       }
     }
 
     await client.query('COMMIT');
-    console.log(`✅ [SYNC] Processed Agent Updates. Total Ops: ${countUpsert}`);
+    console.log(`✅ [SYNC] Processed. Ops: ${countUpsert}`);
     
-    // Notificamos al frontend para que refresque inmediatamente
     notifyClients(lastCode, 'order');
-    
     res.json({ ok: true, processed: countUpsert });
 
   } catch (err) {
@@ -206,6 +203,7 @@ app.post('/api/webhook', async (req, res) => {
   }
 });
 
+// Endpoint Scan (Pistola) - Se mantiene por si se usa hardware aparte
 app.post('/api/scan', async (req, res) => {
   const authHeader = req.headers.authorization;
   if (!authHeader || authHeader !== 'Bearer DASHBOARD_V3_KEY_2025') {
@@ -213,9 +211,7 @@ app.post('/api/scan', async (req, res) => {
   }
 
   const { codigo, cantidad } = req.body;
-  if (!codigo || !cantidad) {
-    return res.status(400).json({ error: 'Faltan datos' });
-  }
+  if (!codigo || !cantidad) return res.status(400).json({ error: 'Data missing' });
 
   const client = await pool.connect();
   try {
@@ -230,9 +226,8 @@ app.post('/api/scan', async (req, res) => {
       [codeStr, qtyNum]
     );
 
-    console.log(`✅ [SCAN] ${codeStr} +${qtyNum}`);
     notifyClients(codeStr, 'scan');
-    res.json({ ok: true, updated: codeStr, qty: qtyNum });
+    res.json({ ok: true, updated: codeStr });
   } catch (err) {
     res.status(500).json({ error: err.message });
   } finally {
@@ -243,11 +238,10 @@ app.post('/api/scan', async (req, res) => {
 app.get('/api/data', async (req, res) => {
   if (!process.env.DATABASE_URL) return res.json([]);
   
-  res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
-  res.setHeader('Pragma', 'no-cache');
-  res.setHeader('Expires', '0');
+  res.setHeader('Cache-Control', 'no-store, no-cache');
   
   try {
+    // Consulta SQL optimizada para obtener lo de HOY y AYER
     const result = await pool.query(`
       WITH RankedDates AS (
         SELECT DISTINCT received_at::DATE as r_date
@@ -277,10 +271,11 @@ app.get('/api/data', async (req, res) => {
     
     res.json(result.rows);
   } catch (err) {
-    res.status(500).json({ error: 'Database query failed' });
+    res.status(500).json({ error: 'DB Query Failed' });
   }
 });
 
+// Histórico para analítica
 app.get('/api/history', async (req, res) => {
   if (!process.env.DATABASE_URL) return res.json([]);
   const { period } = req.query; 
@@ -291,11 +286,10 @@ app.get('/api/history', async (req, res) => {
     case 'month': truncType = 'month'; limit = 12; interval = '1 year'; break;
     case 'quarter': truncType = 'quarter'; limit = 5; interval = '2 year'; break;
     case 'year': truncType = 'year'; limit = 5; interval = '5 year'; break;
-    default: truncType = 'week'; limit = 5; interval = '2 month';
   }
 
   try {
-    const query = `
+    const result = await pool.query(`
       SELECT 
         DATE_TRUNC($1, received_at) as date_period,
         SUM(quantity) as total_qty
@@ -304,45 +298,27 @@ app.get('/api/history', async (req, res) => {
       GROUP BY date_period
       ORDER BY date_period ASC
       LIMIT $3
-    `;
-    const result = await pool.query(query, [truncType, interval, limit]);
+    `, [truncType, interval, limit]);
     
     const formatted = result.rows.map(row => {
       const d = new Date(row.date_period);
-      let label = '';
-      if (period === 'week') {
-         const onejan = new Date(d.getFullYear(), 0, 1);
-         const weekNum = Math.ceil((((d.getTime() - onejan.getTime()) / 86400000) + onejan.getDay() + 1) / 7);
-         label = `S${weekNum}`;
-      } else if (period === 'month') {
-         label = d.toLocaleDateString('es-ES', { month: 'short' }).toUpperCase();
-      } else if (period === 'quarter') {
-         const q = Math.floor((d.getMonth() + 3) / 3);
-         label = `Q${q} ${d.getFullYear().toString().substr(-2)}`;
-      } else {
-         label = d.getFullYear().toString();
-      }
+      let label = d.toLocaleDateString();
+      if (period === 'week') label = `S${Math.ceil((d.getDate() + 6 - d.getDay()) / 7)}`;
+      if (period === 'month') label = d.toLocaleDateString('es-ES', { month: 'short' }).toUpperCase();
       return { date: label, fullDate: row.date_period, produccion: Number(row.total_qty) };
     });
     res.json(formatted);
-  } catch (err) {
-    res.status(500).json({ error: 'History query failed' });
-  }
+  } catch (err) { res.status(500).json([]); }
 });
 
 app.post('/api/reset', async (req, res) => {
   if (!process.env.DATABASE_URL) return res.json({ ok: true });
-  
-  // Conexión dedicada para el reset
   const client = await pool.connect();
   try {
-    // FIX: TRUNCATE CASCADE para un borrado instantáneo y total
-    await client.query('TRUNCATE TABLE orders, inventory, webhook_memory RESTART IDENTITY CASCADE');
-    console.log('⚠️ [RESET] SYSTEM FACTORY RESET EXECUTED');
+    await client.query('TRUNCATE TABLE orders, inventory RESTART IDENTITY CASCADE');
     notifyClients('RESET');
     res.json({ ok: true });
   } catch (err) { 
-    console.error('Reset Error:', err);
     res.status(500).json({ error: err.message }); 
   } finally {
     client.release();
