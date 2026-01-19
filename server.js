@@ -17,14 +17,27 @@ const pool = new Pool({
 app.use(cors());
 app.use(bodyParser.json({ limit: '50mb' }));
 
-// --- BASE DE DATOS ---
+// --- BASE DE DATOS E INICIALIZACIÓN ---
 const initDB = async () => {
   if (!process.env.DATABASE_URL) return;
   try {
     const client = await pool.connect();
     try {
-      // TABLA PEDIDOS: Clave única compuesta (Agente + Producto) para evitar duplicados
-      // Si entra el mismo producto para el mismo agente, SUMAMOS cantidad (Acumulativo)
+      // 1. MIGRACIÓN AUTOMÁTICA DE ESQUEMA (FIX ERROR 500)
+      // Verificamos si existe la tabla 'orders' con la columna antigua 'id'.
+      // Si existe, borramos las tablas para recrearlas con la estructura correcta (Composite Key).
+      const checkOldSchema = await client.query(
+        "SELECT column_name FROM information_schema.columns WHERE table_name='orders' AND column_name='id'"
+      );
+      
+      if (checkOldSchema.rowCount > 0) {
+        console.warn('⚠️ [DB] Esquema antiguo detectado. Ejecutando migración (DROP & RECREATE)...');
+        await client.query('DROP TABLE IF EXISTS orders CASCADE');
+        await client.query('DROP TABLE IF EXISTS inventory CASCADE');
+      }
+
+      // 2. CREACIÓN DE TABLAS (ESTRUCTURA CORRECTA)
+      // orders: PK compuesta (agent_code, product_code) para permitir ON CONFLICT UPDATE
       await client.query(`
         CREATE TABLE IF NOT EXISTS orders (
           agent_code TEXT NOT NULL,
@@ -36,17 +49,16 @@ const initDB = async () => {
           PRIMARY KEY (agent_code, product_code)
         );
         
-        -- TABLA INVENTARIO: Stock real físico (Se actualiza/sobrescribe)
         CREATE TABLE IF NOT EXISTS inventory (
           product_code TEXT PRIMARY KEY,
           stock_qty NUMERIC DEFAULT 0
         );
       `);
-      console.log('✅ [DB] System Ready & Tables Synced');
+      console.log('✅ [DB] System Ready. Schema Verified.');
     } finally {
       client.release();
     }
-  } catch (err) { console.error('❌ [DB] Error:', err.message); }
+  } catch (err) { console.error('❌ [DB] Init Error:', err.message); }
 };
 initDB();
 
@@ -64,16 +76,21 @@ app.get('/api/events', (req, res) => {
 setInterval(() => clients.forEach(c => c.res.write(': keepalive\n\n')), 30000);
 const notifyClients = (code, type = 'update') => clients.forEach(c => c.res.write(`data: ${JSON.stringify({type, code})}\n\n`));
 
-// --- WEBHOOK MAKE (LÓGICA BLINDADA) ---
+// --- WEBHOOK MAKE ---
 app.post('/api/webhook', async (req, res) => {
-  // 1. Seguridad
+  // 1. Verificación de Token
   const authHeader = req.headers.authorization;
   if (!authHeader || authHeader !== 'Bearer DASHBOARD_V3_KEY_2025') {
-    return res.status(401).json({ error: 'Unauthorized' });
+    return res.status(401).json({ error: 'Unauthorized. Check Token.' });
   }
 
   const { zonas } = req.body;
-  if (!zonas || !Array.isArray(zonas)) return res.status(400).json({ error: 'Invalid JSON Structure' });
+  
+  // Validación básica del payload
+  if (!zonas || !Array.isArray(zonas)) {
+    console.error('❌ [WEBHOOK] Invalid JSON received:', JSON.stringify(req.body).substring(0, 100));
+    return res.status(400).json({ error: 'Invalid JSON Structure. Expected "zonas" array.' });
+  }
 
   if (!process.env.DATABASE_URL) {
     notifyClients('TEST');
@@ -87,43 +104,42 @@ app.post('/api/webhook', async (req, res) => {
     let processedCount = 0;
     let lastCode = null;
     
-    // Iteramos ZONAS (Clientes)
     for (const z of zonas) {
-      // Mapeo estricto según tu JSON
+      // Normalización de datos del Agente
       const agentCode = String(z.codigo_agente ?? '0').trim(); 
-      const agentName = String(z.nombre_agente || z.nombre || 'DESCONOCIDO').toUpperCase(); // Nombre comercial
+      const agentName = String(z.nombre_agente || z.nombre || 'DESCONOCIDO').toUpperCase();
       
       if (z.productos && Array.isArray(z.productos)) {
         for (const p of z.productos) {
           
-          // Mapeo estricto Producto
+          // A) Normalización de Producto
           const prodCode = String(p.codigo || '').trim().toUpperCase();
-          // El nombre del producto puede venir en p.nombre. Si no, fallback a z.nombre NO (porque es el cliente),
-          // fallback a descripcion o vacío.
-          let prodName = p.nombre || p.descripcion || ''; 
           
-          // Validación crítica: Si no hay código de producto, no podemos agrupar.
+          // Si no hay código, saltamos (no podemos guardar basura)
           if (!prodCode || prodCode === 'UNKNOWN') continue;
 
-          // Si el nombre está vacío, usamos el código temporalmente para que no salga en blanco
+          // Nombre: Prioridad p.nombre > p.descripcion > prodCode
+          let prodName = p.nombre || p.descripcion || ''; 
           if (!prodName) prodName = prodCode;
 
-          const qty = Number(p.cantidad) || 0;
-          const stockFisico = Number(p.stock_fisico);
+          // B) Limpieza de Números (Manejo de comas decimales europeas)
+          // Make a veces envía "10,5" que falla en Number(). Reemplazamos coma por punto.
+          const cleanQty = String(p.cantidad || '0').replace(',', '.');
+          const cleanStock = String(p.stock_fisico !== undefined && p.stock_fisico !== null ? p.stock_fisico : '').replace(',', '.');
+          
+          const qty = Number(cleanQty) || 0;
+          const stockFisico = cleanStock === '' ? NaN : Number(cleanStock);
 
           lastCode = prodCode;
 
-          // A) GESTIÓN DE PEDIDOS (ACUMULATIVA)
-          // Si la cantidad es > 0, actualizamos el pedido.
-          // Lógica: Si ya existe (Agente+Producto), SUMAMOS la cantidad nueva a la existente.
-          // Si no existe, creamos la línea.
+          // C) LÓGICA DE PEDIDOS (UPSERT ACUMULATIVO)
           if (qty > 0) {
             await client.query(`
               INSERT INTO orders (agent_code, agent_name, product_code, product_name, quantity)
               VALUES ($1, $2, $3, $4, $5)
               ON CONFLICT (agent_code, product_code)
               DO UPDATE SET 
-                quantity = orders.quantity + EXCLUDED.quantity, -- AQUÍ ESTÁ LA CLAVE: SUMA, NO REEMPLAZA
+                quantity = orders.quantity + EXCLUDED.quantity,
                 product_name = EXCLUDED.product_name,
                 received_at = CURRENT_TIMESTAMP
             `, [agentCode, agentName, prodCode, prodName, qty]);
@@ -131,8 +147,7 @@ app.post('/api/webhook', async (req, res) => {
             processedCount++;
           }
 
-          // B) GESTIÓN DE STOCK (SOBRESCRIBIR)
-          // El stock físico es un estado absoluto ("ahora hay 50"), no se suma. Se actualiza.
+          // D) LÓGICA DE STOCK (SOBRESCRIBIR)
           if (!isNaN(stockFisico)) {
             await client.query(`
               INSERT INTO inventory (product_code, stock_qty)
@@ -146,15 +161,15 @@ app.post('/api/webhook', async (req, res) => {
     }
 
     await client.query('COMMIT');
-    console.log(`✅ [WEBHOOK] Processed ${processedCount} items. Last: ${lastCode}`);
+    console.log(`✅ [WEBHOOK] Processed ${processedCount} operations.`);
     
     notifyClients(lastCode, 'order');
     res.json({ ok: true, processed: processedCount });
 
   } catch (err) {
     await client.query('ROLLBACK');
-    console.error('❌ [WEBHOOK ERROR]', err.message);
-    res.status(500).json({ error: err.message });
+    console.error('❌ [WEBHOOK ERROR]', err); // Log completo del error
+    res.status(500).json({ error: err.message, detail: 'Check server logs for schema issues' });
   } finally {
     client.release();
   }
@@ -170,7 +185,6 @@ app.post('/api/scan', async (req, res) => {
 
   const client = await pool.connect();
   try {
-    // Escaneo = Entrada de stock = Sumar al inventario existente
     const qty = Number(cantidad) || 1;
     const code = String(codigo).toUpperCase().trim();
 
@@ -181,7 +195,7 @@ app.post('/api/scan', async (req, res) => {
       DO UPDATE SET stock_qty = inventory.stock_qty + $2
     `, [code, qty]);
 
-    notifyClients(code, 'scan'); // Esto activa la animación verde
+    notifyClients(code, 'scan');
     res.json({ok:true, stock_updated: code});
   } catch(e) {
     res.status(500).json({error: e.message});
@@ -195,7 +209,6 @@ app.get('/api/data', async (req, res) => {
   res.setHeader('Cache-Control', 'no-store');
   
   try {
-    // Consulta Maestra: Une Pedidos acumulados con Stock Físico
     const result = await pool.query(`
       SELECT 
         o.agent_code, 
@@ -206,24 +219,17 @@ app.get('/api/data', async (req, res) => {
         COALESCE(i.stock_qty, 0) as global_stock
       FROM orders o
       LEFT JOIN inventory i ON o.product_code = i.product_code
-      WHERE o.quantity > 0 -- Solo traemos lo que tiene demanda
+      WHERE o.quantity > 0
       ORDER BY o.agent_code ASC, o.product_name ASC
     `);
     
-    // Formateo simple para el frontend
-    // Agregamos yesterday_qty como 0 por ahora ya que estamos limpiando la lógica histórica
-    const rows = result.rows.map(r => ({
-      ...r,
-      yesterday_qty: 0 
-    }));
-    
+    const rows = result.rows.map(r => ({ ...r, yesterday_qty: 0 }));
     res.json(rows);
   } catch (err) {
     res.status(500).json({ error: 'DB Query Failed' });
   }
 });
 
-// RESET TOTAL (Factory Reset)
 app.post('/api/reset', async (req, res) => {
   if (!process.env.DATABASE_URL) return res.json({ ok: true });
   const client = await pool.connect();
@@ -235,7 +241,6 @@ app.post('/api/reset', async (req, res) => {
   finally { client.release(); }
 });
 
-// History endpoint placeholder
 app.get('/api/history', async (req, res) => res.json([]));
 
 if (process.env.NODE_ENV === 'production') {
