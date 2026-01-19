@@ -7,7 +7,7 @@ export const CLIENT_MAPPING = MAPPING_SOURCE;
 // Colors for charts
 export const CHART_COLORS = ['#dc2626', '#ef4444', '#f87171', '#fca5a5', '#4b5563', '#1f2937'];
 
-// Mock Data Generator to simulate Make webhook
+// Mock Data Generator to simulate Make webhook structure accurately
 export const generateMockData = (): IncomingDataPayload => {
   const productNames = [
     'Coca Cola Zero 33cl',
@@ -23,14 +23,16 @@ export const generateMockData = (): IncomingDataPayload => {
   // Updated mock codes to test new mapping
   const agentCodes = ['24', '27', '26', '23', '15', '10', '14', '5', '0', '8'];
 
-  const zones = Array.from({ length: 20 }).map(() => {
+  const zones = Array.from({ length: 5 }).map(() => {
     const randomProduct = productNames[Math.floor(Math.random() * productNames.length)];
-    const randomAgent = agentCodes[Math.floor(Math.random() * agentCodes.length)];
+    const randomAgentCode = agentCodes[Math.floor(Math.random() * agentCodes.length)];
+    // Mapeamos un nombre realista basado en el código para simular la realidad
+    const randomAgentName = CLIENT_MAPPING[randomAgentCode] || 'CLIENTE DESCONOCIDO';
     
     return {
-      nombre: 'NOMBRE_ZONA_CLIENTE',
-      codigo_agente: randomAgent,
-      nombre_agente: 'CLIENTE MOCK',
+      nombre: randomAgentName, // Make mapea {{nombre_comercial}} aqui
+      codigo_agente: randomAgentCode,
+      nombre_agente: randomAgentName,
       productos: [
         {
           codigo: `P-${Math.floor(Math.random() * 1000)}`,

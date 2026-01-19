@@ -17,31 +17,32 @@ const pool = new Pool({
 app.use(cors());
 app.use(bodyParser.json({ limit: '50mb' }));
 
-// Inicialización de Tablas
+// --- BASE DE DATOS ---
 const initDB = async () => {
   if (!process.env.DATABASE_URL) return;
   try {
     const client = await pool.connect();
     try {
-      // Tabla de Pedidos (Lo que hay que producir)
+      // TABLA PEDIDOS: Clave única compuesta (Agente + Producto) para evitar duplicados
+      // Si entra el mismo producto para el mismo agente, SUMAMOS cantidad (Acumulativo)
       await client.query(`
         CREATE TABLE IF NOT EXISTS orders (
-          id SERIAL PRIMARY KEY,
-          agent_code TEXT,      -- Código Cliente (Ej: 10, 27)
-          agent_name TEXT,      -- Nombre Cliente (Ej: PINGÜINO)
-          product_code TEXT,    -- Código Producto
-          product_name TEXT,    -- Descripción Producto
+          agent_code TEXT NOT NULL,
+          agent_name TEXT,
+          product_code TEXT NOT NULL,
+          product_name TEXT,
           quantity NUMERIC DEFAULT 0,
-          received_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+          received_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+          PRIMARY KEY (agent_code, product_code)
         );
         
-        -- Tabla de Inventario (Lo que ya hay fabricado)
+        -- TABLA INVENTARIO: Stock real físico (Se actualiza/sobrescribe)
         CREATE TABLE IF NOT EXISTS inventory (
           product_code TEXT PRIMARY KEY,
           stock_qty NUMERIC DEFAULT 0
         );
       `);
-      console.log('✅ [DB] System Ready');
+      console.log('✅ [DB] System Ready & Tables Synced');
     } finally {
       client.release();
     }
@@ -49,7 +50,7 @@ const initDB = async () => {
 };
 initDB();
 
-// SSE para tiempo real
+// --- SSE (Real Time) ---
 let clients = [];
 app.get('/api/events', (req, res) => {
   res.setHeader('Content-Type', 'text/event-stream');
@@ -63,20 +64,20 @@ app.get('/api/events', (req, res) => {
 setInterval(() => clients.forEach(c => c.res.write(': keepalive\n\n')), 30000);
 const notifyClients = (code, type = 'update') => clients.forEach(c => c.res.write(`data: ${JSON.stringify({type, code})}\n\n`));
 
-// --- WEBHOOK MAKE ---
+// --- WEBHOOK MAKE (LÓGICA BLINDADA) ---
 app.post('/api/webhook', async (req, res) => {
-  // 1. Verificación de Token
+  // 1. Seguridad
   const authHeader = req.headers.authorization;
   if (!authHeader || authHeader !== 'Bearer DASHBOARD_V3_KEY_2025') {
     return res.status(401).json({ error: 'Unauthorized' });
   }
 
   const { zonas } = req.body;
-  if (!zonas || !Array.isArray(zonas)) return res.status(400).json({ error: 'Invalid JSON' });
+  if (!zonas || !Array.isArray(zonas)) return res.status(400).json({ error: 'Invalid JSON Structure' });
 
   if (!process.env.DATABASE_URL) {
     notifyClients('TEST');
-    return res.json({ ok: true, mode: 'memory' });
+    return res.json({ ok: true, mode: 'memory_only_no_db' });
   }
 
   const client = await pool.connect();
@@ -86,100 +87,104 @@ app.post('/api/webhook', async (req, res) => {
     let processedCount = 0;
     let lastCode = null;
     
-    // Recorremos cada "Zona" (que en realidad es una cabecera de pedido/cliente)
+    // Iteramos ZONAS (Clientes)
     for (const z of zonas) {
-      // z.nombre es el Nombre del Cliente (Ej: INTEGRA TRANSPORTE)
-      // z.codigo_agente es el Código (Ej: 10, 27)
-      const agentCode = String(z.codigo_agente ?? '0').trim();
-      const agentName = String(z.nombre_agente || z.nombre || 'DESCONOCIDO').toUpperCase();
+      // Mapeo estricto según tu JSON
+      const agentCode = String(z.codigo_agente ?? '0').trim(); 
+      const agentName = String(z.nombre_agente || z.nombre || 'DESCONOCIDO').toUpperCase(); // Nombre comercial
       
-      const incomingProductIds = [];
-
       if (z.productos && Array.isArray(z.productos)) {
         for (const p of z.productos) {
-          // --- LÓGICA DE PRODUCTO ---
-          // IMPORTANTE: NO usar z.nombre aquí, eso es el cliente.
-          // Buscamos el nombre dentro del objeto producto.
-          // Si Make envía "nombre" o "descripcion" dentro de "productos", lo usamos.
-          let prodName = p.nombre || p.descripcion || '';
-          let prodCode = String(p.codigo || '').trim().toUpperCase();
-          const qty = Math.floor(Number(p.cantidad) || 0);
-          const stockFisico = Number(p.stock_fisico); // Captura del stock real
+          
+          // Mapeo estricto Producto
+          const prodCode = String(p.codigo || '').trim().toUpperCase();
+          // El nombre del producto puede venir en p.nombre. Si no, fallback a z.nombre NO (porque es el cliente),
+          // fallback a descripcion o vacío.
+          let prodName = p.nombre || p.descripcion || ''; 
+          
+          // Validación crítica: Si no hay código de producto, no podemos agrupar.
+          if (!prodCode || prodCode === 'UNKNOWN') continue;
 
-          // Si viene sin código, usamos el nombre como identificador (NO INVENTAMOS HASHES)
-          if (!prodCode || prodCode === 'UNKNOWN') {
-             prodCode = prodName.toUpperCase().trim();
-          }
-          
-          // Si no tiene nombre ni código, nos saltamos esta línea
-          if (!prodCode) continue;
-          
-          // Si el nombre estaba vacío pero tenemos código, usamos el código como nombre temporal
-          // Esto evita que coja z.nombre (que es el cliente)
+          // Si el nombre está vacío, usamos el código temporalmente para que no salga en blanco
           if (!prodName) prodName = prodCode;
 
+          const qty = Number(p.cantidad) || 0;
+          const stockFisico = Number(p.stock_fisico);
+
           lastCode = prodCode;
-          incomingProductIds.push(prodCode);
 
-          if (qty >= 0) {
-            // 1. ACTUALIZAR PEDIDO (Orders)
-            // Buscamos si ya existe una línea para este Agente + Producto hoy
-            const updateRes = await client.query(
-               `UPDATE orders 
-                SET quantity = $1, product_name = $2, agent_name = $5
-                WHERE agent_code = $3 
-                  AND product_code = $4 
-                  AND received_at::DATE = CURRENT_DATE`,
-               [qty, prodName, agentCode, prodCode, agentName]
-            );
-
-            if (updateRes.rowCount === 0 && qty > 0) {
-              await client.query(
-                `INSERT INTO orders (agent_code, agent_name, product_code, product_name, quantity) 
-                 VALUES ($1, $2, $3, $4, $5)`,
-                [agentCode, agentName, prodCode, prodName, qty]
-              );
-            }
-
-            // 2. ACTUALIZAR STOCK FISICO (Inventory)
-            // Si Make nos manda el stock real, actualizamos la tabla de inventario
-            if (!isNaN(stockFisico)) {
-               await client.query(
-                 `INSERT INTO inventory (product_code, stock_qty) 
-                  VALUES ($1, $2)
-                  ON CONFLICT (product_code) 
-                  DO UPDATE SET stock_qty = $2`,
-                 [prodCode, stockFisico]
-               );
-            }
+          // A) GESTIÓN DE PEDIDOS (ACUMULATIVA)
+          // Si la cantidad es > 0, actualizamos el pedido.
+          // Lógica: Si ya existe (Agente+Producto), SUMAMOS la cantidad nueva a la existente.
+          // Si no existe, creamos la línea.
+          if (qty > 0) {
+            await client.query(`
+              INSERT INTO orders (agent_code, agent_name, product_code, product_name, quantity)
+              VALUES ($1, $2, $3, $4, $5)
+              ON CONFLICT (agent_code, product_code)
+              DO UPDATE SET 
+                quantity = orders.quantity + EXCLUDED.quantity, -- AQUÍ ESTÁ LA CLAVE: SUMA, NO REEMPLAZA
+                product_name = EXCLUDED.product_name,
+                received_at = CURRENT_TIMESTAMP
+            `, [agentCode, agentName, prodCode, prodName, qty]);
+            
             processedCount++;
           }
-        }
-      }
 
-      // 3. LIMPIEZA
-      // Si en este envío del agente faltan productos que antes estaban hoy, se borran (sincronización total)
-      if (incomingProductIds.length > 0) {
-          const placeholders = incomingProductIds.map((_, i) => `$${i + 2}`).join(',');
-          await client.query(
-            `DELETE FROM orders 
-             WHERE agent_code = $1 
-               AND received_at::DATE = CURRENT_DATE
-               AND product_code NOT IN (${placeholders})`,
-            [agentCode, ...incomingProductIds]
-          );
+          // B) GESTIÓN DE STOCK (SOBRESCRIBIR)
+          // El stock físico es un estado absoluto ("ahora hay 50"), no se suma. Se actualiza.
+          if (!isNaN(stockFisico)) {
+            await client.query(`
+              INSERT INTO inventory (product_code, stock_qty)
+              VALUES ($1, $2)
+              ON CONFLICT (product_code)
+              DO UPDATE SET stock_qty = EXCLUDED.stock_qty
+            `, [prodCode, stockFisico]);
+          }
+        }
       }
     }
 
     await client.query('COMMIT');
-    console.log(`✅ [SYNC] Ops: ${processedCount}`);
+    console.log(`✅ [WEBHOOK] Processed ${processedCount} items. Last: ${lastCode}`);
+    
     notifyClients(lastCode, 'order');
-    res.json({ ok: true, count: processedCount });
+    res.json({ ok: true, processed: processedCount });
 
   } catch (err) {
     await client.query('ROLLBACK');
-    console.error('❌ [ERROR]', err.message);
+    console.error('❌ [WEBHOOK ERROR]', err.message);
     res.status(500).json({ error: err.message });
+  } finally {
+    client.release();
+  }
+});
+
+// Endpoint SCAN (Pistola)
+app.post('/api/scan', async (req, res) => {
+  const authHeader = req.headers.authorization;
+  if (!authHeader || authHeader !== 'Bearer DASHBOARD_V3_KEY_2025') return res.status(401).json({error:'Auth'});
+
+  const { codigo, cantidad } = req.body;
+  if(!codigo) return res.status(400).json({error:'Falta codigo'});
+
+  const client = await pool.connect();
+  try {
+    // Escaneo = Entrada de stock = Sumar al inventario existente
+    const qty = Number(cantidad) || 1;
+    const code = String(codigo).toUpperCase().trim();
+
+    await client.query(`
+      INSERT INTO inventory (product_code, stock_qty)
+      VALUES ($1, $2)
+      ON CONFLICT (product_code)
+      DO UPDATE SET stock_qty = inventory.stock_qty + $2
+    `, [code, qty]);
+
+    notifyClients(code, 'scan'); // Esto activa la animación verde
+    res.json({ok:true, stock_updated: code});
+  } catch(e) {
+    res.status(500).json({error: e.message});
   } finally {
     client.release();
   }
@@ -190,41 +195,35 @@ app.get('/api/data', async (req, res) => {
   res.setHeader('Cache-Control', 'no-store');
   
   try {
-    // Consulta Agrupada: Trae Pedido Total y Stock Real
-    // Calcula HOY y AYER para tendencias
+    // Consulta Maestra: Une Pedidos acumulados con Stock Físico
     const result = await pool.query(`
-      WITH RankedDates AS (
-        SELECT DISTINCT received_at::DATE as r_date FROM orders ORDER BY r_date DESC LIMIT 2
-      ),
-      TargetDates AS (
-        SELECT 
-          (SELECT r_date FROM RankedDates OFFSET 0 LIMIT 1) as date_today,
-          (SELECT r_date FROM RankedDates OFFSET 1 LIMIT 1) as date_yesterday
-      )
       SELECT 
         o.agent_code, 
         o.agent_name, 
         o.product_code, 
         o.product_name, 
-        -- Suma de cantidades para HOY
-        SUM(CASE WHEN o.received_at::DATE = (SELECT date_today FROM TargetDates) THEN o.quantity ELSE 0 END) as total_qty,
-        -- Suma de cantidades para AYER (Comparativa)
-        SUM(CASE WHEN o.received_at::DATE = (SELECT date_yesterday FROM TargetDates) THEN o.quantity ELSE 0 END) as yesterday_qty,
-        -- Stock actual (Máximo valor registrado para ese código)
-        COALESCE((SELECT stock_qty FROM inventory WHERE product_code = o.product_code), 0) as global_stock
+        o.quantity as total_qty,
+        COALESCE(i.stock_qty, 0) as global_stock
       FROM orders o
-      WHERE o.received_at::DATE IN (SELECT r_date FROM RankedDates)
-      GROUP BY o.agent_code, o.agent_name, o.product_code, o.product_name
-      ORDER BY o.agent_code ASC
+      LEFT JOIN inventory i ON o.product_code = i.product_code
+      WHERE o.quantity > 0 -- Solo traemos lo que tiene demanda
+      ORDER BY o.agent_code ASC, o.product_name ASC
     `);
     
-    res.json(result.rows);
+    // Formateo simple para el frontend
+    // Agregamos yesterday_qty como 0 por ahora ya que estamos limpiando la lógica histórica
+    const rows = result.rows.map(r => ({
+      ...r,
+      yesterday_qty: 0 
+    }));
+    
+    res.json(rows);
   } catch (err) {
     res.status(500).json({ error: 'DB Query Failed' });
   }
 });
 
-// Endpoint Reset (para emergencias)
+// RESET TOTAL (Factory Reset)
 app.post('/api/reset', async (req, res) => {
   if (!process.env.DATABASE_URL) return res.json({ ok: true });
   const client = await pool.connect();
@@ -236,40 +235,8 @@ app.post('/api/reset', async (req, res) => {
   finally { client.release(); }
 });
 
-app.get('/api/history', async (req, res) => {
-  if (!process.env.DATABASE_URL) return res.json([]);
-  const { period } = req.query; 
-  let truncType = 'week', limit = 4, interval = '1 month';
-
-  switch (period) {
-    case 'week': truncType = 'week'; limit = 5; interval = '2 month'; break;
-    case 'month': truncType = 'month'; limit = 12; interval = '1 year'; break;
-    case 'quarter': truncType = 'quarter'; limit = 5; interval = '2 year'; break;
-    case 'year': truncType = 'year'; limit = 5; interval = '5 year'; break;
-  }
-
-  try {
-    const result = await pool.query(`
-      SELECT 
-        DATE_TRUNC($1, received_at) as date_period,
-        SUM(quantity) as total_qty
-      FROM orders 
-      WHERE received_at >= NOW() - $2::INTERVAL
-      GROUP BY date_period
-      ORDER BY date_period ASC
-      LIMIT $3
-    `, [truncType, interval, limit]);
-    
-    const formatted = result.rows.map(row => {
-      const d = new Date(row.date_period);
-      let label = d.toLocaleDateString();
-      if (period === 'week') label = `S${Math.ceil((d.getDate() + 6 - d.getDay()) / 7)}`;
-      if (period === 'month') label = d.toLocaleDateString('es-ES', { month: 'short' }).toUpperCase();
-      return { date: label, fullDate: row.date_period, produccion: Number(row.total_qty) };
-    });
-    res.json(formatted);
-  } catch (err) { res.status(500).json([]); }
-});
+// History endpoint placeholder
+app.get('/api/history', async (req, res) => res.json([]));
 
 if (process.env.NODE_ENV === 'production') {
   app.use(express.static(path.join(__dirname, 'dist')));
