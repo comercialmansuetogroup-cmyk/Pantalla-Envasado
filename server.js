@@ -8,7 +8,6 @@ const path = require('path');
 const app = express();
 const PORT = process.env.PORT || 8080;
 
-// Configuración de conexión DB
 const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
   ssl: process.env.DATABASE_URL ? { rejectUnauthorized: false } : false,
@@ -18,131 +17,114 @@ const pool = new Pool({
 app.use(cors());
 app.use(bodyParser.json({ limit: '50mb' }));
 
-// Inicialización DB
+// Inicialización de Tablas
 const initDB = async () => {
-  if (!process.env.DATABASE_URL) {
-    console.log('⚠️ [SYSTEM] Running without Database Connection (Memory Mode - Data will not persist)');
-    return;
-  }
+  if (!process.env.DATABASE_URL) return;
   try {
     const client = await pool.connect();
     try {
-      console.log('🔄 [DB] Syncing Tables...');
-      
+      // Tabla de Pedidos (Lo que hay que producir)
       await client.query(`
         CREATE TABLE IF NOT EXISTS orders (
           id SERIAL PRIMARY KEY,
-          agent_code TEXT,
-          agent_name TEXT,
-          product_code TEXT,
-          product_name TEXT,
+          agent_code TEXT,      -- Código Cliente (Ej: 10, 27)
+          agent_name TEXT,      -- Nombre Cliente (Ej: PINGÜINO)
+          product_code TEXT,    -- Código Producto
+          product_name TEXT,    -- Descripción Producto
           quantity NUMERIC DEFAULT 0,
           received_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         );
         
+        -- Tabla de Inventario (Lo que ya hay fabricado)
         CREATE TABLE IF NOT EXISTS inventory (
           product_code TEXT PRIMARY KEY,
           stock_qty NUMERIC DEFAULT 0
         );
       `);
-      console.log('✅ [DB] System Ready.');
+      console.log('✅ [DB] System Ready');
     } finally {
       client.release();
     }
-  } catch (err) { console.error('❌ [DB] Connection Error:', err.message); }
+  } catch (err) { console.error('❌ [DB] Error:', err.message); }
 };
 initDB();
 
-// --- SSE SYSTEM ---
+// SSE para tiempo real
 let clients = [];
-
 app.get('/api/events', (req, res) => {
   res.setHeader('Content-Type', 'text/event-stream');
   res.setHeader('Cache-Control', 'no-cache');
   res.setHeader('Connection', 'keep-alive');
   res.flushHeaders(); 
-
   const clientId = Date.now();
-  const newClient = { id: clientId, res };
-  clients.push(newClient);
-
-  res.write(': connected\n\n');
-
-  req.on('close', () => {
-    clients = clients.filter(c => c.id !== clientId);
-  });
+  clients.push({ id: clientId, res });
+  req.on('close', () => clients = clients.filter(c => c.id !== clientId));
 });
+setInterval(() => clients.forEach(c => c.res.write(': keepalive\n\n')), 30000);
+const notifyClients = (code, type = 'update') => clients.forEach(c => c.res.write(`data: ${JSON.stringify({type, code})}\n\n`));
 
-setInterval(() => {
-  clients.forEach(c => c.res.write(': keepalive\n\n'));
-}, 30000);
-
-const notifyClients = (updatedCode, type = 'update') => {
-  clients.forEach(c => c.res.write(`data: ${JSON.stringify({type, code: updatedCode})}\n\n`));
-};
-
-// --- API ENDPOINTS ---
-
+// --- WEBHOOK MAKE ---
 app.post('/api/webhook', async (req, res) => {
-  // 1. SEGURIDAD: Validación estricta del Token
+  // 1. Verificación de Token
   const authHeader = req.headers.authorization;
   if (!authHeader || authHeader !== 'Bearer DASHBOARD_V3_KEY_2025') {
-    console.warn('⛔ [SECURITY] Intento de acceso no autorizado al Webhook');
-    return res.status(401).json({ error: 'Unauthorized: Invalid Token' });
+    return res.status(401).json({ error: 'Unauthorized' });
   }
 
   const { zonas } = req.body;
-  
-  // 2. VALIDACIÓN JSON
-  if (!zonas || !Array.isArray(zonas)) {
-    console.error('❌ [WEBHOOK] Invalid Body Format');
-    return res.status(400).json({ error: 'Invalid JSON format' });
-  }
+  if (!zonas || !Array.isArray(zonas)) return res.status(400).json({ error: 'Invalid JSON' });
 
   if (!process.env.DATABASE_URL) {
-    notifyClients('TEST-CODE');
-    return res.json({ ok: true, mode: 'no-db' });
+    notifyClients('TEST');
+    return res.json({ ok: true, mode: 'memory' });
   }
 
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
     
+    let processedCount = 0;
     let lastCode = null;
-    let countUpsert = 0;
     
-    // Iteramos por cada objeto "zona" que envía Make.
+    // Recorremos cada "Zona" (que en realidad es una cabecera de pedido/cliente)
     for (const z of zonas) {
+      // z.nombre es el Nombre del Cliente (Ej: INTEGRA TRANSPORTE)
+      // z.codigo_agente es el Código (Ej: 10, 27)
+      const agentCode = String(z.codigo_agente ?? '0').trim();
+      const agentName = String(z.nombre_agente || z.nombre || 'DESCONOCIDO').toUpperCase();
       
-      const agentCode = String(z.codigo_agente ?? '0').trim(); 
-      const agentName = String(z.nombre_agente || 'DESCONOCIDO').toUpperCase();
-      
-      // CRÍTICO: El nombre del producto viene en z.nombre según tu estructura JSON
-      const prodName = String(z.nombre || 'PRODUCTO').trim().toUpperCase();
-      
-      // Lista para rastrear productos en este paquete
-      const incomingProductCodes = [];
+      const incomingProductIds = [];
 
       if (z.productos && Array.isArray(z.productos)) {
         for (const p of z.productos) {
-          
+          // --- LÓGICA DE PRODUCTO ---
+          // IMPORTANTE: NO usar z.nombre aquí, eso es el cliente.
+          // Buscamos el nombre dentro del objeto producto.
+          // Si Make envía "nombre" o "descripcion" dentro de "productos", lo usamos.
+          let prodName = p.nombre || p.descripcion || '';
           let prodCode = String(p.codigo || '').trim().toUpperCase();
           const qty = Math.floor(Number(p.cantidad) || 0);
-          const stockFisico = Number(p.stock_fisico); // Capturamos stock si viene
+          const stockFisico = Number(p.stock_fisico); // Captura del stock real
 
-          // LÓGICA DE RECUPERACIÓN DE CÓDIGO
-          // Si el código viene vacío (típico en Make), usamos el NOMBRE como identificador único.
-          if (prodCode === '' || prodCode === 'UNKNOWN') {
-             prodCode = prodName; 
+          // Si viene sin código, usamos el nombre como identificador (NO INVENTAMOS HASHES)
+          if (!prodCode || prodCode === 'UNKNOWN') {
+             prodCode = prodName.toUpperCase().trim();
           }
           
+          // Si no tiene nombre ni código, nos saltamos esta línea
+          if (!prodCode) continue;
+          
+          // Si el nombre estaba vacío pero tenemos código, usamos el código como nombre temporal
+          // Esto evita que coja z.nombre (que es el cliente)
+          if (!prodName) prodName = prodCode;
+
           lastCode = prodCode;
-          incomingProductCodes.push(prodCode);
+          incomingProductIds.push(prodCode);
 
           if (qty >= 0) {
-            
-            // A. ACTUALIZAR PEDIDOS (Upsert)
-            const updateResult = await client.query(
+            // 1. ACTUALIZAR PEDIDO (Orders)
+            // Buscamos si ya existe una línea para este Agente + Producto hoy
+            const updateRes = await client.query(
                `UPDATE orders 
                 SET quantity = $1, product_name = $2, agent_name = $5
                 WHERE agent_code = $3 
@@ -151,7 +133,7 @@ app.post('/api/webhook', async (req, res) => {
                [qty, prodName, agentCode, prodCode, agentName]
             );
 
-            if (updateResult.rowCount === 0 && qty > 0) {
+            if (updateRes.rowCount === 0 && qty > 0) {
               await client.query(
                 `INSERT INTO orders (agent_code, agent_name, product_code, product_name, quantity) 
                  VALUES ($1, $2, $3, $4, $5)`,
@@ -159,7 +141,8 @@ app.post('/api/webhook', async (req, res) => {
               );
             }
 
-            // B. ACTUALIZAR STOCK (Si viene en el JSON)
+            // 2. ACTUALIZAR STOCK FISICO (Inventory)
+            // Si Make nos manda el stock real, actualizamos la tabla de inventario
             if (!isNaN(stockFisico)) {
                await client.query(
                  `INSERT INTO inventory (product_code, stock_qty) 
@@ -169,30 +152,29 @@ app.post('/api/webhook', async (req, res) => {
                  [prodCode, stockFisico]
                );
             }
-
-            countUpsert++;
+            processedCount++;
           }
         }
       }
 
-      // 3. CLEANUP: ELIMINAR LÍNEAS HUÉRFANAS
-      if (incomingProductCodes.length > 0) {
-          const placeholders = incomingProductCodes.map((_, i) => `$${i + 2}`).join(',');
+      // 3. LIMPIEZA
+      // Si en este envío del agente faltan productos que antes estaban hoy, se borran (sincronización total)
+      if (incomingProductIds.length > 0) {
+          const placeholders = incomingProductIds.map((_, i) => `$${i + 2}`).join(',');
           await client.query(
             `DELETE FROM orders 
              WHERE agent_code = $1 
                AND received_at::DATE = CURRENT_DATE
                AND product_code NOT IN (${placeholders})`,
-            [agentCode, ...incomingProductCodes]
+            [agentCode, ...incomingProductIds]
           );
       }
     }
 
     await client.query('COMMIT');
-    console.log(`✅ [SYNC] Processed. Ops: ${countUpsert}`);
-    
+    console.log(`✅ [SYNC] Ops: ${processedCount}`);
     notifyClients(lastCode, 'order');
-    res.json({ ok: true, processed: countUpsert });
+    res.json({ ok: true, count: processedCount });
 
   } catch (err) {
     await client.query('ROLLBACK');
@@ -203,50 +185,16 @@ app.post('/api/webhook', async (req, res) => {
   }
 });
 
-// Endpoint Scan (Pistola)
-app.post('/api/scan', async (req, res) => {
-  const authHeader = req.headers.authorization;
-  if (!authHeader || authHeader !== 'Bearer DASHBOARD_V3_KEY_2025') {
-    return res.status(401).json({ error: 'Unauthorized' });
-  }
-
-  const { codigo, cantidad } = req.body;
-  if (!codigo || !cantidad) return res.status(400).json({ error: 'Data missing' });
-
-  const client = await pool.connect();
-  try {
-    const qtyNum = Number(cantidad);
-    const codeStr = String(codigo).toUpperCase().trim();
-
-    await client.query(
-      `INSERT INTO inventory (product_code, stock_qty) 
-       VALUES ($1, $2)
-       ON CONFLICT (product_code) 
-       DO UPDATE SET stock_qty = inventory.stock_qty + $2`,
-      [codeStr, qtyNum]
-    );
-
-    notifyClients(codeStr, 'scan');
-    res.json({ ok: true, updated: codeStr });
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  } finally {
-    client.release();
-  }
-});
-
 app.get('/api/data', async (req, res) => {
   if (!process.env.DATABASE_URL) return res.json([]);
-  
-  res.setHeader('Cache-Control', 'no-store, no-cache');
+  res.setHeader('Cache-Control', 'no-store');
   
   try {
+    // Consulta Agrupada: Trae Pedido Total y Stock Real
+    // Calcula HOY y AYER para tendencias
     const result = await pool.query(`
       WITH RankedDates AS (
-        SELECT DISTINCT received_at::DATE as r_date
-        FROM orders
-        ORDER BY r_date DESC
-        LIMIT 2
+        SELECT DISTINCT received_at::DATE as r_date FROM orders ORDER BY r_date DESC LIMIT 2
       ),
       TargetDates AS (
         SELECT 
@@ -258,11 +206,13 @@ app.get('/api/data', async (req, res) => {
         o.agent_name, 
         o.product_code, 
         o.product_name, 
+        -- Suma de cantidades para HOY
         SUM(CASE WHEN o.received_at::DATE = (SELECT date_today FROM TargetDates) THEN o.quantity ELSE 0 END) as total_qty,
+        -- Suma de cantidades para AYER (Comparativa)
         SUM(CASE WHEN o.received_at::DATE = (SELECT date_yesterday FROM TargetDates) THEN o.quantity ELSE 0 END) as yesterday_qty,
-        COALESCE(MAX(i.stock_qty), 0) as global_stock
+        -- Stock actual (Máximo valor registrado para ese código)
+        COALESCE((SELECT stock_qty FROM inventory WHERE product_code = o.product_code), 0) as global_stock
       FROM orders o
-      LEFT JOIN inventory i ON o.product_code = i.product_code
       WHERE o.received_at::DATE IN (SELECT r_date FROM RankedDates)
       GROUP BY o.agent_code, o.agent_name, o.product_code, o.product_name
       ORDER BY o.agent_code ASC
@@ -272,6 +222,18 @@ app.get('/api/data', async (req, res) => {
   } catch (err) {
     res.status(500).json({ error: 'DB Query Failed' });
   }
+});
+
+// Endpoint Reset (para emergencias)
+app.post('/api/reset', async (req, res) => {
+  if (!process.env.DATABASE_URL) return res.json({ ok: true });
+  const client = await pool.connect();
+  try {
+    await client.query('TRUNCATE TABLE orders, inventory RESTART IDENTITY CASCADE');
+    notifyClients('RESET');
+    res.json({ ok: true });
+  } catch (err) { res.status(500).json({error: err.message}); } 
+  finally { client.release(); }
 });
 
 app.get('/api/history', async (req, res) => {
@@ -309,25 +271,9 @@ app.get('/api/history', async (req, res) => {
   } catch (err) { res.status(500).json([]); }
 });
 
-app.post('/api/reset', async (req, res) => {
-  if (!process.env.DATABASE_URL) return res.json({ ok: true });
-  const client = await pool.connect();
-  try {
-    await client.query('TRUNCATE TABLE orders, inventory RESTART IDENTITY CASCADE');
-    notifyClients('RESET');
-    res.json({ ok: true });
-  } catch (err) { 
-    res.status(500).json({ error: err.message }); 
-  } finally {
-    client.release();
-  }
-});
-
 if (process.env.NODE_ENV === 'production') {
   app.use(express.static(path.join(__dirname, 'dist')));
-  app.get('*', (req, res) => {
-    res.sendFile(path.join(__dirname, 'dist', 'index.html'));
-  });
+  app.get('*', (req, res) => res.sendFile(path.join(__dirname, 'dist', 'index.html')));
 }
 
 app.listen(PORT, () => console.log(`🚀 Server running on port ${PORT}`));

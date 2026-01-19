@@ -1,20 +1,8 @@
 
-import { IncomingDataPayload } from './types';
+import { IncomingDataPayload, CLIENT_MAPPING as MAPPING_SOURCE } from './types';
 
-// Client Mapping based on Agent Codes
-// Sincronizado V3: 27 Pingüino, 26 Tenerife Sur. GC: 10,14,5,0,8
-export const CLIENT_MAPPING: Record<string, string> = {
-  '24': 'FILIPPO',
-  '27': 'PINGÜINO',
-  '26': 'TENERIFE SUR',
-  '23': 'LA PALMA',
-  '15': 'TENERIFE NORTE',
-  '10': 'GRAN CANARIA',
-  '14': 'GRAN CANARIA',
-  '5': 'GRAN CANARIA', '05': 'GRAN CANARIA',
-  '0': 'GRAN CANARIA', '00': 'GRAN CANARIA',
-  '8': 'GRAN CANARIA', '08': 'GRAN CANARIA'
-};
+// Exporting directly from types to avoid duplication and inconsistencies
+export const CLIENT_MAPPING = MAPPING_SOURCE;
 
 // Colors for charts
 export const CHART_COLORS = ['#dc2626', '#ef4444', '#f87171', '#fca5a5', '#4b5563', '#1f2937'];
@@ -40,17 +28,15 @@ export const generateMockData = (): IncomingDataPayload => {
     const randomAgent = agentCodes[Math.floor(Math.random() * agentCodes.length)];
     
     return {
-      nombre: randomProduct,
+      nombre: 'NOMBRE_ZONA_CLIENTE',
       codigo_agente: randomAgent,
-      nombre_agente: 'Agent Name Placeholder',
+      nombre_agente: 'CLIENTE MOCK',
       productos: [
         {
           codigo: `P-${Math.floor(Math.random() * 1000)}`,
-          cantidad: Math.floor(Math.random() * 50) + 1
-        },
-        {
-            codigo: `P-${Math.floor(Math.random() * 1000)}`,
-            cantidad: Math.floor(Math.random() * 10)
+          nombre: randomProduct,
+          cantidad: Math.floor(Math.random() * 50) + 1,
+          stock_fisico: Math.floor(Math.random() * 20)
         }
       ]
     };

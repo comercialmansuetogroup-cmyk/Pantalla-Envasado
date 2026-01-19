@@ -9,7 +9,6 @@ import { DEFAULT_SETTINGS, CLIENT_MAPPING } from './types';
 export default function App() {
   const [view, setView] = useState<'live' | 'stats'>('live');
   const [darkMode, setDarkMode] = useState(false);
-  
   const [data, setData] = useState<any[]>([]);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [highlightedCode, setHighlightedCode] = useState<string | null>(null);
@@ -35,59 +34,57 @@ export default function App() {
       
       const raw = await res.json();
       
-      // 1. FASE DE AGREGACIÓN
+      // --- FASE 1: AGRUPACIÓN POR CLIENTE ---
       const groups: Record<string, any> = {};
-      const globalStockMap = new Map<string, number>();
 
       if (Array.isArray(raw)) {
         raw.forEach((row: any) => {
+          // Ignorar filas vacías
           if (Number(row.total_qty) === 0 && Number(row.yesterday_qty) === 0 && Number(row.global_stock) === 0) return;
 
           const rawCode = String(row.agent_code ?? '').trim();
           const rawAgentName = String(row.agent_name ?? '').trim().toUpperCase();
           
-          // Lógica de Mapeo Mejorada:
-          // 1. Buscar por Código en el Mapa
-          // 2. Si no existe código, buscar si el NOMBRE del agente contiene alguna clave (ej: "INTEGRA")
-          // 3. Fallback final: Usar el nombre del agente tal cual llega
+          // 1. DETERMINAR NOMBRE DEL CLIENTE (COLUMNA)
           let clientName = CLIENT_MAPPING[rawCode];
 
           if (!clientName) {
-             // Intento de fallback inteligente para INTEGRA u otros
+             // Fallback por nombre para INTEGRA y otros
              if (rawAgentName.includes('INTEGRA')) clientName = 'INTEGRA TRANSPORTE';
              else if (rawAgentName.includes('TENERIFE NORTE')) clientName = 'TENERIFE NORTE';
              else if (rawAgentName.includes('TENERIFE SUR')) clientName = 'TENERIFE SUR';
-             else clientName = rawAgentName || `ZONA ${rawCode}`; // Fallback final
+             else clientName = rawAgentName || `AGENTE ${rawCode}`;
           }
           
           if (!groups[clientName]) {
             groups[clientName] = { 
               name: clientName, 
-              products: [],
+              products: [], // Aquí meteremos los productos
               totalToday: 0,
               totalYesterday: 0
             };
           }
           
-          const pCode = row.product_code;
-          const stock = Number(row.global_stock);
-          globalStockMap.set(pCode, stock);
-
+          // --- FASE 2: GESTIÓN DE PRODUCTOS ---
           const qtyToday = Number(row.total_qty);
           const qtyYesterday = Number(row.yesterday_qty);
-
+          const stockReal = Number(row.global_stock); // Este viene de la tabla inventory en la query SQL
+          
+          // Buscar si el producto ya existe en este cliente (para agrupar si viene repetido)
           const existingProd = groups[clientName].products.find((p: any) => p.code === row.product_code);
           
           if (existingProd) {
              existingProd.qty += qtyToday;
              existingProd.yesterdayQty += qtyYesterday;
+             // El stock es global por producto, no se suma, se toma el valor actual
+             existingProd.stock = stockReal; 
           } else {
             groups[clientName].products.push({
               code: row.product_code,
-              name: row.product_name,
+              name: row.product_name, // Esto ya viene limpio desde server.js
               qty: qtyToday,
               yesterdayQty: qtyYesterday, 
-              stock: 0, 
+              stock: stockReal, 
               trend: 0
             });
           }
@@ -97,14 +94,16 @@ export default function App() {
         });
       }
 
-      // 2. FASE DE CÁLCULO
+      // --- FASE 3: ORDENAMIENTO Y CÁLCULOS FINALES ---
       const sortedClients = Object.values(groups).sort((a,b) => {
+        // Gran Canaria siempre primero (opcional, por orden alfabético iría después de G)
         if(a.name === 'GRAN CANARIA') return -1;
         if(b.name === 'GRAN CANARIA') return 1;
         return a.name.localeCompare(b.name);
       });
 
       sortedClients.forEach(client => {
+         // Calcular tendencia Cliente
          let clientTrend = 0;
          if (client.totalYesterday > 0) {
             clientTrend = ((client.totalToday - client.totalYesterday) / client.totalYesterday) * 100;
@@ -113,6 +112,7 @@ export default function App() {
          }
          client.trend = clientTrend;
 
+         // Calcular tendencias Productos y Pendientes
          client.products.forEach((p: any) => {
              let prodTrend = 0;
              if (p.yesterdayQty > 0) {
@@ -121,15 +121,16 @@ export default function App() {
                 prodTrend = 100;
              }
              p.trend = prodTrend;
-
-             const available = globalStockMap.get(p.code) || 0;
-             const needed = p.qty;
-             const assigned = Math.min(needed, available);
              
-             p.stock = assigned; 
-             globalStockMap.set(p.code, Math.max(0, available - assigned));
+             // Aquí no necesitamos calcular 'stock asignado' complejo si el stock ya viene dedicado
+             // Pero asumiendo que el stock es global para el producto (sin importar cliente)
+             // Simplemente mostramos el stock disponible.
+             // El 'Pendiente' (lo que falta por producir) es Total Pedido - Stock (si es positivo)
+             // NOTA: Si quieres lógica de asignación (repartir stock entre clientes), avísame. 
+             // Por ahora: Pendiente = Max(0, Cantidad - Stock)
          });
          
+         // Ordenar productos por cantidad (Mayor a menor)
          client.products.sort((a: any, b: any) => b.qty - a.qty);
       });
 
@@ -153,24 +154,12 @@ export default function App() {
     const connectSSE = () => {
       if (es) es.close();
       es = new EventSource('/api/events');
-      
-      es.onopen = () => {
-        setErrorMsg(null);
-      };
-
+      es.onopen = () => setErrorMsg(null);
       es.onmessage = (e) => {
         if (e.data === ':' || e.data.trim() === '') return;
-        
-        const rawData = e.data?.trim();
-        if (!rawData) return;
-        
         try {
-          const msg = JSON.parse(rawData);
-          // Si es un reset, recargar página completa para limpiar memoria
-          if (msg.type === 'RESET' || msg.code === 'RESET') {
-             window.location.reload();
-             return;
-          }
+          const msg = JSON.parse(e.data);
+          if (msg.type === 'RESET') { window.location.reload(); return; }
           fetchData();
           if (msg.code) {
             setHighlightedCode(msg.code);
@@ -178,17 +167,13 @@ export default function App() {
           }
         } catch(err) {}
       };
-
       es.onerror = (err) => {
         es?.close();
         reconnectTimeout = setTimeout(connectSSE, 5000);
       };
     };
-
     connectSSE();
-    
     const interval = setInterval(fetchData, 15000);
-
     return () => {
       if (es) es.close();
       clearInterval(interval);
