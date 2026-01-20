@@ -30,33 +30,29 @@ export interface VisualSettings {
   nameFontSize: number;      
   codeFontSize: number;      
   clientNameFontSize: number; 
-  
-  // Nuevos campos para control de %
-  trendFontSize: number;       // Para productos
-  clientTrendFontSize: number; // Para cabecera de cliente
-  
+  trendFontSize: number;       
+  clientTrendFontSize: number; 
   headerFontSize: number;
-
-  // Nuevos campos de Estructura (Solicitud Usuario V2)
-  colWidthSingle: number;    // Ancho para clientes de 1 columna (Pingüino)
-  colWidthMulti: number;     // Ancho para clientes de 2+ columnas (Gran Canaria)
-  rowVerticalPadding: number; // Separación vertical entre filas
-  
-  // NUEVO: Control de Pie de Página
-  footerTotalFontSize: number;   // Tamaño del Número Grande Rojo
-  footerMetricsFontSize: number; // Tamaño base de la sección derecha (Productos, Stock, etc)
+  colWidthSingle: number;    
+  colWidthMulti: number;     
+  rowVerticalPadding: number; 
+  footerTotalFontSize: number;   
+  footerMetricsFontSize: number; 
 }
 
 export interface IncomingProduct {
   codigo: string;
-  nombre_producto?: string; // Nuevo campo JSON V4
-  nombre?: string; // Legacy
+  codigo_producto?: string; // Alternativa Make
+  nombre_producto?: string; // CAMPO CLAVE
+  nombre?: string; 
   cantidad: number;
+  cantidad_producto?: number;
   stock_fisico?: number;
 }
 
 export interface IncomingZona {
   nombre: string;
+  nombre_comercial?: string;
   codigo_agente: string;
   nombre_agente: string;
   productos: IncomingProduct[];
@@ -66,16 +62,12 @@ export interface IncomingDataPayload {
   zonas: IncomingZona[];
 }
 
-// MAPPING ACTUALIZADO SEGÚN SOLICITUD V3
-// Se han añadido variantes con cero a la izquierda ('05', '08', '010', '014') por seguridad.
 export const CLIENT_MAPPING: Record<string, string> = {
   '24': 'FILIPPO', '024': 'FILIPPO',
   '27': 'PINGÜINO', '027': 'PINGÜINO',
   '26': 'TENERIFE SUR', '026': 'TENERIFE SUR',
   '23': 'LA PALMA', '023': 'LA PALMA',
   '15': 'TENERIFE NORTE', '015': 'TENERIFE NORTE',
-  
-  // GRUPO GRAN CANARIA COMPLETO (Suma de códigos: 10, 14, 5, 0, 8)
   '10': 'GRAN CANARIA', '010': 'GRAN CANARIA',
   '14': 'GRAN CANARIA', '014': 'GRAN CANARIA', 
   '5': 'GRAN CANARIA', '05': 'GRAN CANARIA', '005': 'GRAN CANARIA',

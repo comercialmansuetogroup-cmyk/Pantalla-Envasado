@@ -1,44 +1,29 @@
 
 import { IncomingDataPayload, CLIENT_MAPPING as MAPPING_SOURCE } from './types';
 
-// Exporting directly from types to avoid duplication and inconsistencies
 export const CLIENT_MAPPING = MAPPING_SOURCE;
-
-// Colors for charts
 export const CHART_COLORS = ['#dc2626', '#ef4444', '#f87171', '#fca5a5', '#4b5563', '#1f2937'];
 
-// Mock Data Generator to simulate Make webhook structure accurately
+// Mock Data Generator exacto según tu JSON de Make
 export const generateMockData = (): IncomingDataPayload => {
   const productNames = [
-    'Coca Cola Zero 33cl',
-    'Fanta Naranja 33cl',
-    'Agua Mineral 1.5L',
-    'Cerveza Especial',
-    'Zumo Piña',
-    'Nestea Limón',
-    'Aquarius',
-    'Monster Energy'
+    'Coca Cola Zero 33cl', 'Fanta Naranja 33cl', 'Agua Mineral 1.5L',
+    'Cerveza Especial', 'Zumo Piña', 'RICOTTA FRESCA 5 KG BANDEJA'
   ];
+  const agentCodes = ['14', '24', '10'];
 
-  // Updated mock codes to test new mapping
-  const agentCodes = ['24', '27', '26', '23', '15', '10', '14', '5', '0', '8'];
-
-  const zones = Array.from({ length: 5 }).map(() => {
+  const zones = Array.from({ length: 3 }).map(() => {
     const randomProduct = productNames[Math.floor(Math.random() * productNames.length)];
     const randomAgentCode = agentCodes[Math.floor(Math.random() * agentCodes.length)];
-    // Mapeamos un nombre realista basado en el código para simular la realidad
-    const randomAgentName = CLIENT_MAPPING[randomAgentCode] || 'CLIENTE DESCONOCIDO';
     
     return {
-      nombre: randomAgentName, // Make mapea {{nombre_comercial}} aqui
+      nombre: "COMERCIAL ZONA SUR",
       codigo_agente: randomAgentCode,
-      nombre_agente: randomAgentName,
+      nombre_agente: "COMERCIAL ZONA SUR",
       productos: [
         {
-          codigo: `P-${Math.floor(Math.random() * 1000)}`,
-          // AQUI ESTÁ EL CAMBIO IMPORTANTE: Agregamos nombre_producto para coincidir con tu JSON
-          nombre_producto: randomProduct,
-          nombre: randomProduct, // Mantenemos legacy por si acaso
+          codigo: `PROD-${Math.floor(Math.random() * 100)}`,
+          nombre_producto: randomProduct, // Campo clave
           cantidad: Math.floor(Math.random() * 50) + 1,
           stock_fisico: Math.floor(Math.random() * 20)
         }
