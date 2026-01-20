@@ -101,7 +101,9 @@ export const ClientColumn: React.FC<ClientColumnProps> = ({ group, darkMode, set
                   // Configuración de visualización
                   const mode = settings.displayMode; // 'name', 'code', 'both'
                   const showCode = mode === 'code' || mode === 'both';
-                  const showName = mode === 'name' || mode === 'both';
+                  // OJO: Solo mostramos nombre si es requerido Y es diferente al código. 
+                  // Esto evita la duplicación visual "BUR5 / BUR5"
+                  const showName = (mode === 'name' || mode === 'both') && (p.name !== p.code);
 
                   return (
                     <div 

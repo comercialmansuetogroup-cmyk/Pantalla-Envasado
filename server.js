@@ -105,17 +105,21 @@ app.post('/api/webhook', async (req, res) => {
           const prodCode = String(p.codigo || '').trim().toUpperCase();
           if (!prodCode || prodCode === 'UNKNOWN') continue;
 
-          // CAPTURA MEJORADA DE NOMBRES (V4)
-          // Prioridad ABSOLUTA: nombre_producto (Nuevo JSON)
-          let prodName = (p.nombre_producto || p.nombre || p.descripcion || '').trim();
+          // CAPTURA MEJORADA DE NOMBRES (V6 - ROBUSTA)
+          // Buscamos 'nombre_producto' insensible a mayúsculas y guiones bajos para asegurar que lo encontramos
+          // independientemente de cómo lo mande Make.
+          const pKeys = Object.keys(p);
+          const nameKey = pKeys.find(k => k.toLowerCase().replace(/_/g,'') === 'nombreproducto') || 
+                          pKeys.find(k => k.toLowerCase() === 'nombre') || 
+                          pKeys.find(k => k.toLowerCase() === 'descripcion');
           
-          // Validación: Si el nombre está vacío o es igual al código (a veces Make manda el código si falla el nombre)
-          // intentamos usar el código temporalmente, pero el ON CONFLICT intentará preservar un nombre mejor si ya existe.
-          if (!prodName || prodName.toUpperCase() === prodCode) {
-             prodName = prodCode;
-          } else {
-             prodName = prodName.toUpperCase();
-          }
+          let rawName = nameKey ? p[nameKey] : '';
+          let prodName = String(rawName || '').trim();
+
+          // Si falla, fallback al código
+          if (!prodName) prodName = prodCode;
+          
+          prodName = prodName.toUpperCase();
 
           const cleanQty = String(p.cantidad || '0').replace(',', '.');
           const cleanStock = String(p.stock_fisico !== undefined && p.stock_fisico !== null ? p.stock_fisico : '').replace(',', '.');
@@ -126,9 +130,9 @@ app.post('/api/webhook', async (req, res) => {
           lastCode = prodCode;
 
           if (qty > 0) {
-            // UPSERT inteligente para Nombres:
-            // Si el nuevo nombre es NULL o igual al CÓDIGO (dato malo), Y ya tenemos un nombre bueno en la DB, NO lo sobrescribimos.
-            // Si el nuevo nombre es BUENO, sobrescribimos.
+            // Lógica UPSERT (V6):
+            // Priorizamos SIEMPRE el nuevo nombre si es diferente al código.
+            // Si el nombre nuevo es IGUAL al código, solo lo guardamos si el viejo también era código (para no estropear datos buenos).
             await client.query(`
               INSERT INTO orders (agent_code, agent_name, product_code, product_name, quantity)
               VALUES ($1, $2, $3, $4, $5)
