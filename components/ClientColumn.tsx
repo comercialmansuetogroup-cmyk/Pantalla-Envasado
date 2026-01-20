@@ -17,9 +17,6 @@ interface ClientColumnProps {
 
 export const ClientColumn: React.FC<ClientColumnProps> = ({ group, darkMode, settings, highlightedCode }) => {
   const totalQty = useMemo(() => group.products.reduce((acc, p) => acc + Number(p.qty), 0), [group.products]);
-  const totalStock = useMemo(() => group.products.reduce((acc, p) => acc + Number(p.stock), 0), [group.products]);
-  const totalPending = useMemo(() => group.products.reduce((acc, p) => acc + Math.max(0, p.qty - p.stock), 0), [group.products]);
-  
   const activeProducts = group.products;
 
   const columns: Product[][] = [];
@@ -35,7 +32,6 @@ export const ClientColumn: React.FC<ClientColumnProps> = ({ group, darkMode, set
   const verticalPadding = settings.rowVerticalPadding || 8;
 
   // Grid Template: [Info (flex), Stock, Pendiente, Total]
-  // Ajustado para coincidir con la captura: La primera columna es flexible, las otras fijas y alineadas a la derecha
   const gridTemplate = "grid-cols-[1fr_50px_60px_60px]";
   
   const trendValue = group.trend || 0;
@@ -125,16 +121,16 @@ export const ClientColumn: React.FC<ClientColumnProps> = ({ group, darkMode, set
                              <span className={`font-black leading-none ${isHigh ? 'text-white' : (darkMode ? 'text-white' : 'text-slate-800')}`} style={{ fontSize: `${settings.codeFontSize}px` }}>
                                #{p.code}
                              </span>
-                             {/* Badge de tendencia al lado del código si solo se muestra código o ambos */}
+                             {/* Badge de tendencia */}
                              <div className={isHigh ? 'brightness-0 invert' : ''}>
                                 <TrendBadge value={p.trend || 0} darkMode={darkMode} fontSize={settings.trendFontSize} />
                              </div>
                            </div>
                          )}
                          
-                         {/* Nombre (Gris, Debajo, Más pequeño) */}
+                         {/* Nombre (Gris, Debajo, Más pequeño, Espaciado ajustado) */}
                          {showName && (
-                           <span className={`font-bold uppercase truncate leading-tight mt-0.5 ${
+                           <span className={`font-bold uppercase truncate leading-tight mt-1 ${
                                isHigh ? 'text-white/80' : (darkMode ? 'text-white/40' : 'text-slate-400')
                            }`} style={{ fontSize: `${settings.nameFontSize}px` }}>
                               {p.name}

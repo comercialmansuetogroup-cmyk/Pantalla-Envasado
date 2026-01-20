@@ -6,9 +6,10 @@ export interface Product {
   code: string;
   qty: number;
   stock: number;
-  toProduce: number;
-  rowId: string;
+  toProduce?: number;
+  rowId?: string;
   trend: number;
+  yesterdayQty?: number;
 }
 
 export interface ClientGroup {
@@ -16,6 +17,9 @@ export interface ClientGroup {
   products: Product[];
   clientId?: string;
   code?: string;
+  totalToday?: number;
+  totalYesterday?: number;
+  trend?: number;
 }
 
 export interface VisualSettings {
@@ -45,7 +49,10 @@ export interface VisualSettings {
 
 export interface IncomingProduct {
   codigo: string;
+  nombre_producto?: string; // Nuevo campo JSON V4
+  nombre?: string; // Legacy
   cantidad: number;
+  stock_fisico?: number;
 }
 
 export interface IncomingZona {
@@ -80,20 +87,16 @@ export const DEFAULT_SETTINGS: VisualSettings = {
   logoLight: null,
   logoDark: null,
   displayMode: 'both',
-  maxRowsPerCol: 18,      
-  nameFontSize: 13,       
-  codeFontSize: 20,       
-  clientNameFontSize: 48, 
-  trendFontSize: 14,
-  clientTrendFontSize: 18,
+  maxRowsPerCol: 20,
+  nameFontSize: 12,
+  codeFontSize: 14,
+  clientNameFontSize: 24,
+  trendFontSize: 10,
+  clientTrendFontSize: 12,
   headerFontSize: 16,
-  
-  // Valores por defecto ajustados
-  colWidthSingle: 340, 
-  colWidthMulti: 520,  
+  colWidthSingle: 340,
+  colWidthMulti: 520,
   rowVerticalPadding: 8,
-
-  // Defaults Pie de Página
-  footerTotalFontSize: 60, // Tamaño del número rojo grande
-  footerMetricsFontSize: 11 // Tamaño de las etiquetas de métricas (los números serán un poco más grandes proporcionalmente)
+  footerTotalFontSize: 32,
+  footerMetricsFontSize: 12
 };

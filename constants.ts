@@ -36,7 +36,9 @@ export const generateMockData = (): IncomingDataPayload => {
       productos: [
         {
           codigo: `P-${Math.floor(Math.random() * 1000)}`,
-          nombre: randomProduct,
+          // AQUI ESTÁ EL CAMBIO IMPORTANTE: Agregamos nombre_producto para coincidir con tu JSON
+          nombre_producto: randomProduct,
+          nombre: randomProduct, // Mantenemos legacy por si acaso
           cantidad: Math.floor(Math.random() * 50) + 1,
           stock_fisico: Math.floor(Math.random() * 20)
         }

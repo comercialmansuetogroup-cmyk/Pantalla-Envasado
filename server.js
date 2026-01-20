@@ -105,14 +105,13 @@ app.post('/api/webhook', async (req, res) => {
           const prodCode = String(p.codigo || '').trim().toUpperCase();
           if (!prodCode || prodCode === 'UNKNOWN') continue;
 
-          // CAPTURA MEJORADA DE NOMBRES
-          // 1. Intentamos sacar nombre de 'nombre' o 'descripcion'
-          let prodName = (p.nombre || p.descripcion || '').trim();
+          // CAPTURA MEJORADA DE NOMBRES (V4)
+          // Prioridad ABSOLUTA: nombre_producto (Nuevo JSON)
+          let prodName = (p.nombre_producto || p.nombre || p.descripcion || '').trim();
           
-          // 2. Si no hay nombre, o el nombre es igual al código, intentamos un fallback
-          if (!prodName || prodName === prodCode) {
-             // Si el JSON viene malo, usamos el código temporalmente, 
-             // pero el ON CONFLICT tratará de preservar el nombre antiguo si ya existía uno bueno.
+          // Validación: Si el nombre está vacío o es igual al código (a veces Make manda el código si falla el nombre)
+          // intentamos usar el código temporalmente, pero el ON CONFLICT intentará preservar un nombre mejor si ya existe.
+          if (!prodName || prodName.toUpperCase() === prodCode) {
              prodName = prodCode;
           } else {
              prodName = prodName.toUpperCase();
@@ -127,8 +126,9 @@ app.post('/api/webhook', async (req, res) => {
           lastCode = prodCode;
 
           if (qty > 0) {
-            // Lógica UPSERT inteligente para nombres:
-            // Si el nuevo nombre es igual al código (malo), mantenemos el nombre viejo si existe.
+            // UPSERT inteligente para Nombres:
+            // Si el nuevo nombre es NULL o igual al CÓDIGO (dato malo), Y ya tenemos un nombre bueno en la DB, NO lo sobrescribimos.
+            // Si el nuevo nombre es BUENO, sobrescribimos.
             await client.query(`
               INSERT INTO orders (agent_code, agent_name, product_code, product_name, quantity)
               VALUES ($1, $2, $3, $4, $5)
@@ -136,7 +136,7 @@ app.post('/api/webhook', async (req, res) => {
               DO UPDATE SET 
                 quantity = orders.quantity + EXCLUDED.quantity,
                 product_name = CASE 
-                                 WHEN EXCLUDED.product_name = EXCLUDED.product_code AND orders.product_name != orders.product_code THEN orders.product_name
+                                 WHEN (EXCLUDED.product_name = EXCLUDED.product_code) AND (orders.product_name != orders.product_code) THEN orders.product_name
                                  ELSE EXCLUDED.product_name 
                                END,
                 received_at = CURRENT_TIMESTAMP
