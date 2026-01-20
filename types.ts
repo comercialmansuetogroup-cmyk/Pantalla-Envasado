@@ -42,8 +42,8 @@ export interface VisualSettings {
 
 export interface IncomingProduct {
   codigo: string;
-  codigo_producto?: string; // Alternativa Make
-  nombre_producto?: string; // CAMPO CLAVE
+  codigo_producto?: string;
+  nombre_producto?: string;
   nombre?: string; 
   cantidad: number;
   cantidad_producto?: number;
@@ -79,16 +79,16 @@ export const DEFAULT_SETTINGS: VisualSettings = {
   logoLight: null,
   logoDark: null,
   displayMode: 'both',
-  maxRowsPerCol: 20,
-  nameFontSize: 12,
-  codeFontSize: 14,
-  clientNameFontSize: 24,
-  trendFontSize: 10,
-  clientTrendFontSize: 12,
+  maxRowsPerCol: 18,
+  nameFontSize: 13,
+  codeFontSize: 20,
+  clientNameFontSize: 48,
+  trendFontSize: 14,
+  clientTrendFontSize: 18,
   headerFontSize: 16,
   colWidthSingle: 340,
   colWidthMulti: 520,
   rowVerticalPadding: 8,
-  footerTotalFontSize: 32,
+  footerTotalFontSize: 60,
   footerMetricsFontSize: 12
 };

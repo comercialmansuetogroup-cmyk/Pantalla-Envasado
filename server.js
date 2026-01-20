@@ -29,7 +29,7 @@ const initDB = async () => {
           agent_name TEXT,
           product_code TEXT NOT NULL,
           product_name TEXT,
-          quantity NUMERIC DEFAULT 0,
+          quantity INTEGER DEFAULT 0,
           received_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
           PRIMARY KEY (agent_code, product_code)
         );
@@ -39,7 +39,7 @@ const initDB = async () => {
           stock_qty NUMERIC DEFAULT 0
         );
       `);
-      console.log('✅ [DB] Sistema inicializado correctamente.');
+      console.log('✅ [DB] Sistema inicializado y verificado.');
     } finally {
       client.release();
     }
@@ -81,27 +81,30 @@ app.post('/api/webhook', async (req, res) => {
     let lastCode = null;
     
     for (const z of zonas) {
-      // Mapeo de Agente desde el JSON de Make
       const agentCode = String(z.codigo_agente || '0').trim(); 
       const agentName = String(z.nombre_agente || z.nombre_comercial || 'DESCONOCIDO').toUpperCase();
       
       if (z.productos && Array.isArray(z.productos)) {
         for (const p of z.productos) {
-          // MAPEO CRÍTICO: 
-          // product_code <- p.codigo
-          // product_name <- p.nombre_producto
+          // 1. Mapeo de Identificadores
           const prodCode = String(p.codigo || '').trim().toUpperCase();
           const prodName = String(p.nombre_producto || '').trim().toUpperCase();
           
           if (!prodCode) continue;
 
-          const qty = Number(p.cantidad || 0);
-          const stockFisico = p.stock_fisico !== undefined ? Number(p.stock_fisico) : NaN;
+          // 2. Lógica de Cantidad (TRUNCAR DECIMALES)
+          // Convertimos a string para manejar comas (1,5 -> 1.5), luego a número, luego floor
+          const rawQtyStr = String(p.cantidad || p.cantidad_producto || 0).replace(',', '.');
+          const qty = Math.floor(Number(rawQtyStr) || 0);
+
+          // 3. Stock físico (se mantiene decimal para precisión de inventario si fuera necesario, o se puede truncar igual)
+          const rawStockStr = String(p.stock_fisico !== undefined ? p.stock_fisico : '').replace(',', '.');
+          const stockFisico = rawStockStr === '' ? NaN : Number(rawStockStr);
 
           lastCode = prodCode;
 
           if (qty > 0) {
-            // Guardamos en Postgres asegurando que cada columna reciba lo que toca
+            // UPSERT en Postgres
             await client.query(`
               INSERT INTO orders (agent_code, agent_name, product_code, product_name, quantity)
               VALUES ($1, $2, $3, $4, $5)
@@ -128,13 +131,13 @@ app.post('/api/webhook', async (req, res) => {
     }
 
     await client.query('COMMIT');
-    console.log(`✅ Webhook procesado: ${processedCount} productos.`);
+    console.log(`✅ Webhook: ${processedCount} unidades procesadas.`);
     notifyClients(lastCode, 'order');
     res.json({ ok: true, processed: processedCount });
 
   } catch (err) {
     await client.query('ROLLBACK');
-    console.error('❌ Error en Webhook:', err); 
+    console.error('❌ Error Webhook:', err); 
     res.status(500).json({ error: err.message });
   } finally {
     client.release();
@@ -158,7 +161,7 @@ app.get('/api/data', async (req, res) => {
       ORDER BY o.agent_code ASC, o.product_name ASC
     `);
     res.json(result.rows);
-  } catch (err) { res.status(500).json({ error: 'Error en consulta DB' }); }
+  } catch (err) { res.status(500).json({ error: 'DB Error' }); }
 });
 
 app.post('/api/reset', async (req, res) => {
@@ -175,4 +178,4 @@ if (process.env.NODE_ENV === 'production') {
   app.get('*', (req, res) => res.sendFile(path.join(__dirname, 'dist', 'index.html')));
 }
 
-app.listen(PORT, () => console.log(`🚀 Servidor en puerto ${PORT}`));
+app.listen(PORT, () => console.log(`🚀 Servidor activo en puerto ${PORT}`));

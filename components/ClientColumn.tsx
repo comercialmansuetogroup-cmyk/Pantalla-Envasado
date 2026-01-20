@@ -58,9 +58,9 @@ export const ClientColumn: React.FC<ClientColumnProps> = ({ group, darkMode, set
         {columns.map((colProducts, colIdx) => (
           <div key={colIdx} className={`flex-1 border-r last:border-r-0 flex flex-col ${darkMode ? 'border-white/5' : 'border-slate-200'}`}>
             <div className={`grid ${gridTemplate} px-4 border-b gap-2 py-2 ${darkMode ? 'border-white/10 bg-white/2' : 'border-slate-200 bg-slate-50'}`}>
-              <span className={headerLabelClass}>REFERENCIA</span>
+              <span className={headerLabelClass}>PRODUCTO</span>
               <span className={`text-right ${headerLabelClass}`}>STOCK</span>
-              <span className={`text-right ${headerLabelClass}`}>FALLA</span>
+              <span className={`text-right ${headerLabelClass}`}>FALTA</span>
               <span className={`text-right ${headerLabelClass}`}>PEDIDO</span>
             </div>
             
@@ -72,31 +72,31 @@ export const ClientColumn: React.FC<ClientColumnProps> = ({ group, darkMode, set
                 return (
                   <div 
                       key={pIdx} 
-                      className={`grid ${gridTemplate} px-4 border-b items-center gap-2 transition-all duration-500 ${isHigh ? 'bg-green-500 text-white z-10' : (darkMode ? 'border-white/5 hover:bg-white/5' : 'border-slate-100 hover:bg-slate-50')}`}
+                      className={`grid ${gridTemplate} px-4 border-b items-center gap-2 transition-all duration-500 ${isHigh ? 'bg-green-600 text-white z-10 scale-[1.01]' : (darkMode ? 'border-white/5 hover:bg-white/5' : 'border-slate-100 hover:bg-slate-50')}`}
                       style={{ paddingTop: `${verticalPadding}px`, paddingBottom: `${verticalPadding}px` }}
                   >
-                    <div className="flex flex-col min-w-0 pr-2 leading-tight">
-                       {/* CÓDIGO ARRIBA EN NEGRITA */}
+                    <div className="flex flex-col min-w-0 pr-2 leading-none">
+                       {/* 1. CÓDIGO (ARRIBA - FUENTE GRANDE) */}
                        <div className="flex items-center gap-2">
-                         <span className={`font-black ${isHigh ? 'text-white' : (darkMode ? 'text-white' : 'text-slate-800')}`} style={{ fontSize: `${settings.codeFontSize}px` }}>
+                         <span className={`font-black uppercase ${isHigh ? 'text-white' : (darkMode ? 'text-white' : 'text-slate-800')}`} style={{ fontSize: `${settings.codeFontSize}px` }}>
                            #{p.code}
                          </span>
                          <TrendBadge value={p.trend || 0} darkMode={darkMode} fontSize={settings.trendFontSize} />
                        </div>
-                       {/* NOMBRE ABAJO EN GRIS */}
-                       <span className={`font-bold uppercase truncate mt-0.5 ${isHigh ? 'text-white/80' : (darkMode ? 'text-white/40' : 'text-slate-400')}`} style={{ fontSize: `${settings.nameFontSize}px` }}>
+                       {/* 2. NOMBRE (ABAJO - FUENTE PEQUEÑA) */}
+                       <span className={`font-bold uppercase truncate mt-1 ${isHigh ? 'text-white/90' : (darkMode ? 'text-white/40' : 'text-slate-400')}`} style={{ fontSize: `${settings.nameFontSize}px` }}>
                           {p.name}
                        </span>
                     </div>
                     
                     <div className={`text-right font-bold tabular-nums text-xs ${isHigh ? 'text-white' : (darkMode ? 'text-blue-400' : 'text-blue-600')}`}>
-                      {p.stock}
+                      {Math.floor(p.stock)}
                     </div>
-                    <div className={`text-right font-black tabular-nums text-sm ${isHigh ? 'text-white' : (lack === 0 ? 'text-green-500' : 'text-orange-500')}`}>
-                      {lack}
+                    <div className={`text-right font-black tabular-nums text-sm ${isHigh ? 'text-white' : (lack <= 0 ? 'text-green-500' : 'text-orange-500')}`}>
+                      {Math.floor(lack)}
                     </div>
-                    <div className={`text-right font-black tabular-nums ${isHigh ? 'text-white' : (darkMode ? 'text-white' : 'text-slate-900')}`} style={{ fontSize: '18px' }}>
-                      {p.qty}
+                    <div className={`text-right font-black tabular-nums ${isHigh ? 'text-white' : (darkMode ? 'text-white' : 'text-slate-900')}`} style={{ fontSize: '1.25rem' }}>
+                      {Math.floor(p.qty)}
                     </div>
                   </div>
                 );
@@ -109,8 +109,8 @@ export const ClientColumn: React.FC<ClientColumnProps> = ({ group, darkMode, set
       <div className={`p-6 border-t flex-none ${darkMode ? 'border-white/10 bg-[#080a0f]' : 'border-slate-200 bg-white'}`}>
          <div className="flex justify-center">
             <div className="text-center">
-               <p className={`text-[10px] font-black uppercase tracking-[0.2em] mb-1 ${darkMode ? 'text-white/40' : 'text-slate-400'}`}>TOTAL PEDIDOS</p>
-               <p className="text-5xl font-black text-red-600 tracking-tighter tabular-nums">{totalQty.toLocaleString()}</p>
+               <p className={`text-[10px] font-black uppercase tracking-[0.2em] mb-1 ${darkMode ? 'text-white/40' : 'text-slate-400'}`}>UNIDADES TOTALES</p>
+               <p className="font-black text-red-600 tracking-tighter tabular-nums" style={{ fontSize: `${settings.footerTotalFontSize}px`, lineHeight: 1 }}>{Math.floor(totalQty).toLocaleString()}</p>
             </div>
          </div>
       </div>
