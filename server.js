@@ -39,11 +39,11 @@ const initDB = async () => {
           stock_qty NUMERIC DEFAULT 0
         );
       `);
-      console.log('✅ [DB] System Ready.');
+      console.log('✅ [DB] Sistema inicializado correctamente.');
     } finally {
       client.release();
     }
-  } catch (err) { console.error('❌ [DB] Init Error:', err.message); }
+  } catch (err) { console.error('❌ [DB] Error:', err.message); }
 };
 initDB();
 
@@ -70,12 +70,7 @@ app.post('/api/webhook', async (req, res) => {
 
   const { zonas } = req.body;
   if (!zonas || !Array.isArray(zonas)) {
-    return res.status(400).json({ error: 'Invalid JSON Structure' });
-  }
-
-  if (!process.env.DATABASE_URL) {
-    notifyClients('TEST');
-    return res.json({ ok: true, mode: 'memory_only' });
+    return res.status(400).json({ error: 'Estructura JSON no válida' });
   }
 
   const client = await pool.connect();
@@ -86,33 +81,27 @@ app.post('/api/webhook', async (req, res) => {
     let lastCode = null;
     
     for (const z of zonas) {
-      // 1. Mapeo Agente
-      const agentCode = String(z.codigo_agente ?? '0').trim(); 
-      const agentName = String(z.nombre_agente || z.nombre_comercial || z.nombre || 'DESCONOCIDO').toUpperCase();
+      // Mapeo de Agente desde el JSON de Make
+      const agentCode = String(z.codigo_agente || '0').trim(); 
+      const agentName = String(z.nombre_agente || z.nombre_comercial || 'DESCONOCIDO').toUpperCase();
       
       if (z.productos && Array.isArray(z.productos)) {
         for (const p of z.productos) {
+          // MAPEO CRÍTICO: 
+          // product_code <- p.codigo
+          // product_name <- p.nombre_producto
+          const prodCode = String(p.codigo || '').trim().toUpperCase();
+          const prodName = String(p.nombre_producto || '').trim().toUpperCase();
           
-          const prodCode = String(p.codigo || p.codigo_producto || '').trim().toUpperCase();
-          if (!prodCode || prodCode === 'UNKNOWN') continue;
+          if (!prodCode) continue;
 
-          // 2. MAPEO DIRECTO Y SENCILLO DEL NOMBRE
-          // Prioridad absoluta a 'nombre_producto' tal cual viene del JSON
-          let prodName = p.nombre_producto || p.nombre || '';
-          prodName = String(prodName).trim();
-          
-          // Si por alguna razón viene vacío, usamos el código, pero en mayúsculas
-          if (!prodName) prodName = prodCode;
-          else prodName = prodName.toUpperCase();
-
-          const qty = Number(p.cantidad || p.cantidad_producto || 0);
+          const qty = Number(p.cantidad || 0);
           const stockFisico = p.stock_fisico !== undefined ? Number(p.stock_fisico) : NaN;
 
           lastCode = prodCode;
 
           if (qty > 0) {
-            // 3. UPSERT SIN CONDICIONALES COMPLEJOS
-            // Si hay conflicto (ya existe), actualizamos el nombre SÍ o SÍ con el nuevo dato (EXCLUDED.product_name)
+            // Guardamos en Postgres asegurando que cada columna reciba lo que toca
             await client.query(`
               INSERT INTO orders (agent_code, agent_name, product_code, product_name, quantity)
               VALUES ($1, $2, $3, $4, $5)
@@ -139,43 +128,21 @@ app.post('/api/webhook', async (req, res) => {
     }
 
     await client.query('COMMIT');
-    console.log(`✅ [WEBHOOK] Processed ${processedCount} operations.`);
+    console.log(`✅ Webhook procesado: ${processedCount} productos.`);
     notifyClients(lastCode, 'order');
     res.json({ ok: true, processed: processedCount });
 
   } catch (err) {
     await client.query('ROLLBACK');
-    console.error('❌ [WEBHOOK ERROR]', err); 
+    console.error('❌ Error en Webhook:', err); 
     res.status(500).json({ error: err.message });
   } finally {
     client.release();
   }
 });
 
-// ... resto de endpoints iguales (scan, data, reset, history) ...
-app.post('/api/scan', async (req, res) => {
-  const authHeader = req.headers.authorization;
-  if (!authHeader || authHeader !== 'Bearer DASHBOARD_V3_KEY_2025') return res.status(401).json({error:'Auth'});
-  const { codigo, cantidad } = req.body;
-  if(!codigo) return res.status(400).json({error:'Falta codigo'});
-  const client = await pool.connect();
-  try {
-    const qty = Number(cantidad) || 1;
-    const code = String(codigo).toUpperCase().trim();
-    await client.query(`
-      INSERT INTO inventory (product_code, stock_qty)
-      VALUES ($1, $2)
-      ON CONFLICT (product_code)
-      DO UPDATE SET stock_qty = inventory.stock_qty + $2
-    `, [code, qty]);
-    notifyClients(code, 'scan');
-    res.json({ok:true, stock_updated: code});
-  } catch(e) { res.status(500).json({error: e.message}); } finally { client.release(); }
-});
-
 app.get('/api/data', async (req, res) => {
   if (!process.env.DATABASE_URL) return res.json([]);
-  res.setHeader('Cache-Control', 'no-store');
   try {
     const result = await pool.query(`
       SELECT 
@@ -190,12 +157,11 @@ app.get('/api/data', async (req, res) => {
       WHERE o.quantity > 0
       ORDER BY o.agent_code ASC, o.product_name ASC
     `);
-    res.json(result.rows.map(r => ({ ...r, yesterday_qty: 0 })));
-  } catch (err) { res.status(500).json({ error: 'DB Query Failed' }); }
+    res.json(result.rows);
+  } catch (err) { res.status(500).json({ error: 'Error en consulta DB' }); }
 });
 
 app.post('/api/reset', async (req, res) => {
-  if (!process.env.DATABASE_URL) return res.json({ ok: true });
   const client = await pool.connect();
   try {
     await client.query('TRUNCATE TABLE orders, inventory RESTART IDENTITY CASCADE');
@@ -204,11 +170,9 @@ app.post('/api/reset', async (req, res) => {
   } catch (err) { res.status(500).json({error: err.message}); } finally { client.release(); }
 });
 
-app.get('/api/history', async (req, res) => res.json([]));
-
 if (process.env.NODE_ENV === 'production') {
   app.use(express.static(path.join(__dirname, 'dist')));
   app.get('*', (req, res) => res.sendFile(path.join(__dirname, 'dist', 'index.html')));
 }
 
-app.listen(PORT, () => console.log(`🚀 Server running on port ${PORT}`));
+app.listen(PORT, () => console.log(`🚀 Servidor en puerto ${PORT}`));
